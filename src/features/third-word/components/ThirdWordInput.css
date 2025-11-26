@@ -1,0 +1,82 @@
+.third-word-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.third-word-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.third-word-header h2 {
+  font-size: 1.8rem;
+  color: #2c3e50;
+  margin-bottom: 10px;
+}
+
+.third-word-header p {
+  color: #7f8c8d;
+  font-size: 0.95rem;
+}
+
+.third-word-input-box {
+  margin-bottom: 20px;
+}
+
+.third-word-input-box label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.95rem;
+}
+
+.third-word-textarea {
+  width: 100%;
+  min-height: 300px;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color 0.3s;
+}
+
+.third-word-textarea:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+.third-word-error {
+  padding: 12px;
+  background-color: #fee;
+  border: 1px solid #fcc;
+  border-radius: 6px;
+  color: #c33;
+  margin-bottom: 20px;
+}
+
+.third-word-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* 모바일 반응형 */
+@media (max-width: 768px) {
+  .third-word-container {
+    padding: 15px;
+  }
+  
+  .third-word-header h2 {
+    font-size: 1.5rem;
+  }
+  
+  .third-word-textarea {
+    min-height: 250px;
+  }
+}
+

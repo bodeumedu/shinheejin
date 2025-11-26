@@ -1,0 +1,406 @@
+.blank-generator-container {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.blank-item {
+  margin-bottom: 40px;
+}
+
+/* 공통 페이지 스타일 - 세로 A4 */
+.blank-page-group,
+.answer-page {
+  width: 210mm;
+  min-height: 297mm;
+  height: auto; /* 높이 자동 조정 */
+  padding: 15mm;
+  box-sizing: border-box;
+  margin: 0 auto 20px;
+  page-break-after: always;
+  background: white;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 10mm;
+  overflow: visible; /* 내용이 잘리지 않도록 */
+  position: relative; /* 워터마크 배치 */
+}
+
+/* 빈칸 문제 반 페이지 */
+.blank-item-half {
+  flex: 1 1 auto; /* 공간을 차지하되 자동으로 확장 가능 */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-bottom: 10mm;
+  border-bottom: 2px dashed #ccc;
+  overflow: visible; /* 내용이 잘리지 않도록 */
+}
+
+/* 워터마크 (빈칸 페이지/답지 모두) */
+/* 빈칸/답지에는 중앙 워터마크 제거 (요청에 따라 제목 옆에만 표시) */
+.blank-item-half:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* 페이지 헤더 */
+.blank-page-header,
+.answer-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 3px solid;
+}
+
+.blank-title-left {
+  flex: 1;
+}
+
+.blank-title-text {
+  font-size: 1.1rem; /* 제목 사이즈 줄임 */
+  font-weight: 700;
+  margin: 0;
+  margin-top: 8px; /* 제목 두 줄로 조금 아래로 내림 */
+  color: #2c3e50;
+  line-height: 1.4; /* 두 줄 지원 */
+}
+
+.blank-score-right {
+  flex-shrink: 0;
+}
+
+.score-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px;
+  border: 2px solid;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+
+.score-label {
+  font-size: 0.85rem; /* 글씨 크기 줄임 */
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.score-input {
+  width: 50px;
+  padding: 3px 6px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.85rem; /* 글씨 크기 줄임 */
+  text-align: center;
+}
+
+.score-total {
+  font-weight: 700;
+  font-size: 0.95rem; /* 글씨 크기 줄임 */
+}
+
+/* 빈칸 본문 */
+.blank-content {
+  margin-top: 30px;
+}
+
+.blank-text-box {
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid #e0e0e0;
+  overflow: visible; /* 내용이 잘리지 않도록 */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 빈칸이 포함된 줄은 한 줄로 유지 */
+.blank-text-box p {
+  word-break: break-word; /* 긴 단어는 줄바꿈 */
+}
+
+.blank-text {
+  font-size: 0.85rem; /* 글씨 크기 줄임 */
+  line-height: 1.8; /* 줄간격 조정 */
+  color: #2c3e50;
+  margin: 0;
+  white-space: normal; /* 줄바꿈 허용 */
+  word-wrap: break-word;
+  overflow-wrap: break-word; /* 긴 단어도 줄바꿈 */
+  font-family: 'Courier New', monospace; /* 고정폭 폰트로 빈칸 길이 일관성 유지 */
+  width: 100%; /* 전체 너비 사용 */
+  box-sizing: border-box;
+}
+/* 볼드 하이라이트 가시성 향상 */
+.blank-text b {
+  color: inherit;          /* 빨간색 제거 */
+  font-weight: 700;        /* 볼드 유지 */
+  text-decoration: underline; /* 밑줄 추가 */
+  text-decoration-thickness: 2px;   /* 밑줄 두께 */
+  text-underline-offset: 4px;       /* 글자와 밑줄 거리 증가 */
+  text-decoration-skip-ink: none;   /* 내림획에서 끊김 방지 */
+}
+
+/* 복사본 페이지(-copy)의 밑줄된 글자 색상을 투명 처리
+   - id가 blank-page-group-{index}-copy 형태인 복사본에 투명 적용
+*/
+[id^="blank-page-group-"][id$="-copy"] .blank-text b {
+  color: transparent;                 /* 글자색 투명 */
+  text-decoration-color: #2c3e50;     /* 밑줄 색은 유지 */
+}
+
+/* 빈칸 래퍼 (번호 + 빈칸) */
+.blank-text .blank-wrapper {
+  display: inline;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+/* 빈칸 번호 스타일 */
+.blank-text .blank-number {
+  display: inline;
+  font-weight: bold;
+  margin-right: 3px;
+  vertical-align: baseline;
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+/* 빈칸 부분 스타일 - 단어 길이에 따라 동적 너비 (알파벳 개수 + 5개) */
+.blank-text .blank-space {
+  display: inline;
+  /* 고정폭 폰트(Courier New)에서 ch 단위로 너비 설정 */
+  /* 너비는 인라인 스타일로 동적으로 설정됨 (단어 길이 + 5개) */
+  border-bottom: 2px solid #2c3e50;
+  padding-bottom: 2px;
+  margin: 0 1px;
+  text-align: left;
+  white-space: nowrap; /* 빈칸 자체는 줄바꿈 방지 */
+  vertical-align: baseline; /* 텍스트와 정렬 */
+  word-break: keep-all; /* 빈칸은 한 줄 유지 */
+  line-height: 1.8; /* 텍스트와 동일한 줄 간격 */
+  overflow: visible; /* 내용이 잘리지 않도록 */
+  box-sizing: border-box;
+}
+
+/* 답지 스타일 */
+.answer-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  color: #2c3e50;
+  text-align: center;
+}
+
+.answer-content {
+  margin-top: 20px;
+}
+
+/* 답지 지문 그룹 */
+.answer-text-group {
+  margin-bottom: 30px;
+}
+
+.answer-text-group:last-child {
+  margin-bottom: 0;
+}
+
+.answer-text-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0 0 15px 0; /* 제목 아래 한 줄 띄기 */
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.answer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 0;
+  background: transparent;
+  min-height: auto;
+  margin-bottom: 25px; /* 그룹 사이 간격 */
+}
+
+.answer-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.answer-number {
+  font-weight: 700;
+  font-size: 0.85rem; /* 글씨 크기 줄임 */
+  color: #555;
+}
+
+.answer-word {
+  font-weight: 600;
+  font-size: 0.9rem; /* 글씨 크기 줄임 */
+  color: #2c3e50;
+}
+
+.answer-context {
+  font-size: 0.75rem; /* 글씨 크기 줄임 */
+  color: #7f8c8d;
+  font-style: italic;
+}
+
+/* 명사 빈칸 디자인 (빨간색 계열) */
+.blank-design-nouns .blank-page-header,
+.blank-design-nouns .answer-page-header {
+  border-bottom-color: #e74c3c;
+}
+
+.blank-design-nouns .score-box {
+  border-color: #e74c3c;
+  background: #fee;
+}
+
+.blank-design-nouns .blank-text-box {
+  border-left: 5px solid #e74c3c;
+  background: #fff5f5;
+}
+
+.blank-design-nouns .blank-text {
+  color: #2c3e50;
+}
+
+.blank-design-nouns .answer-item {
+  border-left: 4px solid #e74c3c;
+}
+
+.blank-design-nouns .answer-number {
+  color: #e74c3c;
+}
+
+.blank-design-nouns .answer-word {
+  color: #c0392b;
+}
+
+/* 동사 빈칸 디자인 (초록색 계열) */
+.blank-design-verbs .blank-page-header,
+.blank-design-verbs .answer-page-header {
+  border-bottom-color: #27ae60;
+}
+
+.blank-design-verbs .score-box {
+  border-color: #27ae60;
+  background: #f0fff4;
+}
+
+.blank-design-verbs .blank-text-box {
+  border-left: 5px solid #27ae60;
+  background: #f0fff4;
+}
+
+.blank-design-verbs .blank-text {
+  color: #2c3e50;
+}
+
+.blank-design-verbs .answer-item {
+  border-left: 4px solid #27ae60;
+}
+
+.blank-design-verbs .answer-number {
+  color: #27ae60;
+}
+
+.blank-design-verbs .answer-word {
+  color: #229954;
+}
+
+/* 형용사 빈칸 디자인 (주황색 계열) */
+.blank-design-adjectives .blank-page-header,
+.blank-design-adjectives .answer-page-header {
+  border-bottom-color: #f39c12;
+}
+
+.blank-design-adjectives .score-box {
+  border-color: #f39c12;
+  background: #fffbf0;
+}
+
+.blank-design-adjectives .blank-text-box {
+  border-left: 5px solid #f39c12;
+  background: #fffbf0;
+}
+
+.blank-design-adjectives .blank-text {
+  color: #2c3e50;
+}
+
+.blank-design-adjectives .answer-item {
+  border-left: 4px solid #f39c12;
+}
+
+.blank-design-adjectives .answer-number {
+  color: #f39c12;
+}
+
+.blank-design-adjectives .answer-word {
+  color: #e67e22;
+}
+
+/* 인쇄 스타일 - 세로 A4 */
+@media print {
+  .blank-page-group,
+  .answer-page {
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+    padding: 15mm;
+    box-shadow: none;
+    page-break-after: always;
+  }
+
+  .blank-item-half {
+    padding-bottom: 10mm;
+  }
+
+  .blank-item {
+    margin-bottom: 0;
+  }
+
+  @page {
+    margin: 0;
+    size: A4 portrait;
+  }
+}
+
+/* 모바일 반응형 */
+@media (max-width: 768px) {
+  .blank-page,
+  .answer-page {
+    width: 100%;
+    min-height: auto;
+    padding: 20px;
+    margin: 20px auto;
+  }
+
+  .blank-page-header {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .answer-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+

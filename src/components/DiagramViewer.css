@@ -1,0 +1,144 @@
+.diagram-container {
+  width: 100%;
+  padding: 3px;
+  background: #fff;
+  border-radius: 8px;
+  min-height: 120px;
+  overflow: visible;
+}
+
+.diagram-root {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  margin-bottom: 3px;
+  width: 100%;
+}
+
+.diagram-box-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  position: relative;
+  margin: 0;
+  width: 100%;
+}
+
+.diagram-box-content {
+  background: #d4edda !important; /* 연한 녹색 - 나머지 박스는 모두 초록색 */
+  color: #155724 !important; /* 진한 녹색 텍스트 */
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-align: left;
+  width: 100%;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+}
+
+.diagram-box-content:hover {
+  background: #c3e6cb !important; /* 약간 더 진한 녹색 */
+}
+
+.diagram-box-item.root-box .diagram-box-content {
+  background: #ffe5cc !important; /* 연한 오렌지색 - 첫 번째 박스만 */
+  color: #8b4513 !important; /* 진한 갈색 텍스트 */
+  font-size: 0.8rem;
+  padding: 4px 10px;
+}
+
+.diagram-box-item.root-box .diagram-box-content:hover {
+  background: #ffd4a3 !important; /* 오렌지색 hover */
+}
+
+.diagram-arrow {
+  display: none; /* 화살표 제거 */
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.diagram-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  align-items: stretch;
+  margin-top: 1px;
+  position: relative;
+  width: 100%;
+}
+
+.diagram-child-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  position: relative;
+  width: 100%;
+}
+
+.diagram-connector {
+  display: none; /* 가로 배치가 아니므로 연결선 제거 */
+}
+
+.diagram-separator {
+  display: none; /* 구분선 제거 */
+}
+
+.diagram-fallback {
+  font-family: 'Courier New', monospace;
+  font-size: 0.95rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+  color: #2c3e50;
+  line-height: 1.6;
+}
+
+/* 영어 도식화 스타일 */
+.diagram-container .diagram-box-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* 모바일 반응형 */
+@media (max-width: 768px) {
+  .diagram-box-content {
+    font-size: 0.85rem;
+    padding: 8px 12px;
+  }
+  
+  .diagram-arrow {
+    font-size: 1rem;
+  }
+}
+
+/* 인쇄 스타일 */
+@media print {
+  .diagram-container {
+    background: #fff;
+    border: 1px solid #ddd;
+    max-height: none;
+    overflow: visible;
+  }
+  
+  .diagram-box-content {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .diagram-arrow {
+    animation: none;
+  }
+}
+

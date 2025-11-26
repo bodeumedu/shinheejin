@@ -1,0 +1,224 @@
+.korean-popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1001;
+}
+
+.korean-popup {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.korean-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 25px;
+  border-bottom: 1px solid #eee;
+}
+
+.korean-popup-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.3em;
+}
+
+.korean-popup-close {
+  background: none;
+  border: none;
+  font-size: 1.5em;
+  cursor: pointer;
+  color: #7f8c8d;
+  padding: 5px;
+  border-radius: 50%;
+  width: 35px;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.korean-popup-close:hover {
+  background: #f8f9fa;
+  color: #2c3e50;
+}
+
+.korean-popup-content {
+  padding: 25px;
+}
+
+.korean-question {
+  margin-bottom: 20px;
+}
+
+.korean-question p {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.korean-options {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+
+.korean-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.korean-option:hover {
+  border-color: #3498db;
+  background: #f8f9fa;
+}
+
+.korean-option input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.korean-option span {
+  font-size: 1em;
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+.korean-option input[type="radio"]:checked + span {
+  color: #3498db;
+  font-weight: 600;
+}
+
+.korean-input-section {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.korean-input-section label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.korean-textarea {
+  width: 100%;
+  padding: 15px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  font-size: 1em;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 120px;
+  box-sizing: border-box;
+}
+
+.korean-textarea:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.korean-auto-info {
+  margin-top: 20px;
+  padding: 15px;
+  background: #e8f5e8;
+  border: 1px solid #27ae60;
+  border-radius: 8px;
+  color: #27ae60;
+}
+
+.korean-auto-info p {
+  margin: 0;
+  font-weight: 500;
+}
+
+.korean-popup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 20px 25px;
+  border-top: 1px solid #eee;
+  background: #f8f9fa;
+  border-radius: 0 0 12px 12px;
+}
+
+.korean-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 80px;
+}
+
+.korean-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.korean-btn-cancel {
+  background: #95a5a6;
+  color: white;
+}
+
+.korean-btn-cancel:hover:not(:disabled) {
+  background: #7f8c8d;
+}
+
+.korean-btn-confirm {
+  background: #27ae60;
+  color: white;
+}
+
+.korean-btn-confirm:hover:not(:disabled) {
+  background: #229954;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .korean-popup {
+    width: 95%;
+    margin: 20px;
+  }
+  
+  .korean-popup-header,
+  .korean-popup-content,
+  .korean-popup-footer {
+    padding: 15px 20px;
+  }
+  
+  .korean-popup-footer {
+    flex-direction: column;
+  }
+  
+  .korean-btn {
+    width: 100%;
+  }
+}

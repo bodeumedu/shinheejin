@@ -1,0 +1,124 @@
+.app {
+  min-height: 100vh;
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 20px;
+}
+
+.app-header h1 {
+  font-size: 2rem;
+  color: #2c3e50;
+  margin-bottom: 10px;
+}
+
+.app-header p {
+  color: #7f8c8d;
+  font-size: 1.1rem;
+}
+
+.result-container {
+  margin-top: 20px;
+}
+
+.multiple-results {
+  display: flex;
+  flex-direction: column;
+}
+
+.result-item + .result-item {
+  /* 다음 지문 제목 전 3줄 정도 여백 */
+  margin-top: 3em;
+}
+
+.result-item-title {
+  font-size: 1.35rem; /* 제목 더 크게 */
+  font-weight: 800;   /* 굵게 */
+  color: #2c3e50;
+  margin-bottom: 10px;
+}
+
+.result-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-primary {
+  background-color: #3498db;
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+}
+
+.btn-secondary {
+  background-color: #95a5a6;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #7f8c8d;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(149, 165, 166, 0.3);
+}
+
+@media (max-width: 768px) {
+  .app {
+    padding: 10px;
+  }
+
+  .app-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .app-header p {
+    font-size: 1rem;
+  }
+
+  .btn {
+    padding: 10px 20px;
+    font-size: 0.9rem;
+  }
+}
+
+/* 인쇄 스타일 */
+@media print {
+  .app {
+    padding: 0;
+    max-width: 100%;
+  }
+
+  .app-header {
+    margin-bottom: 20px;
+  }
+
+  .result-actions {
+    display: none;
+  }
+
+  body {
+    background-color: white;
+  }
+}
+

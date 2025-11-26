@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>카카오톡 템플릿 테스트</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #FEE500;
+            padding-bottom: 10px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background-color: #fafafa;
+        }
+        .section h2 {
+            color: #555;
+            margin-top: 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        textarea {
+            height: 200px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+        button {
+            background-color: #FEE500;
+            color: #000;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin-right: 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #FFE500;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .preview {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            font-family: 'Malgun Gothic', sans-serif;
+            margin-top: 15px;
+            border: 2px solid #FEE500;
+            line-height: 1.6;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+            padding: 10px;
+            background-color: #d4edda;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+            padding: 10px;
+            background-color: #f8d7da;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        .info {
+            color: #004085;
+            background-color: #d1ecf1;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        .template-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .template-selector button {
+            flex: 1;
+            padding: 10px;
+            font-size: 14px;
+        }
+        .template-selector button.active {
+            background-color: #333;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 카카오톡 알림톡 템플릿 테스트</h1>
+        
+        <div class="info">
+            💡 <strong>사용 방법:</strong> 변수를 입력한 후 미리보기를 확인하고, 실제 발송 테스트를 진행하세요. 
+            검수 승인 전에는 발송이 실패할 수 있습니다.<br>
+            📌 <strong>중요:</strong> 이 파일은 웹 서버를 통해 실행하거나, Vercel 배포 사이트에서 사용하세요. 
+            로컬 파일로 직접 열면 API 호출이 실패할 수 있습니다.
+        </div>
+
+        <!-- 템플릿 선택 -->
+        <div class="section">
+            <h2>템플릿 선택</h2>
+            <div class="template-selector">
+                <button onclick="selectTemplate('homework')" class="active" id="btn-homework">과제 진행 상황</button>
+                <button onclick="selectTemplate('clinic')" id="btn-clinic">클리닉 대장</button>
+            </div>
+        </div>
+
+        <!-- 1. 변수 입력 -->
+        <div class="section" id="homework-section">
+            <h2>1. 변수 값 입력 (과제 진행 상황)</h2>
+            <label for="homework-title">제목 (${title}):</label>
+            <input type="text" id="homework-title" value="과천중앙고등학교 2학년 월요일반 과제 진행상황" placeholder="제목을 입력하세요">
+            
+            <label for="homework-content">내용 (${content}):</label>
+            <textarea id="homework-content" placeholder="내용을 입력하세요">[고2모의고사]
+9월 10월 
+
+[보듬내신모의고사]
+1회 2회 3회 
+
+[보듬교육의 시선]
+1회 2회 
+
+━━━━━━━━━━━━━━━━━━━━
+
+👤 홍길동
+
+✅ 고2모의고사 9월: 완료
+✅ 고2모의고사 10월: 미완료
+✅ 어휘워크북: 미완료
+📊 보듬내신모의고사 1회: 80점
+📊 보듬내신모의고사 2회: 80점
+📊 보듬내신모의고사 3회: 80점
+📊 보듬내신모의고사 4회: 80점
+📊 보듬내신모의고사 5회: 80점
+✅ 보듬교육의 시선 1회: 완료
+
+👤 이영희
+
+✅ 고2모의고사 9월: 완료
+✅ 고2모의고사 10월: 완료
+✅ 보듬내신모의고사 1회: 완료
+✅ 보듬내신모의고사 2회: 완료
+✅ 보듬내신모의고사 3회: 완료
+📊 보듬내신모의고사 1회: 92점
+📊 보듬내신모의고사 2회: 88점
+✅ 보듬교육의 시선 1회: 완료
+✅ 어휘워크북: 완료</textarea>
+        </div>
+
+        <div class="section" id="clinic-section" style="display: none;">
+            <h2>1. 변수 값 입력 (클리닉 대장)</h2>
+            <label for="clinic-week">주차 (${week}):</label>
+            <input type="text" id="clinic-week" value="2024년 45주차 (11/4~)" placeholder="주차 정보를 입력하세요">
+            
+            <label for="clinic-content">내용 (${content}):</label>
+            <textarea id="clinic-content" placeholder="내용을 입력하세요">📅 월요일
+━━━━━━━━━━━━━━━━━━━━
+
+👤 홍길동 (2학년천) - 화목반
+⏰ 시간: 17시
+✓ 출결: O
+👨‍🏫 담당 조교: 김선생
+🚪 등원: 16:50 / 하원: 19:30
+📱 문자 완료: O
+✅ 시험 확인: 완료
+📝 비고: 수학 문제 해결
+
+👤 이영희 (1학년앙) - 월금반
+⏰ 시간: 18시
+✓ 출결: O
+👨‍🏫 담당 조교: 박선생
+🚪 등원: 17:45 / 하원: 20:00
+
+📅 화요일
+━━━━━━━━━━━━━━━━━━━━
+
+👤 김철수 (3학년천) - 금요일반
+⏰ 시간: 17시
+✓ 출결: O
+👨‍🏫 담당 조교: 이선생
+🚪 등원: 16:50 / 하원: 19:30</textarea>
+        </div>
+
+        <!-- 2. 템플릿 미리보기 -->
+        <div class="section">
+            <h2>2. 템플릿 미리보기</h2>
+            <button onclick="updatePreview()">미리보기 업데이트</button>
+            <div id="preview" class="preview"></div>
+        </div>
+
+        <!-- 3. 실제 발송 테스트 -->
+        <div class="section">
+            <h2>3. 실제 발송 테스트</h2>
+            <div class="info" style="margin-bottom: 15px;">
+                ⚠️ <strong>주의:</strong> 템플릿 코드는 카카오톡 비즈니스 센터에서 검수 승인 후 솔라피에서 확인할 수 있습니다. 
+                검수 전에는 템플릿 코드가 없어 발송 테스트가 불가능할 수 있습니다.
+            </div>
+            <label for="apiUrl">API 서버 URL (선택사항):</label>
+            <input type="text" id="apiUrl" placeholder="https://your-domain.vercel.app 또는 비워두기" value="">
+            <small style="color: #666; display: block; margin-top: -10px; margin-bottom: 15px;">
+                💡 비워두면 현재 페이지의 도메인에서 API를 호출합니다. 다른 서버를 사용하려면 전체 URL을 입력하세요.
+            </small>
+            <label for="phone">전화번호:</label>
+            <input type="text" id="phone" placeholder="01012345678" value="">
+            
+            <label for="templateCode">템플릿 코드 (검수 승인 후 솔라피에서 확인):</label>
+            <input type="text" id="templateCode" placeholder="TL-1234567890 (검수 승인 후 입력)" value="">
+            <small style="color: #666; display: block; margin-top: -10px; margin-bottom: 15px;">
+                💡 템플릿 코드 확인 방법: 솔라피 → 메시지 → 알림톡 → 템플릿 목록 → 템플릿 코드 복사
+            </small>
+            
+            <button onclick="sendTest()" id="sendBtn">테스트 발송</button>
+            <div id="result"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentTemplate = 'homework';
+
+        // 템플릿 형식
+        const homeworkTemplate = `📋 과제 진행 상황 안내
+
+\${title}
+
+━━━━━━━━━━━━━━━━━━━━
+
+\${content}
+
+━━━━━━━━━━━━━━━━━━━━
+
+자세한 내용은 학원에서 확인해주세요.
+
+보듬교육`;
+
+        const clinicTemplate = `📋 클리닉 대장 안내
+
+\${week}
+
+━━━━━━━━━━━━━━━━━━━━
+
+\${content}
+
+━━━━━━━━━━━━━━━━━━━━
+
+보듬교육`;
+
+        function selectTemplate(type) {
+            currentTemplate = type;
+            
+            // 버튼 활성화 상태 변경
+            document.getElementById('btn-homework').classList.remove('active');
+            document.getElementById('btn-clinic').classList.remove('active');
+            document.getElementById(`btn-${type}`).classList.add('active');
+            
+            // 섹션 표시/숨김
+            document.getElementById('homework-section').style.display = 
+                type === 'homework' ? 'block' : 'none';
+            document.getElementById('clinic-section').style.display = 
+                type === 'clinic' ? 'block' : 'none';
+            
+            updatePreview();
+        }
+
+        function updatePreview() {
+            let preview = '';
+            let title = '';
+            let content = '';
+            let week = '';
+
+            if (currentTemplate === 'homework') {
+                title = document.getElementById('homework-title').value;
+                content = document.getElementById('homework-content').value;
+                preview = homeworkTemplate
+                    .replace('${title}', title)
+                    .replace('${content}', content);
+            } else {
+                week = document.getElementById('clinic-week').value;
+                content = document.getElementById('clinic-content').value;
+                preview = clinicTemplate
+                    .replace('${week}', week)
+                    .replace('${content}', content);
+            }
+            
+            document.getElementById('preview').textContent = preview;
+        }
+
+        async function sendTest() {
+            const phone = document.getElementById('phone').value;
+            const templateCode = document.getElementById('templateCode').value;
+            
+            if (!phone) {
+                document.getElementById('result').innerHTML = 
+                    '<div class="error">❌ 전화번호를 입력해주세요.</div>';
+                return;
+            }
+            
+            if (!templateCode || templateCode === 'TL-1234567890' || templateCode.includes('검수 승인')) {
+                document.getElementById('result').innerHTML = 
+                    '<div class="error">❌ 템플릿 코드를 입력해주세요.<br><small>템플릿 코드는 카카오톡 비즈니스 센터에서 검수 승인 후, 솔라피 대시보드에서 확인할 수 있습니다.</small></div>';
+                return;
+            }
+
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = true;
+            sendBtn.textContent = '발송 중...';
+            document.getElementById('result').innerHTML = '<div class="info">⏳ 발송 중입니다...</div>';
+
+            let variables = {};
+            if (currentTemplate === 'homework') {
+                variables = {
+                    title: document.getElementById('homework-title').value,
+                    content: document.getElementById('homework-content').value
+                };
+            } else {
+                variables = {
+                    week: document.getElementById('clinic-week').value,
+                    content: document.getElementById('clinic-content').value
+                };
+            }
+
+            // API URL 결정: 사용자 입력 또는 현재 도메인
+            let apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                // 현재 페이지의 도메인에서 API 호출
+                const currentOrigin = window.location.origin;
+                apiUrl = `${currentOrigin}/api/send-kakao`;
+            } else {
+                // 사용자 입력 URL 정리 (슬래시 제거)
+                apiUrl = apiUrl.replace(/\/$/, '') + '/api/send-kakao';
+            }
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        phoneNumber: phone.replace(/-/g, ''),
+                        templateCode: templateCode,
+                        variables: variables
+                    }),
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    document.getElementById('result').innerHTML = 
+                        '<div class="success">✅ 발송 성공! 카카오톡을 확인해주세요.</div>';
+                } else {
+                    document.getElementById('result').innerHTML = 
+                        `<div class="error">❌ 발송 실패: ${result.error || '알 수 없는 오류'}</div>`;
+                }
+            } catch (error) {
+                let errorMessage = error.message;
+                // CORS 오류일 경우 더 명확한 메시지 제공
+                if (error.message.includes('CORS') || error.message.includes('fetch')) {
+                    errorMessage = `API 연결 오류: ${error.message}<br><small>로컬 파일로 열었거나 API 서버가 접근 가능하지 않을 수 있습니다. Vercel 배포 URL을 'API 서버 URL'에 입력하거나, 웹 서버를 통해 실행하세요.</small>`;
+                }
+                document.getElementById('result').innerHTML = 
+                    `<div class="error">❌ 오류: ${errorMessage}</div>`;
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '테스트 발송';
+            }
+        }
+
+        // 입력 필드 변경 시 자동 미리보기 업데이트
+        document.getElementById('homework-title').addEventListener('input', updatePreview);
+        document.getElementById('homework-content').addEventListener('input', updatePreview);
+        document.getElementById('clinic-week').addEventListener('input', updatePreview);
+        document.getElementById('clinic-content').addEventListener('input', updatePreview);
+
+        // 페이지 로드 시 미리보기 업데이트
+        updatePreview();
+    </script>
+</body>
+</html>
+

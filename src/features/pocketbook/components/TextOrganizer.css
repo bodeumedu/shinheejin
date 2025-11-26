@@ -1,0 +1,698 @@
+.text-organizer {
+  background: white;
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  max-width: 297mm; /* A4 landscape width */
+  margin: 0 auto;
+  page-break-inside: avoid;
+  min-height: 210mm; /* A4 landscape height */
+}
+
+.text-organizer.landscape {
+  width: 297mm;
+  height: 210mm;
+  padding: 10px 10px 15px 10px; /* 상, 우, 하, 좌 - 아래쪽 여백 추가 */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 페이지 제목 + 로고 */
+.page-title-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.page-title-logo {
+  width: 1cm;
+  height: 1cm;
+  object-fit: contain;
+}
+.page-title-text {
+  font-size: 1.1rem;
+  margin: 0;
+  color: #2c3e50;
+  font-weight: 700;
+}
+
+.organizer-header {
+  text-align: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 3px solid #3498db;
+}
+
+.korean-topic {
+  font-size: 2rem;
+  color: #2c3e50;
+  font-weight: 800; /* 더 굵게 */
+  margin-bottom: 10px;
+}
+
+.english-title {
+  font-size: 1.5rem;
+  color: #3498db;
+  font-weight: 700; /* 더 굵게 */
+  font-style: italic;
+}
+
+.organizer-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* 좌우 균등 분할로 오른쪽 공간 활용 */
+  gap: 15px;
+  margin-top: 10px;
+  flex: 1;
+  min-height: 0; /* flexbox에서 스크롤을 위해 필요 */
+}
+
+.left-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden; /* 스크롤 대신 내부 요소를 컴팩트하게 */
+}
+
+.right-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.content-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+/* 1. 한글 주제문 / 2. 영어 제목 박스: 기본 세로 여백 축소 */
+.korean-topic-section .text-box,
+.english-title-section .text-box {
+  padding: 2px 6px;            /* 내부 여백 크게 축소(상하2px, 좌우6px) */
+  min-height: 32px;            /* 박스 자체 내부 높이 축소 */
+  display: flex;               /* 세로 중앙 정렬을 위한 플렉스 */
+  align-items: center;         /* 세로 가운데 배치 */
+  justify-content: flex-start; /* 가로는 왼쪽 정렬 유지 */
+}
+/* 1,2번 박스 아래 여백 추가 축소(기본) */
+.korean-topic-section { margin-bottom: -4px; }
+.english-title-section { margin-bottom: -4px; }
+.korean-topic-section .text-box p,
+.english-title-section .text-box p {
+  line-height: 1.35;
+  font-size: clamp(0.7rem, 1.2vw, 0.9rem);
+  font-weight: 700;         /* 내부 텍스트 Bold */
+}
+
+.content-section h3 {
+  font-size: 1rem;
+  color: #2c3e50;
+  font-weight: 600;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #3498db;
+  margin-bottom: 8px;
+  padding-left: 5px;
+}
+
+.text-box {
+  background: #f8f9fa;
+  padding: 10px;
+  border-radius: 8px;
+  border-left: 4px solid #3498db;
+  min-height: 50px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  font-size: clamp(0.7rem, 1.5vw, 0.9rem); /* 반응형 글자 크기 */
+}
+
+.text-box p {
+  line-height: 1.6;
+  color: #2c3e50;
+  margin: 0;
+  font-size: inherit;
+}
+
+.english-text {
+  font-size: clamp(0.75rem, 1.5vw, 0.95rem); /* 반응형 글자 크기 */
+  line-height: 1.7;
+  text-align: justify;
+}
+/* 요약문 굵은 단어 빨간색 */
+.english-text b {
+  color: #dc3545;
+  font-weight: 700;
+}
+
+.diagram-box {
+  background: #fff;
+  border: 2px dashed #bdc3c7;
+}
+
+.diagram-box pre {
+  font-family: 'Courier New', monospace;
+  font-size: 0.95rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+  color: #2c3e50;
+}
+
+.image-box {
+  width: 100%;
+  text-align: center;
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border: 2px solid #ecf0f1;
+}
+
+.image-box img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.image-error {
+  color: #e74c3c;
+  font-style: italic;
+}
+
+.original-text {
+  grid-column: 1 / -1;
+}
+
+.highlight-box {
+  background: #fff3cd;
+  border-left-color: #ffc107;
+  font-weight: 500;
+}
+
+.comic-section-standalone {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  max-width: 1000px;
+  margin: 30px auto;
+}
+
+.comic-section-standalone h3 {
+  font-size: 1.3rem;
+  color: #34495e;
+  font-weight: 600;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #ecf0f1;
+  margin-bottom: 15px;
+}
+
+.comic-loading {
+  text-align: center;
+  padding: 40px;
+  color: #7f8c8d;
+}
+
+.comic-image {
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.comic-text {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.original-text-standalone {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  max-width: 1000px;
+  margin: 30px auto;
+}
+
+.original-text-standalone h3 {
+  font-size: 1.3rem;
+  color: #34495e;
+  font-weight: 600;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #ecf0f1;
+  margin-bottom: 15px;
+}
+
+.comic-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 15px;
+  margin-top: 10px;
+}
+
+.comic-panel {
+  border: 2px solid #3498db;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8f9fa;
+  position: relative;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.comic-number {
+  position: absolute;
+  top: -12px;
+  left: 15px;
+  background: #3498db;
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.comic-content {
+  margin-top: 10px;
+  flex: 1;
+}
+
+.comic-content p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* 도식화 래퍼 */
+.diagram-wrapper {
+  width: 100%;
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  min-height: 120px;
+  overflow: visible;
+  box-shadow: none;
+}
+
+/* 두 번째 페이지 스타일 */
+.page-two-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+  padding: 10px 0 15px 0; /* 상, 하 여백 */
+}
+
+.original-text-section,
+.main-image-section,
+.diagram-section-page2 {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.original-text-section h3,
+.main-image-section h3,
+.diagram-section-page2 h3 {
+  font-size: 1.2rem;
+  color: #34495e;
+  font-weight: 600;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #ecf0f1;
+  margin-bottom: 10px;
+}
+
+/* 오른쪽 컬럼 래퍼 */
+.right-column-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diagram-wrapper-page2 {
+  width: 100%;
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  min-height: 120px;
+  overflow: visible;
+  box-shadow: none;
+  margin-bottom: 15px;
+}
+
+.diagram-wrapper-page2.english-diagram-page2 {
+  margin-bottom: 0;
+  margin-top: 10px;
+}
+
+.main-image-section-page1 {
+  margin-top: 10px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.main-image-section-page1 .main-image-box {
+  flex: 1;
+  min-height: 300px;
+  max-height: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.main-image-section-page1 .main-image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.original-text-box {
+  height: 100%;
+  overflow-y: auto;
+  padding: 15px;
+}
+
+.original-text-content {
+  font-size: 1rem !important; /* 원문 글씨 크기 키우기 */
+  line-height: 1.9 !important;
+}
+
+/* 해석 - 오른쪽 하단 */
+.korean-translation-right { margin-top: 6px; }
+.korean-translation-title-right {
+  font-size: 1rem;
+  margin: 0 0 6px 0;
+  color: #2c3e50;
+}
+.korean-translation-box-right {
+  background: #fff;
+  border: 2px solid #2ecc71; /* 초록 테두리 */
+  border-radius: 8px;
+  padding: 8px 10px;
+  max-height: none; /* 내용에 따라 높이 증가 */
+  overflow: visible;
+}
+.korean-text-right {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* 단어장 - 2페이지 하단 */
+.vocabulary-section-page2 {
+  margin-top: 8px;
+  border-top: 2px solid #e9ecef;
+  padding-top: 8px;
+  overflow: hidden;
+}
+.vocabulary-title-page2 {
+  font-size: 1rem;
+  margin: 0 0 6px 0;
+}
+.vocabulary-grid-page2 {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr); /* 5열 */
+  gap: 6px 12px;
+  border-top: 1px solid #e9ecef;   /* 상단 구분선 */
+  border-left: 1px solid #e9ecef;  /* 좌측 구분선 */
+}
+/* 한 열 안에서 영어/한글을 같은 수평선상에 두고,
+   모든 셀에서 영어 영역을 고정폭으로 만들어
+   한글 뜻이 열 단위로 수직 정렬되도록 구성 */
+.vocabulary-grid-page2 { --word-col-width: 10ch; }
+.vocabulary-item-page2 {
+  display: grid;
+  grid-template-columns: var(--word-col-width) 1fr; /* 영어: 고정폭, 한글: 가변 */
+  align-items: baseline;
+  column-gap: 8px;
+  font-size: 0.65rem;
+  line-height: 1.3;
+  border-right: 1px solid #e9ecef;
+  border-bottom: 1px solid #e9ecef;
+  padding: 6px 6px;
+}
+.vocabulary-word-page2 {
+  font-weight: 600;
+  white-space: nowrap; 
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vocabulary-meaning-page2 {
+  color: #495057;
+  text-align: left;    /* 한글 뜻 왼쪽 정렬 */
+  white-space: nowrap; /* 줄바꿈 없이 한 줄 정렬 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 페이지/박스 내용 넘침 방지 */
+.text-organizer.landscape,
+#pdf-page-2,
+.original-text-box,
+.korean-translation-box-right,
+.vocabulary-section-page2 { overflow: hidden; }
+.main-image-box {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 10px;
+  border: 2px solid #ecf0f1;
+}
+
+.main-image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 6px;
+  display: block;
+  margin: 0 auto;
+}
+
+.image-loading,
+.image-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px dashed #bdc3c7;
+  color: #7f8c8d;
+  min-height: 150px;
+}
+
+/* 모바일 반응형 */
+@media (max-width: 768px) {
+  .text-organizer {
+    padding: 15px;
+  }
+
+  .text-organizer.landscape {
+    width: 100%;
+    height: auto;
+    min-height: auto;
+  }
+
+  .korean-topic {
+    font-size: 1.5rem;
+  }
+
+  .english-title {
+    font-size: 1.2rem;
+  }
+
+  .organizer-content {
+    grid-template-columns: 1fr;
+    gap: 15px;
+    height: auto;
+  }
+
+  .left-content,
+  .right-content {
+    overflow-y: visible;
+  }
+
+  /* 모바일: 두 번째 페이지 세로 배치 */
+  #pdf-page-2 .page-two-content {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 15px !important;
+  }
+  
+  #pdf-page-2 .original-text-section,
+  #pdf-page-2 .diagram-section-page2 {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .content-section h3 {
+    font-size: 1.1rem;
+  }
+
+  .text-box {
+    padding: 12px;
+  }
+
+  .english-text {
+    font-size: 1rem;
+  }
+}
+
+/* 인쇄 스타일 */
+@media print {
+  .text-organizer {
+    box-shadow: none;
+    border: none;
+    padding: 20px;
+    page-break-after: auto;
+  }
+
+  .organizer-header {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+  }
+
+  .korean-topic {
+    font-size: 1.5rem;
+  }
+
+  .english-title {
+    font-size: 1.2rem;
+  }
+
+  .comic-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .comic-panel {
+    min-height: 120px;
+    padding: 10px;
+  }
+
+  .organizer-content {
+    gap: 10px;
+  }
+
+  .content-section {
+    page-break-inside: avoid;
+  }
+
+  .text-box {
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 8px;
+    font-size: 0.75rem;
+  }
+
+  .english-text {
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  /* 인쇄 시 페이지가 넘칠 가능성 줄이기 위해 1,2번 박스 세로폭 추가 축소 */
+  .korean-topic-section .text-box,
+  .english-title-section .text-box {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .korean-topic-section .text-box p,
+  .english-title-section .text-box p {
+    line-height: 1.35;
+    font-size: 0.7rem;
+  }
+
+/* 컴팩트 모드: 왼쪽 컬럼이 넘칠 때 자동 축소 */
+.left-content.compact {
+  gap: 6px;
+}
+.left-content.compact .content-section h3 {
+  margin-bottom: 4px;
+  padding-bottom: 2px; /* 아랫선을 위로 당겨 세로폭 축소 */
+}
+.left-content.compact .text-box {
+  padding-top: 1px;
+  padding-bottom: 1px; /* 아랫선 위로 더 바짝 */
+}
+.left-content.compact .korean-topic-section { margin-bottom: -8px; }
+.left-content.compact .english-title-section { margin-bottom: -8px; }
+.left-content.compact { padding-bottom: 0; }
+.left-content.compact .content-section:last-child .text-box { padding-bottom: 2px; }
+.left-content.compact .text-box p {
+  line-height: 1.3;    /* 행간 축소 */
+  font-size: clamp(0.68rem, 1vw, 0.85rem);
+}
+
+/* 요약문(#4, #5) 잘림 방지용 추가 축소 */
+.left-content.compact .summary-in-text .text-box p,
+.left-content.compact .summary-new-words .text-box p {
+  line-height: 1.25;
+  font-size: clamp(0.66rem, 0.95vw, 0.82rem);
+}
+
+  .original-text-content {
+    font-size: 0.95rem !important;
+    line-height: 1.8 !important;
+  }
+
+  .content-section h3 {
+    font-size: 0.9rem;
+  }
+
+  .diagram-box {
+    border: 1px solid #ddd;
+  }
+
+  .image-box {
+    border: 1px solid #ddd;
+    background: #fff;
+  }
+
+  .image-box img {
+    box-shadow: none;
+  }
+
+  .text-organizer.landscape {
+    width: 297mm;
+    height: 210mm;
+    padding: 10px 10px 15px 10px; /* 상, 우, 하, 좌 - 아래쪽 여백 추가 */
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .organizer-content {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .page-two-content {
+    gap: 15px;
+    padding: 15px 0;
+  }
+
+  @page {
+    margin: 0;
+    size: A4 landscape;
+  }
+}
+

@@ -1,0 +1,171 @@
+.source-popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.source-popup {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.source-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 25px;
+  border-bottom: 1px solid #eee;
+}
+
+.source-popup-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.3em;
+}
+
+.source-popup-close {
+  background: none;
+  border: none;
+  font-size: 1.5em;
+  cursor: pointer;
+  color: #7f8c8d;
+  padding: 5px;
+  border-radius: 50%;
+  width: 35px;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.source-popup-close:hover {
+  background: #f8f9fa;
+  color: #2c3e50;
+}
+
+.source-popup-content {
+  padding: 25px;
+}
+
+.source-field {
+  margin-bottom: 20px;
+}
+
+.source-field label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.95em;
+}
+
+.source-select,
+.source-input {
+  width: 100%;
+  padding: 12px 15px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  font-size: 1em;
+  transition: border-color 0.3s ease;
+  box-sizing: border-box;
+}
+
+.source-select:focus,
+.source-input:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.source-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.source-mock-fields,
+.source-book-fields {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.source-popup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 20px 25px;
+  border-top: 1px solid #eee;
+  background: #f8f9fa;
+  border-radius: 0 0 12px 12px;
+}
+
+.source-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 80px;
+}
+
+.source-btn-cancel {
+  background: #95a5a6;
+  color: white;
+}
+
+.source-btn-cancel:hover {
+  background: #7f8c8d;
+}
+
+.source-btn-confirm {
+  background: #3498db;
+  color: white;
+}
+
+.source-btn-confirm:hover {
+  background: #2980b9;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .source-popup {
+    width: 95%;
+    margin: 20px;
+  }
+  
+  .source-popup-header,
+  .source-popup-content,
+  .source-popup-footer {
+    padding: 15px 20px;
+  }
+  
+  .source-field-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  
+  .source-popup-footer {
+    flex-direction: column;
+  }
+  
+  .source-btn {
+    width: 100%;
+  }
+}
