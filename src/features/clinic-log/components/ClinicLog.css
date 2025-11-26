@@ -222,7 +222,12 @@
 .arrival-departure-cell {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+}
+
+.arrival-departure-cell .clinic-time-input input {
+  font-size: 0.8rem;
+  padding: 4px 6px;
 }
 
 .arrival-departure-cell .clinic-time-input {
@@ -327,6 +332,65 @@
   flex-direction: column;
   gap: 4px;
   font-weight: 600;
+  min-width: 50px;
+  max-width: 70px;
+}
+
+.clinic-log-table th:nth-child(2),
+.clinic-log-table td:nth-child(2) {
+  min-width: 50px;
+  max-width: 70px;
+}
+
+.attendance-cell {
+  min-width: 50px;
+  max-width: 60px;
+}
+
+.clinic-log-table th:nth-child(4),
+.clinic-log-table td:nth-child(4) {
+  width: 60px;
+}
+
+.clinic-log-table th:nth-child(5),
+.clinic-log-table td:nth-child(5) {
+  min-width: 80px;
+  max-width: 100px;
+}
+
+.clinic-log-table th:nth-child(6),
+.clinic-log-table td:nth-child(6) {
+  min-width: 70px;
+  max-width: 90px;
+}
+
+.message-status-cell {
+  min-width: 50px;
+  max-width: 60px;
+}
+
+.clinic-log-table th:nth-child(7),
+.clinic-log-table td:nth-child(7) {
+  min-width: 50px;
+  max-width: 60px;
+}
+
+.exam-status-cell {
+  min-width: 250px;
+  max-width: 350px;
+}
+
+.exam-status-cell textarea {
+  min-height: 80px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.clinic-log-table th:nth-child(8),
+.clinic-log-table td:nth-child(8) {
+  min-width: 250px;
+  max-width: 350px;
 }
 
 .grade-row {
@@ -359,6 +423,18 @@
 
 .clinic-log-table tbody tr:hover {
   background: #f1f5f9;
+}
+
+.return-student-row {
+  background-color: #fef3c7 !important; /* 연한 노란색 */
+}
+
+.return-student-row:hover {
+  background-color: #fde68a !important; /* 호버 시 약간 더 진한 노란색 */
+}
+
+.return-student-row:nth-child(odd) {
+  background-color: #fef3c7 !important;
 }
 
 .clinic-log-table td.notes-cell {

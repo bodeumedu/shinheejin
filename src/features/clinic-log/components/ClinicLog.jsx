@@ -23,6 +23,8 @@ const storageKeys = {
   customs: 'clinicCustomEntries',
 };
 
+// 학생 타입: 'repeat' (2회 학생), 'return' (재등원 학생)
+
 // 월요일 기준으로 주차 계산 (연도와 주차 번호)
 function getWeekNumber(date = new Date()) {
   const d = new Date(date);
@@ -154,6 +156,7 @@ export default function ClinicLog() {
     grade: '',
     className: '',
     student: '',
+    type: 'repeat', // 'repeat' (2회 학생) or 'return' (재등원 학생)
   });
 
   const refreshStudents = useCallback(async () => {
@@ -178,7 +181,30 @@ export default function ClinicLog() {
   useEffect(() => {
     const weekRecords = loadWeekRecords(selectedWeek);
     setRecordValues(weekRecords);
-  }, [selectedWeek, loadWeekRecords]);
+    
+    // customEntries도 주차별로 로드 (재등원 학생은 현재 주차가 아니면 제외)
+    try {
+      const stored = localStorage.getItem(`${storageKeys.customs}_${selectedWeek}`);
+      if (stored) {
+        const customs = JSON.parse(stored);
+        if (!isCurrentWeek) {
+          // 지난 주차는 재등원 학생 제외
+          const filtered = customs.filter(entry => entry.type !== 'return');
+          setCustomEntries(filtered);
+        } else {
+          setCustomEntries(customs);
+        }
+      } else if (isCurrentWeek) {
+        // 현재 주차이고 저장된 데이터가 없으면 빈 배열
+        setCustomEntries([]);
+      }
+    } catch (error) {
+      console.warn('수동 학생 데이터 로드 실패:', error);
+      if (isCurrentWeek) {
+        setCustomEntries([]);
+      }
+    }
+  }, [selectedWeek, loadWeekRecords, isCurrentWeek]);
   
   // 현재 주차일 때만 학생 불러오기
   useEffect(() => {
@@ -195,9 +221,17 @@ export default function ClinicLog() {
     saveWeekRecords(selectedWeek, recordValues);
   }, [recordValues, selectedWeek, saveWeekRecords]);
 
+  // customEntries 주차별 저장 (재등원 학생은 현재 주차에만 저장)
   useEffect(() => {
-    localStorage.setItem(storageKeys.customs, JSON.stringify(customEntries));
-  }, [customEntries]);
+    if (customEntries.length > 0) {
+      const toSave = isCurrentWeek 
+        ? customEntries 
+        : customEntries.filter(entry => entry.type !== 'return');
+      if (toSave.length > 0) {
+        localStorage.setItem(`${storageKeys.customs}_${selectedWeek}`, JSON.stringify(toSave));
+      }
+    }
+  }, [customEntries, selectedWeek, isCurrentWeek]);
 
   const combinedEntries = useMemo(() => {
     if (isCurrentWeek) {
@@ -218,6 +252,7 @@ export default function ClinicLog() {
         grade: entry.grade,
         className: entry.className,
         student: entry.student,
+        type: entry.type || 'repeat', // 'repeat' or 'return'
       }));
 
       const all = [...baseEntries, ...manual];
@@ -284,7 +319,7 @@ export default function ClinicLog() {
     setManualForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleManualAdd = (e) => {
+  const handleManualAdd = (e, type) => {
     e.preventDefault();
     if (!manualForm.student.trim()) {
       alert('학생 이름을 입력해주세요.');
@@ -292,11 +327,12 @@ export default function ClinicLog() {
     }
 
     const newEntry = {
-      id: `manual-${Date.now()}`,
+      id: `manual-${Date.now()}-${type}`,
       school: manualForm.school,
       grade: manualForm.grade,
       className: manualForm.className,
       student: manualForm.student.trim(),
+      type: type, // 'repeat' or 'return'
     };
 
     setCustomEntries((prev) => [...prev, newEntry]);
@@ -320,6 +356,7 @@ export default function ClinicLog() {
       grade: '',
       className: '',
       student: '',
+      type: 'repeat',
     });
   };
 
@@ -552,8 +589,9 @@ export default function ClinicLog() {
           </div>
 
           {isCurrentWeek && (
-            <form className="clinic-log-form" onSubmit={handleManualAdd}>
-            <h3>직접 학생 추가</h3>
+            <>
+            <form className="clinic-log-form" onSubmit={(e) => handleManualAdd(e, 'repeat')}>
+            <h3>2회 학생 수동 추가</h3>
             <div className="form-row">
               <label>
                 요일
@@ -618,9 +656,79 @@ export default function ClinicLog() {
               </label>
             </div>
             <button type="submit" className="clinic-save-btn">
-              수동 학생 추가
+              2회 학생 추가
             </button>
           </form>
+          <form className="clinic-log-form" onSubmit={(e) => handleManualAdd(e, 'return')} style={{ marginTop: '20px' }}>
+            <h3>재등원 학생 수동 추가</h3>
+            <div className="form-row">
+              <label>
+                요일
+                <select name="day" value={manualForm.day} onChange={handleManualFormChange}>
+                  {dayOrder.map((day) => (
+                    <option key={day} value={day}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                시간
+                <input
+                  type="text"
+                  name="time"
+                  placeholder="예) 17시"
+                  value={manualForm.time}
+                  onChange={handleManualFormChange}
+                />
+              </label>
+              <label>
+                학교
+                <input
+                  type="text"
+                  name="school"
+                  placeholder="예) 과천중앙고등학교"
+                  value={manualForm.school}
+                  onChange={handleManualFormChange}
+                />
+              </label>
+              <label>
+                학년
+                <input
+                  type="text"
+                  name="grade"
+                  placeholder="예) 2학년"
+                  value={manualForm.grade}
+                  onChange={handleManualFormChange}
+                />
+              </label>
+              <label>
+                반
+                <input
+                  type="text"
+                  name="className"
+                  placeholder="예) 화목반"
+                  value={manualForm.className}
+                  onChange={handleManualFormChange}
+                />
+              </label>
+              <label>
+                이름
+                <input
+                  type="text"
+                  name="student"
+                  placeholder="예) 홍길동"
+                  value={manualForm.student}
+                  onChange={handleManualFormChange}
+                  required
+                />
+              </label>
+            </div>
+            <button type="submit" className="clinic-save-btn" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+              재등원 학생 추가
+            </button>
+          </form>
+          </>
           )}
         </section>
 
@@ -642,15 +750,15 @@ export default function ClinicLog() {
                     <th>문자 완료</th>
                     <th>시험 확인</th>
                     <th>비고</th>
-                    <th>관리</th>
                   </tr>
                 </thead>
                 <tbody>
                   {combinedEntries.map((entry) => {
                     const record = mergeRecord(recordValues[entry.key]);
                     const isManual = entry.source === 'manual';
+                    const isReturnStudent = isManual && entry.type === 'return';
                     return (
-                      <tr key={entry.key}>
+                      <tr key={entry.key} className={isReturnStudent ? 'return-student-row' : ''}>
                         <td className="day-time-cell">
                           <select
                             value={record.day}
@@ -690,14 +798,14 @@ export default function ClinicLog() {
                           </div>
                         </td>
                         <td>{entry.student}</td>
-                        <td>
+                        <td className="attendance-cell">
                         <select
                           className="clinic-select"
                           value={record.attendance}
                           onChange={(e) => handleRecordChange(entry.key, 'attendance', e.target.value, entry)}
                           disabled={!isCurrentWeek}
                         >
-                          <option value="">선택</option>
+                          <option value="">-</option>
                           {attendanceOptions.slice(1).map((opt) => (
                             <option key={opt} value={opt}>
                               {opt}
@@ -739,14 +847,14 @@ export default function ClinicLog() {
                             </div>
                           </div>
                         </td>
-                        <td>
+                        <td className="message-status-cell">
                         <select
                           className="clinic-select"
                           value={record.messageStatus}
                           onChange={(e) => handleRecordChange(entry.key, 'messageStatus', e.target.value, entry)}
                           disabled={!isCurrentWeek}
                         >
-                          <option value="">선택</option>
+                          <option value="">-</option>
                           {messageOptions.slice(1).map((opt) => (
                             <option key={opt} value={opt}>
                               {opt}
@@ -754,17 +862,15 @@ export default function ClinicLog() {
                           ))}
                         </select>
                         </td>
-                        <td>
-                        <button
-                          type="button"
-                          className={`clinic-exam-btn ${record.examStatus === '완료' ? 'active' : ''}`}
-                          onClick={() =>
-                            handleRecordChange(entry.key, 'examStatus', record.examStatus === '완료' ? '' : '완료', entry)
-                          }
-                          disabled={!isCurrentWeek}
-                        >
-                          {record.examStatus === '완료' ? '확인 완료' : '시험 확인'}
-                        </button>
+                        <td className="exam-status-cell">
+                          <textarea
+                            className="clinic-input"
+                            value={record.examStatus || ''}
+                            placeholder="시험 확인"
+                            onChange={(e) => handleRecordChange(entry.key, 'examStatus', e.target.value, entry)}
+                            disabled={!isCurrentWeek}
+                            rows={5}
+                          />
                         </td>
                         <td className="notes-cell">
                           <textarea
@@ -773,22 +879,6 @@ export default function ClinicLog() {
                             onChange={(e) => handleRecordChange(entry.key, 'notes', e.target.value, entry)}
                             disabled={!isCurrentWeek}
                           />
-                        </td>
-                        <td>
-                          {isCurrentWeek && (
-                            <>
-                              {isManual ? (
-                                <button className="clinic-delete-btn" type="button" onClick={() => handleRemoveManual(entry.key)}>
-                                  삭제
-                                </button>
-                              ) : (
-                                <button className="clinic-reset-btn" type="button" onClick={() => handleResetRecord(entry.key)}>
-                                  초기화
-                                </button>
-                              )}
-                            </>
-                          )}
-                          {!isCurrentWeek && <span className="read-only-badge">읽기 전용</span>}
                         </td>
                       </tr>
                     );
