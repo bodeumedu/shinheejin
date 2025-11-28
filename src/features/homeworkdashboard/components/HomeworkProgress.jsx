@@ -730,55 +730,53 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
     });
   };
   
-  // 카카오톡 전송 (솔라피 API 사용)
+  // 카카오톡 전송 (솔라피 API 사용) - 학생별 개별 발송
   const handleKakaoSend = async () => {
-    // 전화번호 입력 받기
-    const phoneNumber = prompt('전송할 전화번호를 입력하세요 (예: 01012345678):');
-    if (!phoneNumber) {
+    if (students.length === 0) {
+      alert('학생이 없습니다.');
       return;
     }
-    
-    // 전화번호 형식 검증
-    const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
-    if (!phoneRegex.test(phoneNumber.replace(/-/g, ''))) {
-      alert('올바른 전화번호 형식이 아닙니다. (예: 01012345678)');
+
+    // 학생 목록 미리보기
+    const studentList = students.map((s, idx) => `${idx + 1}. ${s}`).join('\n');
+    const confirmMessage = `다음 ${students.length}명의 학생에게 개별 발송합니다:\n\n${studentList}\n\n계속하시겠습니까?`;
+    if (!confirm(confirmMessage)) {
       return;
     }
-    
-    try {
-      // 메시지 내용 생성
-      const title = getTitle();
-      let message = `📋 ${title}\n\n`;
-      
-      // 헤더 정보
-      message += `[${headerTexts.mainTitle || chapterConfig.title}]\n`;
-      chapterConfig.chapters.forEach(chapter => {
-        const chapterText = headerTexts.chapters?.[chapter] || 
-          (chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`);
-        message += `${chapterText} `;
-      });
-      message += '\n\n';
-      
-      message += `[${headerTexts.bodeumTitle || '보듬내신모의고사'}]\n`;
-      for (let i = 1; i <= 10; i++) {
-        const roundText = headerTexts.bodeum?.[i] || `${i}회`;
-        message += `${roundText} `;
+
+    // 템플릿 코드 입력 받기
+    const templateCode = prompt('카카오톡 템플릿 코드를 입력하세요:');
+    if (!templateCode) {
+      return;
+    }
+
+    // 각 학생별로 전화번호 입력받고 발송
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const student of students) {
+      const phoneNumber = prompt(`${student} 학생의 전화번호를 입력하세요 (예: 01012345678, 취소하려면 취소 버튼):`);
+      if (!phoneNumber) {
+        continue; // 취소하면 다음 학생으로
       }
-      message += '\n\n';
       
-      message += `[${headerTexts.visionTitle || '보듬교육의 시선'}]\n`;
-      for (let i = 1; i <= 4; i++) {
-        const roundText = headerTexts.vision?.[i] || `${i}회`;
-        message += `${roundText} `;
+      // 전화번호 형식 검증
+      const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
+      if (!phoneRegex.test(phoneNumber.replace(/-/g, ''))) {
+        alert(`${student} 학생: 올바른 전화번호 형식이 아닙니다. (예: 01012345678)`);
+        failCount++;
+        continue;
       }
-      message += '\n\n';
-      
-      // 학생별 진행 상황
-      message += '━━━━━━━━━━━━━━━━━━━━\n';
-      students.forEach(student => {
-        message += `\n👤 ${student}\n\n`;
+
+      try {
+        // 해당 학생의 메시지 생성
+        const title = getTitle(); // 원래 제목 사용
+        let content = '';
         
-        // 강별(모의고사) 체크 - 각 항목별로 개별 표시
+        // 해당 학생의 진행 상황만 표시
+        content += `👤 ${student}\n\n`;
+        
+        // 강별(모의고사) 체크
         chapterConfig.chapters.forEach(chapter => {
           const field = `${chapterConfig.fieldPrefix}${chapter}`;
           const isCompleted = progressData[student]?.[field] || false;
@@ -786,98 +784,109 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
             (chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`);
           const mainTitle = headerTexts.mainTitle || chapterConfig.title;
           
-          if (isCompleted) {
-            message += `✅ ${mainTitle} ${chapterText}: 완료\n`;
+          // 반 전체 학생이 모두 미완료인지 확인
+          const allStudentsIncomplete = students.every(s => !progressData[s]?.[field]);
+          
+          if (allStudentsIncomplete) {
+            content += `✅ ${mainTitle} ${chapterText}: 제출기간 아님.\n`;
+          } else if (isCompleted) {
+            content += `✅ ${mainTitle} ${chapterText}: 완료\n`;
           } else {
-            message += `✅ ${mainTitle} ${chapterText}: 미완료\n`;
+            content += `✅ ${mainTitle} ${chapterText}: 미완료\n`;
           }
         });
         
-        // 보듬내신모의고사 - 점수가 있으면 📊로 표시, 없으면 ✅로 완료/미완료 표시
+        // 보듬내신모의고사
         for (let i = 1; i <= 10; i++) {
           const isCompleted = progressData[student]?.[`bodeum${i}`] || false;
           const score = scores[student]?.[`bodeum${i}`];
           const roundText = headerTexts.bodeum?.[i] || `${i}회`;
           const bodeumTitle = headerTexts.bodeumTitle || '보듬내신모의고사';
           
+          // 반 전체 학생이 모두 미완료인지 확인
+          const allStudentsIncomplete = students.every(s => !progressData[s]?.[`bodeum${i}`] && !scores[s]?.[`bodeum${i}`]);
+          
           if (score) {
-            // 점수가 있으면 📊로 점수 표시
-            message += `📊 ${bodeumTitle} ${roundText}: ${score}점\n`;
+            content += `📊 ${bodeumTitle} ${roundText}: ${score}점\n`;
+          } else if (allStudentsIncomplete) {
+            content += `✅ ${bodeumTitle} ${roundText}: 제출기간 아님.\n`;
           } else if (isCompleted) {
-            // 점수는 없지만 완료된 경우
-            message += `✅ ${bodeumTitle} ${roundText}: 완료\n`;
+            content += `✅ ${bodeumTitle} ${roundText}: 완료\n`;
           } else {
-            // 미완료
-            message += `✅ ${bodeumTitle} ${roundText}: 미완료\n`;
+            content += `✅ ${bodeumTitle} ${roundText}: 미완료\n`;
           }
         }
         
-        // 보듬교육의 시선 - 완료/미완료 표시
+        // 보듬교육의 시선
         for (let i = 1; i <= 4; i++) {
           const isCompleted = progressData[student]?.[`vision${i}`] || false;
           const roundText = headerTexts.vision?.[i] || `${i}회`;
           const visionTitle = headerTexts.visionTitle || '보듬교육의 시선';
           
-          if (isCompleted) {
-            message += `✅ ${visionTitle} ${roundText}: 완료\n`;
+          // 반 전체 학생이 모두 미완료인지 확인
+          const allStudentsIncomplete = students.every(s => !progressData[s]?.[`vision${i}`]);
+          
+          if (allStudentsIncomplete) {
+            content += `✅ ${visionTitle} ${roundText}: 제출기간 아님.\n`;
+          } else if (isCompleted) {
+            content += `✅ ${visionTitle} ${roundText}: 완료\n`;
           } else {
-            message += `✅ ${visionTitle} ${roundText}: 미완료\n`;
+            content += `✅ ${visionTitle} ${roundText}: 미완료\n`;
           }
         }
         
-        // 어휘워크북 - 완료/미완료 표시
+        // 어휘워크북
         const isVocabularyCompleted = progressData[student]?.vocabulary || false;
-        if (isVocabularyCompleted) {
-          message += `✅ 어휘워크북: 완료\n`;
-        } else {
-          message += `✅ 어휘워크북: 미완료\n`;
-        }
-      });
-      
-      // 솔라피 API 호출
-      // API 엔드포인트는 배포 환경에 따라 자동으로 설정됩니다
-      const apiUrl = import.meta.env.PROD 
-        ? `${window.location.origin}/api/send-kakao`
-        : '/api/send-kakao';
-      
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phoneNumber: phoneNumber.replace(/-/g, ''),
-          templateCode: process.env.VITE_SOLAPI_TEMPLATE_CODE || 'YOUR_TEMPLATE_CODE', // 솔라피 템플릿 코드
-          message: message,
-          variables: {
-            title: title,
-            content: message,
-          },
-        }),
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        alert('✅ 카카오톡 메시지가 성공적으로 발송되었습니다!');
-      } else {
-        throw new Error(result.error || '알 수 없는 오류');
-      }
-      
-    } catch (error) {
-      console.error('카카오톡 전송 실패:', error);
-      
-      // 오류 발생 시 클립보드 복사로 대체
-      try {
-        const title = getTitle();
-        let message = `📋 ${title}\n\n`;
-        // ... (위와 동일한 메시지 생성 로직)
+        const allStudentsIncompleteVocabulary = students.every(s => !progressData[s]?.vocabulary);
         
-        await navigator.clipboard.writeText(message);
-        alert('❌ 카카오톡 발송에 실패했습니다.\n\n대신 클립보드에 복사되었습니다. 카카오톡에서 붙여넣기하여 전송하세요.');
-      } catch (clipboardError) {
-        alert(`❌ 카카오톡 발송 실패: ${error.message || '알 수 없는 오류'}`);
+        if (allStudentsIncompleteVocabulary) {
+          content += `✅ 어휘워크북: 제출기간 아님.\n`;
+        } else if (isVocabularyCompleted) {
+          content += `✅ 어휘워크북: 완료\n`;
+        } else {
+          content += `✅ 어휘워크북: 미완료\n`;
+        }
+        
+        // 솔라피 API 호출
+        const apiUrl = import.meta.env.PROD 
+          ? `${window.location.origin}/api/send-kakao`
+          : '/api/send-kakao';
+        
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            phoneNumber: phoneNumber.replace(/-/g, ''),
+            templateCode: templateCode,
+            variables: {
+              title: title,
+              content: content,
+            },
+          }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          successCount++;
+        } else {
+          throw new Error(result.error || '알 수 없는 오류');
+        }
+        
+      } catch (error) {
+        console.error(`${student} 학생 카카오톡 전송 실패:`, error);
+        failCount++;
+        alert(`${student} 학생 발송 실패: ${error.message || '알 수 없는 오류'}`);
       }
+    }
+    
+    // 결과 알림
+    if (successCount > 0) {
+      alert(`✅ ${successCount}명에게 카카오톡 메시지가 성공적으로 발송되었습니다!${failCount > 0 ? `\n❌ ${failCount}명 발송 실패` : ''}`);
+    } else if (failCount > 0) {
+      alert(`❌ 모든 학생 발송 실패 (${failCount}명)`);
     }
   };
   
