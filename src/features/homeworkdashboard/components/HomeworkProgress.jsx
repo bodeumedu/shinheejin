@@ -807,7 +807,8 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
           const allStudentsIncomplete = students.every(s => !progressData[s]?.[`bodeum${i}`] && !scores[s]?.[`bodeum${i}`]);
           
           if (score) {
-            content += `📊 ${bodeumTitle} ${roundText}: ${score}점\n`;
+            // 점수가 있으면 "완료(점수)" 형태로 표시
+            content += `✅ ${bodeumTitle} ${roundText}: 완료(${score}점)\n`;
           } else if (allStudentsIncomplete) {
             content += `✅ ${bodeumTitle} ${roundText}: 제출기간 아님.\n`;
           } else if (isCompleted) {
