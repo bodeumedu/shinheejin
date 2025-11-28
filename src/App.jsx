@@ -584,8 +584,12 @@ function App() {
     setMode('ocr')
   }
   
-  const handleSelectHomeworkDashboard = () => {
-    setMode('homework-dashboard')
+  const handleSelectEnglishHomeworkDashboard = () => {
+    setMode('english-homework-dashboard')
+  }
+
+  const handleSelectMathHomeworkDashboard = () => {
+    setMode('math-homework-dashboard')
   }
 
   const handleSelectClinicLog = () => {
@@ -670,7 +674,8 @@ function App() {
           onSelectCsatCloze={handleSelectCsatCloze}
           onSelectThirdWord={handleSelectThirdWord}
           onSelectOcr={handleSelectOcr}
-          onSelectHomeworkDashboard={handleSelectHomeworkDashboard}
+          onSelectEnglishHomeworkDashboard={handleSelectEnglishHomeworkDashboard}
+          onSelectMathHomeworkDashboard={handleSelectMathHomeworkDashboard}
           onSelectClinicLog={handleSelectClinicLog}
         />
       </div>
@@ -726,11 +731,11 @@ function App() {
   }
 
   // 과제 관리 대시보드 모드
-  if (mode === 'homework-dashboard') {
+  if (mode === 'english-homework-dashboard') {
     return (
       <div className="app">
         <header className="app-header">
-          <h1>📚 과제 관리 대시보드</h1>
+          <h1>📚 영어 과제관리 대시보드</h1>
           <p>by 신희진</p>
           <button 
             onClick={handleBackToMain} 
@@ -743,6 +748,7 @@ function App() {
 
         <div className="main-content" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <HomeworkDashboard 
+            subject="english"
             onClose={handleBackToMain} 
             onShowRoster={(data) => {
               setHomeworkProgressData(data);
@@ -766,6 +772,62 @@ function App() {
                 </button>
               </div>
               <HomeworkProgress
+                subject="english"
+                school={homeworkProgressData.school}
+                grade={homeworkProgressData.grade}
+                class={homeworkProgressData.class}
+                teacher={homeworkProgressData.teacher}
+                onClose={() => setHomeworkProgressData(null)}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (mode === 'math-homework-dashboard') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>📚 수학 과제관리 대시보드</h1>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <div className="main-content" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <HomeworkDashboard 
+            subject="math"
+            onClose={handleBackToMain} 
+            onShowRoster={(data) => {
+              setHomeworkProgressData(data);
+            }}
+          />
+
+          {homeworkProgressData && (
+            <div className="homework-roster-section">
+              <div className="homework-roster-header">
+                <h3>
+                  {homeworkProgressData.school}
+                  {homeworkProgressData.grade ? ` ${homeworkProgressData.grade}` : ''}
+                  {homeworkProgressData.class ? ` ${homeworkProgressData.class}` : ''}
+                  {homeworkProgressData.teacher ? ` ${homeworkProgressData.teacher} 선생님` : ''}
+                </h3>
+                <button 
+                  className="roster-hide-btn"
+                  onClick={() => setHomeworkProgressData(null)}
+                >
+                  닫기
+                </button>
+              </div>
+              <HomeworkProgress
+                subject="math"
                 school={homeworkProgressData.school}
                 grade={homeworkProgressData.grade}
                 class={homeworkProgressData.class}

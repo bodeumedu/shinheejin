@@ -401,9 +401,8 @@ export default function ClinicLog() {
       const currentWeekOption = weekOptions.find(opt => opt.key === selectedWeek);
       const weekLabel = currentWeekOption ? currentWeekOption.label : selectedWeek;
 
-      // 클리닉 대장 내용 포맷팅
-      let content = `📋 ${weekLabel}\n\n`;
-      content += '━━━━━━━━━━━━━━━━━━━━\n\n';
+      // 클리닉 대장 내용 포맷팅 (주차 정보는 제외하고 내용만)
+      let content = '';
 
       if (combinedEntries.length === 0) {
         content += '등록된 학생이 없습니다.\n';
@@ -494,11 +493,12 @@ export default function ClinicLog() {
         });
       }
 
-      content += '\n━━━━━━━━━━━━━━━━━━━━\n';
-      content += '보듬교육';
-
       // 카카오톡 API 호출
-      const response = await fetch('/api/send-kakao', {
+      const apiUrl = import.meta.env.PROD 
+        ? `${window.location.origin}/api/send-kakao`
+        : '/api/send-kakao';
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -507,8 +507,8 @@ export default function ClinicLog() {
           phoneNumber: phoneNumber.replace(/-/g, ''),
           templateCode: templateCode,
           variables: {
-            week: weekLabel,
-            content: content,
+            '주차정보': weekLabel,
+            '클리닉내용': content,
           },
         }),
       });

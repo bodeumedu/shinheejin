@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import './HomeworkDashboard.css';
 
 // 과제 관리 대시보드 컴포넌트
-export default function HomeworkDashboard({ onClose, onShowRoster }) {
+export default function HomeworkDashboard({ subject = 'english', onClose, onShowRoster }) {
   const schools = [
     '과천고등학교',
     '과천중앙고등학교',

@@ -8,7 +8,7 @@
 
 .main-menu-container {
   text-align: center;
-  max-width: 500px;
+  max-width: 1200px;
   width: 100%;
 }
 
@@ -23,6 +23,29 @@
   font-size: 1.2rem;
   color: #7f8c8d;
   margin-bottom: 60px;
+}
+
+.main-menu-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  width: 100%;
+}
+
+.main-menu-left,
+.main-menu-right {
+  display: flex;
+  flex-direction: column;
+}
+
+.section-title {
+  font-size: 1.5rem;
+  color: #2c3e50;
+  font-weight: 700;
+  margin-bottom: 20px;
+  text-align: left;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #3498db;
 }
 
 .main-menu-buttons {
@@ -181,6 +204,20 @@
 
 /* 모바일 반응형 */
 @media (max-width: 768px) {
+  .main-menu-container {
+    max-width: 100%;
+  }
+
+  .main-menu-layout {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .section-title {
+    text-align: center;
+    font-size: 1.3rem;
+  }
+
   .main-menu-title {
     font-size: 2rem;
   }

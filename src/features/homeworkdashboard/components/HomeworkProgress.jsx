@@ -4,9 +4,17 @@ import { db, isFirebaseConfigured } from '../../../utils/firebase';
 import './HomeworkProgress.css';
 
 // 과제 진행 상황 컴포넌트
-export default function HomeworkProgress({ school, grade, class: selectedClass, teacher, onClose }) {
+export default function HomeworkProgress({ subject = 'english', school, grade, class: selectedClass, teacher, onClose }) {
   const [activeTab, setActiveTab] = useState('progress'); // 'progress', 'all'
   const [loading, setLoading] = useState(true);
+  
+  // Firestore 컬렉션명 결정
+  const collectionName = useMemo(() => {
+    return subject === 'math' ? 'mathHomeworkProgress' : 'englishHomeworkProgress';
+  }, [subject]);
+  
+  // 기존 컬렉션명 (하위 호환성)
+  const oldCollectionName = 'homeworkProgress';
   
   // Firestore 문서 ID 생성 (useMemo로 최적화)
   const docId = useMemo(() => {
@@ -19,12 +27,21 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
     return `homework_progress_${school}`;
   }, [school, grade, selectedClass, teacher]);
   
+  // 새 컬렉션 문서 참조
   const docRef = useMemo(() => {
     if (isFirebaseConfigured() && db) {
-      return doc(db, 'homeworkProgress', docId);
+      return doc(db, collectionName, docId);
     }
     return null;
-  }, [docId]);
+  }, [collectionName, docId]);
+  
+  // 기존 컬렉션 문서 참조 (하위 호환성)
+  const oldDocRef = useMemo(() => {
+    if (isFirebaseConfigured() && db && subject === 'english') {
+      return doc(db, oldCollectionName, docId);
+    }
+    return null;
+  }, [docId, subject]);
   
   // 기본 데이터 생성 - 학교/학년별 강의 목록
   const chapterConfig = useMemo(() => {
@@ -70,11 +87,13 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
     const defaultStudents = [];
     const defaultProgressData = {};
     const defaultScores = {};
+    const defaultPhoneNumbers = {};
     
     return {
       students: defaultStudents,
       progressData: defaultProgressData,
       scores: defaultScores,
+      phoneNumbers: defaultPhoneNumbers,
     };
   };
   
@@ -86,6 +105,9 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
   
   // 점수 데이터 관리
   const [scores, setScores] = useState({});
+  
+  // 전화번호 데이터 관리
+  const [phoneNumbers, setPhoneNumbers] = useState({}); // {학생명: '01012345678'}
   
   // 진도와 과제 데이터 관리 (날짜별)
   const [progressDetailData, setProgressDetailData] = useState({});
@@ -267,6 +289,7 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
       setStudents(defaultData.students);
       setProgressData(defaultData.progressData);
       setScores(defaultData.scores);
+      setPhoneNumbers(defaultData.phoneNumbers);
       setProgressDetailData({});
       dirtyDetailDatesRef.current.clear();
       setLoading(false);
@@ -280,6 +303,7 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
       setStudents(defaultData.students);
       setProgressData(defaultData.progressData);
       setScores(defaultData.scores);
+      setPhoneNumbers(defaultData.phoneNumbers);
       setProgressDetailData({});
       dirtyDetailDatesRef.current.clear();
       setLoading(false);
@@ -294,25 +318,60 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
       setStudents(defaultData.students);
       setProgressData(defaultData.progressData);
       setScores(defaultData.scores);
+      setPhoneNumbers(defaultData.phoneNumbers);
       setProgressDetailData({});
       dirtyDetailDatesRef.current.clear();
       setFirebaseError('Firestore 연결 타임아웃 - 보안 규칙을 확인하세요');
       setLoading(false);
     }, 20000);
     
-    // 실시간 리스너 설정
-    console.log('🔄 Firestore 연결 시도 중...', { docId });
+    // 실시간 리스너 설정 (기존 컬렉션도 확인 - 하위 호환성)
+    console.log('🔄 Firestore 연결 시도 중...', { docId, collectionName });
+    
     const unsubscribe = onSnapshot(
       docRef,
-      (docSnapshot) => {
+      async (docSnapshot) => {
         clearTimeout(timeoutId);
         console.log('✅ Firestore 연결 성공!', { 
           exists: docSnapshot.exists(),
-          docId 
+          docId,
+          collectionName
         });
         
+        // 새 컬렉션에 데이터가 없고, 기존 컬렉션이 있다면 마이그레이션 시도
+        let dataToLoad = null;
+        let isMigrated = false;
+        
+        if (!docSnapshot.exists() && subject === 'english' && oldDocRef) {
+          try {
+            const oldDocSnap = await getDoc(oldDocRef);
+            if (oldDocSnap.exists()) {
+              console.log('📦 기존 homeworkProgress 컬렉션에서 데이터 발견! 자동 마이그레이션 시작...');
+              dataToLoad = oldDocSnap.data();
+              isMigrated = true;
+              
+              // 새 컬렉션으로 데이터 복사
+              await setDoc(docRef, {
+                ...dataToLoad,
+                migratedFrom: 'homeworkProgress',
+                migratedAt: new Date().toISOString(),
+                lastUpdated: new Date().toISOString(),
+              }, { merge: true });
+              
+              console.log('✅ 기존 데이터를 새 컬렉션으로 마이그레이션 완료!');
+            }
+          } catch (error) {
+            console.warn('기존 컬렉션 확인 중 오류:', error);
+          }
+        }
+        
+        // 새 컬렉션에 데이터가 있으면 사용
         if (docSnapshot.exists()) {
-          const data = docSnapshot.data();
+          dataToLoad = docSnapshot.data();
+        }
+        
+        if (dataToLoad) {
+          const data = dataToLoad;
           const now = Date.now();
           const isInitialLoad = isInitialLoadRef.current;
           const localStudents = studentsRef.current; // 현재 로컬 students 상태
@@ -343,9 +402,10 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
           if (isInitialLoad || (now - lastSaveTimeRef.current > 2000)) {
             console.log('✅ Firestore 데이터로 상태 업데이트', { isInitialLoad, timeSinceLastSave: now - lastSaveTimeRef.current });
             
-            // 필터링된 학생 목록에 맞춰 progressData와 scores도 정리
+            // 필터링된 학생 목록에 맞춰 progressData, scores, phoneNumbers도 정리
             const filteredProgressData = {};
             const filteredScores = {};
+            const filteredPhoneNumbers = {};
             filteredStudents.forEach(student => {
               if (data.progressData && data.progressData[student]) {
                 filteredProgressData[student] = data.progressData[student];
@@ -353,11 +413,15 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
               if (data.scores && data.scores[student]) {
                 filteredScores[student] = data.scores[student];
               }
+              if (data.phoneNumbers && data.phoneNumbers[student]) {
+                filteredPhoneNumbers[student] = data.phoneNumbers[student];
+              }
             });
             
             setStudents(filteredStudents);
             setProgressData(filteredProgressData);
             setScores(filteredScores);
+            setPhoneNumbers(filteredPhoneNumbers);
             
             // 헤더 텍스트 불러오기
             if (data.headerTexts) {
@@ -413,25 +477,31 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
           });
           setFirebaseError(null); // 성공 시 오류 메시지 제거
         } else {
-          console.log('📝 문서가 없음. 기본 데이터로 초기화 중...');
-          // 문서가 없으면 기본 데이터로 초기화
-          const defaultData = getDefaultData();
-          setStudents(defaultData.students);
-          setProgressData(defaultData.progressData);
-          setScores(defaultData.scores);
-          setProgressDetailData({});
-          dirtyDetailDatesRef.current.clear();
-          // Firestore에 기본 데이터 저장
-          console.log('💾 Firestore에 기본 데이터 저장 중...');
-          setDoc(docRef, { ...defaultData, progressDetailData: {} })
-            .then(() => {
-              console.log('✅ 기본 데이터 저장 완료!');
-              setFirebaseError(null);
-            })
-            .catch(error => {
-              console.error('❌ 기본 데이터 저장 실패:', error);
-              setFirebaseError(`데이터 저장 실패: ${error.message || error.code}`);
-            });
+          // 문서가 없고, 마이그레이션도 안 된 경우에만 기본 데이터로 초기화
+          if (!isMigrated) {
+            console.log('📝 문서가 없음. 기본 데이터로 초기화 중...');
+            // 문서가 없으면 기본 데이터로 초기화
+            const defaultData = getDefaultData();
+            setStudents(defaultData.students);
+            setProgressData(defaultData.progressData);
+            setScores(defaultData.scores);
+            setPhoneNumbers(defaultData.phoneNumbers);
+            setProgressDetailData({});
+            dirtyDetailDatesRef.current.clear();
+            // Firestore에 기본 데이터 저장
+            console.log('💾 Firestore에 기본 데이터 저장 중...');
+            setDoc(docRef, { ...defaultData, progressDetailData: {} })
+              .then(() => {
+                console.log('✅ 기본 데이터 저장 완료!');
+                setFirebaseError(null);
+              })
+              .catch(error => {
+                console.error('❌ 기본 데이터 저장 실패:', error);
+                setFirebaseError(`데이터 저장 실패: ${error.message || error.code}`);
+              });
+          } else {
+            console.log('⏳ 마이그레이션 완료. 데이터는 마이그레이션된 내용을 사용합니다.');
+          }
         }
         setLoading(false);
       },
@@ -443,13 +513,14 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
         
         // 권한 오류인 경우 특별 안내
         if (error.code === 'permission-denied') {
-          setFirebaseError('Firestore 보안 규칙 오류 - Firebase Console에서 규칙을 확인하세요');
+          setFirebaseError(`Firestore 보안 규칙 오류 - ${collectionName} 컬렉션에 대한 권한이 없습니다.`);
           console.error('🔒 Firestore 보안 규칙을 확인하세요:');
           console.error('Firebase Console → Firestore Database → 규칙');
           console.error('다음 규칙이 필요합니다:');
-          console.error('match /homeworkProgress/{document} {');
+          console.error(`match /${collectionName}/{document} {`);
           console.error('  allow read, write: if true;');
           console.error('}');
+          console.error('\n📋 전체 보안 규칙 가이드는 FIRESTORE_RULES_UPDATE.md 파일을 참고하세요.');
         } else {
           setFirebaseError(`Firebase 연결 오류: ${error.message || error.code || '알 수 없는 오류'}`);
         }
@@ -473,7 +544,7 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
   }, [docRef, docId, chapterConfig]);
   
   // Firestore에 데이터 저장하기
-  const saveData = useCallback(async (studentsData, progressData, scoresData, headerTextsData = null) => {
+  const saveData = useCallback(async (studentsData, progressData, scoresData, headerTextsData = null, phoneNumbersData = null) => {
     // Firebase가 설정되지 않은 경우 오류 표시
     if (!isFirebaseConfigured() || !db || !docRef) {
       console.error('Firebase가 설정되지 않아 데이터를 저장할 수 없습니다.');
@@ -486,6 +557,7 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
         students: studentsData,
         progressData: progressData,
         scores: scoresData,
+        phoneNumbers: phoneNumbersData !== null ? phoneNumbersData : phoneNumbers, // 전화번호도 함께 저장
         lastUpdated: new Date().toISOString(),
       };
       
@@ -500,7 +572,23 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
       console.log('✅ 데이터 저장 완료:', { studentsCount: studentsData.length, saveTime: lastSaveTimeRef.current });
     } catch (error) {
       console.error('Firestore 데이터 저장 실패:', error);
-      setFirebaseError(`데이터 저장 실패: ${error.message || error.code || '알 수 없는 오류'}`);
+      console.error('오류 코드:', error.code);
+      console.error('오류 메시지:', error.message);
+      
+      // 권한 오류인 경우 특별 안내
+      if (error.code === 'permission-denied') {
+        setFirebaseError(`데이터 저장 실패: ${collectionName} 컬렉션에 대한 권한이 없습니다. Firestore 보안 규칙을 확인하고 게시 버튼을 눌러주세요.`);
+        console.error('🔒 Firestore 보안 규칙을 확인하세요:');
+        console.error('Firebase Console → Firestore Database → 규칙');
+        console.error('다음 규칙이 필요합니다:');
+        console.error(`match /${collectionName}/{document} {`);
+        console.error('  allow read, write: if true;');
+        console.error('}');
+        console.error('⚠️ 중요: 규칙을 작성한 후 반드시 "게시" 버튼을 눌러야 적용됩니다!');
+        console.error('\n📋 전체 보안 규칙 가이드는 FIRESTORE_RULES_UPDATE.md 파일을 참고하세요.');
+      } else {
+        setFirebaseError(`데이터 저장 실패: ${error.message || error.code || '알 수 없는 오류'}`);
+      }
     }
   }, [docRef]);
   
@@ -513,12 +601,12 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
   useEffect(() => {
     if (!loading && students.length > 0) {
       const timeoutId = setTimeout(() => {
-        saveData(students, progressData, scores, headerTexts);
+        saveData(students, progressData, scores, headerTexts, phoneNumbers);
       }, 500); // 500ms 지연 후 저장 (debounce)
       
       return () => clearTimeout(timeoutId);
     }
-  }, [students, progressData, scores, headerTexts, saveData, loading]);
+  }, [students, progressData, scores, headerTexts, phoneNumbers, saveData, loading]);
   
   // 헤더 텍스트 변경 시 저장
   useEffect(() => {
@@ -706,7 +794,31 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
       const newScores = { ...scores };
       delete newScores[student];
       setScores(newScores);
+      
+      // 해당 학생의 전화번호 제거
+      const newPhoneNumbers = { ...phoneNumbers };
+      delete newPhoneNumbers[student];
+      setPhoneNumbers(newPhoneNumbers);
     }
+  };
+  
+  // 전화번호 포맷팅 (010-1234-5678)
+  const formatPhoneNumber = (value) => {
+    const cleaned = value.replace(/[^0-9]/g, '');
+    if (cleaned.length <= 3) return cleaned;
+    if (cleaned.length <= 7) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+    if (cleaned.length <= 11) return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
+    return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7, 11)}`;
+  };
+
+  // 전화번호 변경 핸들러
+  const handlePhoneNumberChange = (student, phoneNumber) => {
+    const formatted = formatPhoneNumber(phoneNumber);
+    const cleanedPhone = formatted.replace(/-/g, '');
+    setPhoneNumbers(prev => ({
+      ...prev,
+      [student]: cleanedPhone,
+    }));
   };
   
   // 헤더 텍스트 변경 핸들러
@@ -750,20 +862,41 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
       return;
     }
 
-    // 각 학생별로 전화번호 입력받고 발송
+    // 각 학생별로 전화번호 확인하고 발송
     let successCount = 0;
     let failCount = 0;
 
     for (const student of students) {
-      const phoneNumber = prompt(`${student} 학생의 전화번호를 입력하세요 (예: 01012345678, 취소하려면 취소 버튼):`);
-      if (!phoneNumber) {
-        continue; // 취소하면 다음 학생으로
+      // 저장된 전화번호 확인
+      let phoneNumber = phoneNumbers[student];
+      
+      // 전화번호가 없거나 형식이 잘못된 경우 입력받기
+      if (!phoneNumber || phoneNumber.length < 10) {
+        const inputPhone = prompt(`${student} 학생의 전화번호를 입력하세요 (예: 01012345678, 취소하려면 취소 버튼):`);
+        if (!inputPhone) {
+          continue; // 취소하면 다음 학생으로
+        }
+        phoneNumber = inputPhone.replace(/-/g, '').trim();
+        
+        // 전화번호 형식 검증
+        const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
+        if (!phoneRegex.test(phoneNumber)) {
+          alert(`${student} 학생: 올바른 전화번호 형식이 아닙니다. (예: 01012345678)`);
+          failCount++;
+          continue;
+        }
+        
+        // 전화번호 저장
+        setPhoneNumbers(prev => ({
+          ...prev,
+          [student]: phoneNumber,
+        }));
       }
       
-      // 전화번호 형식 검증
+      // 전화번호 형식 검증 (저장된 번호도 다시 확인)
       const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
-      if (!phoneRegex.test(phoneNumber.replace(/-/g, ''))) {
-        alert(`${student} 학생: 올바른 전화번호 형식이 아닙니다. (예: 01012345678)`);
+      if (!phoneRegex.test(phoneNumber)) {
+        alert(`${student} 학생: 저장된 전화번호 형식이 올바르지 않습니다. 테이블에서 수정해주세요.`);
         failCount++;
         continue;
       }
@@ -862,8 +995,8 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
             phoneNumber: phoneNumber.replace(/-/g, ''),
             templateCode: templateCode,
             variables: {
-              title: title,
-              content: content,
+              '과제제목': title,
+              '과제내용': content,
             },
           }),
         });
@@ -967,6 +1100,7 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
                   <thead>
                     <tr>
                       <th rowSpan="2">학생</th>
+                      <th rowSpan="2">전화번호</th>
                       <th colSpan={chapterConfig.chapters.length}>
                         <input
                           type="text"
@@ -1049,6 +1183,16 @@ export default function HomeworkProgress({ school, grade, class: selectedClass, 
                     {students.map((student) => (
                       <tr key={student}>
                         <td className="student-name">{student}</td>
+                        <td className="phone-number-cell">
+                          <input
+                            type="tel"
+                            className="phone-input"
+                            placeholder="010-1234-5678"
+                            value={phoneNumbers[student] ? formatPhoneNumber(phoneNumbers[student]) : ''}
+                            onChange={(e) => handlePhoneNumberChange(student, e.target.value)}
+                            maxLength="13"
+                          />
+                        </td>
                         {chapterConfig.chapters.map((chapter) => (
                           <td key={`${chapterConfig.fieldPrefix}-${student}-${chapter}`}>
                             <input
