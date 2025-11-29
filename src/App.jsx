@@ -750,8 +750,8 @@ function App() {
           <HomeworkDashboard 
             subject="english"
             onClose={handleBackToMain} 
-            onShowRoster={(data) => {
-              setHomeworkProgressData(data);
+            onShowRoster={(data, subjectType) => {
+              setHomeworkProgressData({ ...data, subject: subjectType || 'english' });
             }}
           />
 
@@ -759,10 +759,9 @@ function App() {
             <div className="homework-roster-section">
               <div className="homework-roster-header">
                 <h3>
-                  {homeworkProgressData.school}
-                  {homeworkProgressData.grade ? ` ${homeworkProgressData.grade}` : ''}
-                  {homeworkProgressData.class ? ` ${homeworkProgressData.class}` : ''}
+                  {homeworkProgressData.grade || ''}
                   {homeworkProgressData.teacher ? ` ${homeworkProgressData.teacher} 선생님` : ''}
+                  {homeworkProgressData.class ? ` ${homeworkProgressData.class}` : ''}
                 </h3>
                 <button 
                   className="roster-hide-btn"
@@ -805,8 +804,8 @@ function App() {
           <HomeworkDashboard 
             subject="math"
             onClose={handleBackToMain} 
-            onShowRoster={(data) => {
-              setHomeworkProgressData(data);
+            onShowRoster={(data, subjectType) => {
+              setHomeworkProgressData({ ...data, subject: subjectType || 'english' });
             }}
           />
 
@@ -814,10 +813,9 @@ function App() {
             <div className="homework-roster-section">
               <div className="homework-roster-header">
                 <h3>
-                  {homeworkProgressData.school}
-                  {homeworkProgressData.grade ? ` ${homeworkProgressData.grade}` : ''}
-                  {homeworkProgressData.class ? ` ${homeworkProgressData.class}` : ''}
+                  {homeworkProgressData.grade || ''}
                   {homeworkProgressData.teacher ? ` ${homeworkProgressData.teacher} 선생님` : ''}
+                  {homeworkProgressData.class ? ` ${homeworkProgressData.class}` : ''}
                 </h3>
                 <button 
                   className="roster-hide-btn"
@@ -828,7 +826,7 @@ function App() {
               </div>
               <HomeworkProgress
                 subject="math"
-                school={homeworkProgressData.school}
+                school={null}
                 grade={homeworkProgressData.grade}
                 class={homeworkProgressData.class}
                 teacher={homeworkProgressData.teacher}

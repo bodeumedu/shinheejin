@@ -3,6 +3,18 @@ import './HomeworkDashboard.css';
 
 // 과제 관리 대시보드 컴포넌트
 export default function HomeworkDashboard({ subject = 'english', onClose, onShowRoster }) {
+  // 수학 과제 관리용 학년 목록
+  const mathGrades = [
+    '초등학교 6학년',
+    '중학교 1학년',
+    '중학교 2학년',
+    '중학교 3학년',
+    '고등학교 1학년',
+    '고등학교 2학년',
+    '고등학교 3학년',
+  ];
+  
+  // 영어 과제 관리용 학교 목록
   const schools = [
     '과천고등학교',
     '과천중앙고등학교',
@@ -14,11 +26,24 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
     '초등학교 6학년',
   ];
 
-  const [selectedSchool, setSelectedSchool] = useState('과천고등학교');
-  const [selectedGrade, setSelectedGrade] = useState('1학년');
+  // 수학 과제 관리용 초기값
+  const [selectedMathGrade, setSelectedMathGrade] = useState(subject === 'math' ? '초등학교 6학년' : '');
+  const [selectedMathTeacher, setSelectedMathTeacher] = useState('이민하');
+  const [selectedMathClass, setSelectedMathClass] = useState('월금반');
+  
+  // 영어 과제 관리용 초기값
+  const [selectedSchool, setSelectedSchool] = useState(subject === 'english' ? '과천고등학교' : '');
+  const [selectedGrade, setSelectedGrade] = useState(subject === 'english' ? '1학년' : '');
   const [selectedTeacher, setSelectedTeacher] = useState('김서연'); // 중학교 1학년용
   const [selectedClass, setSelectedClass] = useState('화목 4시반 정규');
   
+  // 수학 과제 관리용 선생님 목록
+  const mathTeachers = ['이민하', '임예희', '김지수', '신화정'];
+  
+  // 수학 과제 관리용 반 목록
+  const mathClasses = ['월금반', '화목반', '월수금반', '수토반'];
+  
+  // 영어 과제 관리용 선생님 목록
   const teachers = ['김서연', '한유빈', '이예지'];
 
   // 학년별 반 목록 (학교와 학년에 따라 동적으로 생성)
@@ -107,20 +132,32 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
   }, [selectedSchool, selectedGrade]);
 
   const handleShowRoster = () => {
-    const info = selectedSchool === '중학교 1학년' 
-      ? {
-          school: selectedSchool,
-          teacher: selectedTeacher,
-          class: selectedTeacher === '김서연' ? selectedClass : null,
-        }
-      : {
-          school: selectedSchool,
-          grade: selectedGrade,
-          class: selectedClass,
-        };
+    let info;
+    
+    if (subject === 'math') {
+      // 수학 과제 관리
+      info = {
+        grade: selectedMathGrade,
+        teacher: selectedMathTeacher,
+        class: selectedMathClass,
+      };
+    } else {
+      // 영어 과제 관리
+      info = selectedSchool === '중학교 1학년' 
+        ? {
+            school: selectedSchool,
+            teacher: selectedTeacher,
+            class: selectedTeacher === '김서연' ? selectedClass : null,
+          }
+        : {
+            school: selectedSchool,
+            grade: selectedGrade,
+            class: selectedClass,
+          };
+    }
     
     if (onShowRoster) {
-      onShowRoster(info);
+      onShowRoster(info, subject);
     }
   };
 
@@ -129,31 +166,104 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
       <div className="homework-dashboard-container">
         <div className="homework-dashboard-content">
           <div className="homework-dashboard-grid">
-            {/* 왼쪽: 학교 선택 */}
-            <div className="school-selection">
-              <h3>학교 선택</h3>
-              <div className="radio-group">
-                {schools.map((school) => (
-                  <label key={school} className="radio-label">
-                    <input
-                      type="radio"
-                      name="school"
-                      value={school}
-                      checked={selectedSchool === school}
-                      onChange={(e) => setSelectedSchool(e.target.value)}
-                    />
-                    <span>{school}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
+            {subject === 'math' ? (
+              // 수학 과제 관리 UI
+              <>
+                {/* 왼쪽: 학년 선택 */}
+                <div className="school-selection">
+                  <h3>학년 선택</h3>
+                  <div className="radio-group">
+                    {mathGrades.map((grade) => (
+                      <label key={grade} className="radio-label">
+                        <input
+                          type="radio"
+                          name="mathGrade"
+                          value={grade}
+                          checked={selectedMathGrade === grade}
+                          onChange={(e) => setSelectedMathGrade(e.target.value)}
+                        />
+                        <span>{grade}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
 
-            {/* 오른쪽: 선택된 정보 및 학년/반 선택 */}
-            <div className="selection-info">
-              <div className="selected-school">
-                <h4>선택된 학교</h4>
-                <p className="school-name">{selectedSchool}</p>
-              </div>
+                {/* 오른쪽: 선생님 및 반 선택 */}
+                <div className="selection-info">
+                  <div className="selected-school">
+                    <h4>선택된 학년</h4>
+                    <p className="school-name">{selectedMathGrade}</p>
+                  </div>
+
+                  <div className="teacher-selection">
+                    <h4>선생님 선택</h4>
+                    <div className="radio-group">
+                      {mathTeachers.map((teacher) => (
+                        <label key={teacher} className="radio-label">
+                          <input
+                            type="radio"
+                            name="mathTeacher"
+                            value={teacher}
+                            checked={selectedMathTeacher === teacher}
+                            onChange={(e) => setSelectedMathTeacher(e.target.value)}
+                          />
+                          <span>{teacher}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="class-selection">
+                    <h4>반 선택</h4>
+                    <div className="radio-group">
+                      {mathClasses.map((classOption) => (
+                        <label key={classOption} className="radio-label">
+                          <input
+                            type="radio"
+                            name="mathClass"
+                            value={classOption}
+                            checked={selectedMathClass === classOption}
+                            onChange={(e) => setSelectedMathClass(e.target.value)}
+                          />
+                          <span>{classOption}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button className="proceed-btn" onClick={handleShowRoster}>
+                    명단 보기
+                  </button>
+                </div>
+              </>
+            ) : (
+              // 영어 과제 관리 UI (기존)
+              <>
+                {/* 왼쪽: 학교 선택 */}
+                <div className="school-selection">
+                  <h3>학교 선택</h3>
+                  <div className="radio-group">
+                    {schools.map((school) => (
+                      <label key={school} className="radio-label">
+                        <input
+                          type="radio"
+                          name="school"
+                          value={school}
+                          checked={selectedSchool === school}
+                          onChange={(e) => setSelectedSchool(e.target.value)}
+                        />
+                        <span>{school}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 오른쪽: 선택된 정보 및 학년/반 선택 */}
+                <div className="selection-info">
+                  <div className="selected-school">
+                    <h4>선택된 학교</h4>
+                    <p className="school-name">{selectedSchool}</p>
+                  </div>
 
               {selectedSchool === '중학교 1학년' ? (
                 <>
@@ -245,10 +355,12 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
                 </>
               )}
 
-              <button className="proceed-btn" onClick={handleShowRoster}>
-                명단 보기
-              </button>
-            </div>
+                  <button className="proceed-btn" onClick={handleShowRoster}>
+                    명단 보기
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

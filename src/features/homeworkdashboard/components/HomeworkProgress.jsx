@@ -18,6 +18,15 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   
   // Firestore 문서 ID 생성 (useMemo로 최적화)
   const docId = useMemo(() => {
+    if (subject === 'math') {
+      // 수학 과제 관리: 학년_선생님_반
+      if (grade && teacher && selectedClass) {
+        return `homework_progress_${grade}_${teacher}_${selectedClass}`;
+      }
+      return `homework_progress_${grade || 'unknown'}`;
+    }
+    
+    // 영어 과제 관리 (기존 로직)
     if (school === '중학교 1학년' && teacher) {
       return `homework_progress_${school}_${teacher}`;
     }
@@ -25,7 +34,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       return `homework_progress_${school}_${grade}_${selectedClass}`;
     }
     return `homework_progress_${school}`;
-  }, [school, grade, selectedClass, teacher]);
+  }, [subject, school, grade, selectedClass, teacher]);
   
   // 새 컬렉션 문서 참조
   const docRef = useMemo(() => {
@@ -106,8 +115,8 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   // 점수 데이터 관리
   const [scores, setScores] = useState({});
   
-  // 전화번호 데이터 관리
-  const [phoneNumbers, setPhoneNumbers] = useState({}); // {학생명: '01012345678'}
+  // 전화번호 데이터 관리 (학생, 학부모)
+  const [phoneNumbers, setPhoneNumbers] = useState({}); // {학생명: {student: '01012345678', parent: '01012345678'}}
   
   // 진도와 과제 데이터 관리 (날짜별)
   const [progressDetailData, setProgressDetailData] = useState({});
@@ -413,8 +422,15 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
               if (data.scores && data.scores[student]) {
                 filteredScores[student] = data.scores[student];
               }
+              // 전화번호 데이터 처리 (기존 형식 호환성 유지)
               if (data.phoneNumbers && data.phoneNumbers[student]) {
-                filteredPhoneNumbers[student] = data.phoneNumbers[student];
+                const phoneData = data.phoneNumbers[student];
+                // 기존 형식 (문자열)이면 student로 변환
+                if (typeof phoneData === 'string') {
+                  filteredPhoneNumbers[student] = { student: phoneData };
+                } else {
+                  filteredPhoneNumbers[student] = phoneData;
+                }
               }
             });
             
@@ -811,14 +827,27 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7, 11)}`;
   };
 
-  // 전화번호 변경 핸들러
-  const handlePhoneNumberChange = (student, phoneNumber) => {
+  // 전화번호 변경 핸들러 (학생/학부모 구분)
+  const handlePhoneNumberChange = (student, phoneNumber, type = 'student') => {
     const formatted = formatPhoneNumber(phoneNumber);
     const cleanedPhone = formatted.replace(/-/g, '');
     setPhoneNumbers(prev => ({
       ...prev,
-      [student]: cleanedPhone,
+      [student]: {
+        ...(prev[student] || {}),
+        [type]: cleanedPhone,
+      },
     }));
+  };
+  
+  // 학생 전화번호만 변경하는 헬퍼 함수 (하위 호환성)
+  const handleStudentPhoneChange = (student, phoneNumber) => {
+    handlePhoneNumberChange(student, phoneNumber, 'student');
+  };
+  
+  // 학부모 전화번호만 변경하는 헬퍼 함수
+  const handleParentPhoneChange = (student, phoneNumber) => {
+    handlePhoneNumberChange(student, phoneNumber, 'parent');
   };
   
   // 헤더 텍스트 변경 핸들러
@@ -849,6 +878,23 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       return;
     }
 
+    // 전화번호가 없는 학생 체크 (학생 전화번호 필수)
+    const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
+    const studentsWithoutPhone = students.filter(student => {
+      const phoneData = phoneNumbers[student];
+      // 기존 형식 (문자열) 호환
+      const studentPhone = typeof phoneData === 'string' ? phoneData : phoneData?.student;
+      return !studentPhone || studentPhone.length < 10 || !phoneRegex.test(studentPhone);
+    });
+
+    // 전화번호가 없는 학생이 있으면 먼저 안내
+    if (studentsWithoutPhone.length > 0) {
+      const missingPhoneList = studentsWithoutPhone.map((s, idx) => `${idx + 1}. ${s}`).join('\n');
+      const alertMessage = `학생 전화번호가 입력되지 않은 학생이 ${studentsWithoutPhone.length}명 있습니다:\n\n${missingPhoneList}\n\n위 학생들의 전화번호를 테이블의 "전화번호" 열에서 먼저 입력해주세요.\n\n(학생 전화번호는 필수이며, 학부모 전화번호는 선택사항입니다)\n\n입력 후 다시 카카오톡 전송 버튼을 눌러주세요.`;
+      alert(alertMessage);
+      return;
+    }
+
     // 학생 목록 미리보기
     const studentList = students.map((s, idx) => `${idx + 1}. ${s}`).join('\n');
     const confirmMessage = `다음 ${students.length}명의 학생에게 개별 발송합니다:\n\n${studentList}\n\n계속하시겠습니까?`;
@@ -862,52 +908,31 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       return;
     }
 
-    // 각 학생별로 전화번호 확인하고 발송
+    // 각 학생별로 전화번호 확인하고 발송 (이미 위에서 전화번호가 모두 있는지 확인했으므로 바로 사용)
     let successCount = 0;
     let failCount = 0;
 
     for (const student of students) {
       // 저장된 전화번호 확인
-      let phoneNumber = phoneNumbers[student];
+      const phoneData = phoneNumbers[student];
+      // 기존 형식 (문자열) 호환
+      const studentPhone = typeof phoneData === 'string' ? phoneData : phoneData?.student;
+      const parentPhone = typeof phoneData === 'string' ? null : phoneData?.parent;
       
-      // 전화번호가 없거나 형식이 잘못된 경우 입력받기
-      if (!phoneNumber || phoneNumber.length < 10) {
-        const inputPhone = prompt(`${student} 학생의 전화번호를 입력하세요 (예: 01012345678, 취소하려면 취소 버튼):`);
-        if (!inputPhone) {
-          continue; // 취소하면 다음 학생으로
-        }
-        phoneNumber = inputPhone.replace(/-/g, '').trim();
-        
-        // 전화번호 형식 검증
-        const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
-        if (!phoneRegex.test(phoneNumber)) {
-          alert(`${student} 학생: 올바른 전화번호 형식이 아닙니다. (예: 01012345678)`);
-          failCount++;
-          continue;
-        }
-        
-        // 전화번호 저장
-        setPhoneNumbers(prev => ({
-          ...prev,
-          [student]: phoneNumber,
-        }));
-      }
-      
-      // 전화번호 형식 검증 (저장된 번호도 다시 확인)
+      // 학생 전화번호 형식 최종 검증
       const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
-      if (!phoneRegex.test(phoneNumber)) {
-        alert(`${student} 학생: 저장된 전화번호 형식이 올바르지 않습니다. 테이블에서 수정해주세요.`);
+      if (!studentPhone || !phoneRegex.test(studentPhone)) {
+        alert(`${student} 학생: 전화번호 형식이 올바르지 않습니다. 테이블에서 수정해주세요.`);
         failCount++;
         continue;
       }
 
-      try {
-        // 해당 학생의 메시지 생성
-        const title = getTitle(); // 원래 제목 사용
-        let content = '';
-        
-        // 해당 학생의 진행 상황만 표시
-        content += `👤 ${student}\n\n`;
+      // 해당 학생의 메시지 생성 (한 번만)
+      const title = getTitle(); // 원래 제목 사용
+      let content = '';
+      
+      // 해당 학생의 진행 상황만 표시
+      content += `👤 ${student}\n\n`;
         
         // 강별(모의고사) 체크
         chapterConfig.chapters.forEach(chapter => {
@@ -969,50 +994,60 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
           }
         }
         
-        // 어휘워크북
-        const isVocabularyCompleted = progressData[student]?.vocabulary || false;
-        const allStudentsIncompleteVocabulary = students.every(s => !progressData[s]?.vocabulary);
-        
-        if (allStudentsIncompleteVocabulary) {
-          content += `✅ 어휘워크북: 제출기간 아님.\n`;
-        } else if (isVocabularyCompleted) {
-          content += `✅ 어휘워크북: 완료\n`;
-        } else {
-          content += `✅ 어휘워크북: 미완료\n`;
-        }
-        
-        // 솔라피 API 호출
-        const apiUrl = import.meta.env.PROD 
-          ? `${window.location.origin}/api/send-kakao`
-          : '/api/send-kakao';
-        
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            phoneNumber: phoneNumber.replace(/-/g, ''),
-            templateCode: templateCode,
-            variables: {
-              '과제제목': title,
-              '과제내용': content,
+      // 어휘워크북
+      const isVocabularyCompleted = progressData[student]?.vocabulary || false;
+      const allStudentsIncompleteVocabulary = students.every(s => !progressData[s]?.vocabulary);
+      
+      if (allStudentsIncompleteVocabulary) {
+        content += `✅ 어휘워크북: 제출기간 아님.\n`;
+      } else if (isVocabularyCompleted) {
+        content += `✅ 어휘워크북: 완료\n`;
+      } else {
+        content += `✅ 어휘워크북: 미완료\n`;
+      }
+
+      // 발송할 전화번호 목록 (학생 필수, 학부모 선택)
+      const phonesToSend = [{ phone: studentPhone, type: '학생' }];
+      if (parentPhone && phoneRegex.test(parentPhone)) {
+        phonesToSend.push({ phone: parentPhone, type: '학부모' });
+      }
+
+      // 각 전화번호로 발송
+      for (const { phone: phoneNumber, type } of phonesToSend) {
+        try {
+          // 솔라피 API 호출
+          const apiUrl = import.meta.env.PROD 
+            ? `${window.location.origin}/api/send-kakao`
+            : '/api/send-kakao';
+          
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
             },
-          }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-          successCount++;
-        } else {
-          throw new Error(result.error || '알 수 없는 오류');
+            body: JSON.stringify({
+              phoneNumber: phoneNumber.replace(/-/g, ''),
+              templateCode: templateCode,
+              variables: {
+                '과제제목': title,
+                '과제내용': content,
+              },
+            }),
+          });
+          
+          const result = await response.json();
+          
+          if (result.success) {
+            successCount++;
+            console.log(`✅ ${student} 학생 ${type}에게 카카오톡 발송 성공`);
+          } else {
+            throw new Error(result.error || '알 수 없는 오류');
+          }
+        } catch (error) {
+          console.error(`${student} 학생 ${type} 카카오톡 전송 실패:`, error);
+          failCount++;
+          alert(`${student} 학생 ${type} 발송 실패: ${error.message || '알 수 없는 오류'}`);
         }
-        
-      } catch (error) {
-        console.error(`${student} 학생 카카오톡 전송 실패:`, error);
-        failCount++;
-        alert(`${student} 학생 발송 실패: ${error.message || '알 수 없는 오류'}`);
       }
     }
     
@@ -1099,8 +1134,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                 <table className="progress-table">
                   <thead>
                     <tr>
-                      <th rowSpan="2">학생</th>
-                      <th rowSpan="2">전화번호</th>
+                      <th rowSpan="2" style={{ width: '90px', minWidth: '90px', maxWidth: '90px', padding: '12px 16px', boxSizing: 'border-box' }}>학생</th>
                       <th colSpan={chapterConfig.chapters.length}>
                         <input
                           type="text"
@@ -1128,6 +1162,10 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                           onChange={(e) => handleHeaderTextChange('visionTitle', 'title', e.target.value)}
                           placeholder="보듬교육의 시선"
                         />
+                      </th>
+                      <th rowSpan="2" style={{ backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 'bold', width: '180px', minWidth: '180px', maxWidth: '180px', padding: '12px 16px', boxSizing: 'border-box' }}>
+                        📱 전화번호<br/>
+                        <span style={{ fontSize: '11px', fontWeight: 'normal' }}>(위: 학부모, 아래: 학생)</span>
                       </th>
                       <th rowSpan="2">퇴원</th>
                     </tr>
@@ -1183,16 +1221,6 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                     {students.map((student) => (
                       <tr key={student}>
                         <td className="student-name">{student}</td>
-                        <td className="phone-number-cell">
-                          <input
-                            type="tel"
-                            className="phone-input"
-                            placeholder="010-1234-5678"
-                            value={phoneNumbers[student] ? formatPhoneNumber(phoneNumbers[student]) : ''}
-                            onChange={(e) => handlePhoneNumberChange(student, e.target.value)}
-                            maxLength="13"
-                          />
-                        </td>
                         {chapterConfig.chapters.map((chapter) => (
                           <td key={`${chapterConfig.fieldPrefix}-${student}-${chapter}`}>
                             <input
@@ -1248,6 +1276,26 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                             </div>
                           </td>
                         ))}
+                        <td className="phone-number-cell">
+                          <div className="phone-input-container">
+                            <input
+                              type="tel"
+                              className="phone-input phone-input-parent"
+                              placeholder="학부모: 010-1234-5678"
+                              value={phoneNumbers[student]?.parent ? formatPhoneNumber(phoneNumbers[student].parent) : ''}
+                              onChange={(e) => handleParentPhoneChange(student, e.target.value)}
+                              maxLength="13"
+                            />
+                            <input
+                              type="tel"
+                              className="phone-input phone-input-student"
+                              placeholder="학생: 010-1234-5678"
+                              value={phoneNumbers[student]?.student ? formatPhoneNumber(phoneNumbers[student].student) : (typeof phoneNumbers[student] === 'string' ? formatPhoneNumber(phoneNumbers[student]) : '')}
+                              onChange={(e) => handleStudentPhoneChange(student, e.target.value)}
+                              maxLength="13"
+                            />
+                          </div>
+                        </td>
                         <td className="remove-student-cell">
                           <button
                             className="remove-btn"
