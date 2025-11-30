@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { summarizeInKorean } from '../utils/koreanSummaryAnalyzer'
+import { summarizeInKorean, findKeySentence } from '../utils/koreanSummaryAnalyzer'
 import './KoreanSummaryInput.css'
 
 function KoreanSummaryInput({ text, setText, onProcess, apiKey }) {
@@ -66,11 +66,21 @@ function KoreanSummaryInput({ text, setText, onProcess, apiKey }) {
 
       try {
         const summary = await summarizeInKorean(englishText, apiKey)
+        let keySentence = ''
+        
+        // 주제 문장 찾기
+        try {
+          keySentence = await findKeySentence(englishText, apiKey)
+        } catch (keyError) {
+          console.warn(`주제 문장 찾기 실패 (${source}):`, keyError)
+          // 주제 문장 찾기 실패해도 계속 진행
+        }
         
         results.push({
           source: source.trim(),
           original: englishText.trim(),
-          summary: summary
+          summary: summary,
+          keySentence: keySentence
         })
       } catch (error) {
         console.error(`지문 ${i + 1} 처리 중 오류:`, error)

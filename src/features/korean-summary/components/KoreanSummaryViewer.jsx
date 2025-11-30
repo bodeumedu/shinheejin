@@ -1,5 +1,51 @@
 import './KoreanSummaryViewer.css'
 
+// 주제 문장에 형광펜 스타일 적용
+function highlightKeySentence(originalText, keySentence) {
+  if (!keySentence || !originalText) {
+    return originalText.replace(/\n/g, '<br>')
+  }
+  
+  // HTML 이스케이프
+  const escapeHtml = (text) => {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+  }
+  
+  const escapedOriginal = escapeHtml(originalText)
+  const trimmedKeySentence = keySentence.trim()
+  const escapedKeySentence = escapeHtml(trimmedKeySentence)
+  
+  // 정확히 일치하는 문장 찾기 (공백 처리 고려, 대소문자 무시)
+  const normalizedKeySentence = escapedKeySentence.replace(/\s+/g, '\\s+')
+  const regex = new RegExp(`(${normalizedKeySentence.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  
+  if (regex.test(escapedOriginal)) {
+    return escapedOriginal.replace(regex, '<mark>$1</mark>').replace(/\n/g, '<br>')
+  }
+  
+  // 정확히 일치하지 않으면 부분 매칭 시도 (주요 단어들)
+  const keyWords = trimmedKeySentence.split(/\s+/).filter(w => w.length > 2)
+  if (keyWords.length >= 3) {
+    // 최소 3개 이상의 연속 단어로 매칭 시도
+    for (let len = Math.min(keyWords.length, 6); len >= 3; len--) {
+      const wordsToMatch = keyWords.slice(0, len)
+      const pattern = wordsToMatch.map(w => escapeHtml(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+')
+      const partialRegex = new RegExp(`(${pattern})`, 'gi')
+      if (partialRegex.test(escapedOriginal)) {
+        return escapedOriginal.replace(partialRegex, '<mark>$1</mark>').replace(/\n/g, '<br>')
+      }
+    }
+  }
+  
+  // 매칭 실패 시 원본 반환
+  return escapedOriginal.replace(/\n/g, '<br>')
+}
+
 function KoreanSummaryViewer({ data, processedText }) {
   if (!data || !data.results || data.results.length === 0) {
     return <div>데이터가 없습니다.</div>
@@ -78,7 +124,14 @@ function KoreanSummaryViewer({ data, processedText }) {
               
               {/* 영어원문 */}
               <div className="korean-summary-original">
-                <pre className="korean-summary-original-text">{result.original?.trimStart()}</pre>
+                <div 
+                  className="korean-summary-original-text"
+                  dangerouslySetInnerHTML={{ 
+                    __html: result.original?.trimStart() 
+                      ? highlightKeySentence(result.original.trimStart(), result.keySentence)
+                      : '' 
+                  }}
+                />
               </div>
               
               {/* 한글 요약문 답안 박스 */}
