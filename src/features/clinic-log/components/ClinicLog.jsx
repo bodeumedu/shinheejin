@@ -496,7 +496,7 @@ export default function ClinicLog() {
       // 카카오톡 API 호출
       const apiUrl = import.meta.env.PROD 
         ? `${window.location.origin}/api/send-kakao`
-        : '/api/send-kakao';
+        : import.meta.env.VITE_API_URL || 'https://bodeumshjpocketbook.vercel.app/api/send-kakao';
       
       const response = await fetch(apiUrl, {
         method: 'POST',

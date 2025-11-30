@@ -30,16 +30,32 @@ export default async function handler(req, res) {
       });
     }
 
-    // 솔라피 환경 변수 확인
+    // 솔라피 환경 변수 확인 (디버깅 로그 포함)
     const apiKey = process.env.SOLAPI_API_KEY;
     const apiSecret = process.env.SOLAPI_API_SECRET;
     const pfId = process.env.SOLAPI_PF_ID;
     const senderNumber = process.env.SOLAPI_SENDER_NUMBER;
 
+    // 환경 변수 존재 여부 확인 (값은 로그하지 않음 - 보안)
+    const envVarsStatus = {
+      SOLAPI_API_KEY: apiKey ? '설정됨' : '미설정',
+      SOLAPI_API_SECRET: apiSecret ? '설정됨' : '미설정',
+      SOLAPI_PF_ID: pfId ? '설정됨' : '미설정',
+      SOLAPI_SENDER_NUMBER: senderNumber ? '설정됨' : '미설정',
+    };
+    console.log('환경 변수 상태:', envVarsStatus);
+
     if (!apiKey || !apiSecret) {
-      console.error('솔라피 API 키가 설정되지 않았습니다.');
+      console.error('솔라피 API 키가 설정되지 않았습니다. 환경 변수 상태:', envVarsStatus);
       return res.status(500).json({ 
-        error: '서버 설정 오류: 솔라피 API 키가 설정되지 않았습니다.' 
+        error: '서버 설정 오류: 솔라피 API 키가 설정되지 않았습니다.\n\n' +
+               '확인 사항:\n' +
+               '1. Vercel Dashboard → Settings → Environment Variables에서 환경 변수가 설정되었는지 확인\n' +
+               '2. 환경 변수 이름이 정확한지 확인 (SOLAPI_API_KEY, SOLAPI_API_SECRET - 대소문자 구분)\n' +
+               '3. Production, Preview, Development 모두에 환경 변수가 설정되었는지 확인\n' +
+               '4. 환경 변수 추가 후 반드시 재배포했는지 확인 (Deployments → 최신 배포 → Redeploy)\n' +
+               '5. 현재 사용 중인 URL이 프로덕션 URL인지 확인 (localhost가 아닌 vercel.app 도메인)\n\n' +
+               '자세한 내용은 VERCEL_SOLAPI_ENV_SETUP.md 파일을 참고하세요.'
       });
     }
 
@@ -50,15 +66,15 @@ export default async function handler(req, res) {
       });
     }
 
-    // Base64 인증 문자열 생성
-    const authString = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-
     // 솔라피 REST API로 알림톡 발송
     // 솔라피 API 엔드포인트: https://api.solapi.com/messages/v4/send
+    // 오류 메시지에 따라 bearer 인증 사용
+    const authString = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+    
     const solapiResponse = await fetch('https://api.solapi.com/messages/v4/send', {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${authString}`,
+        'Authorization': `bearer ${authString}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -74,10 +90,21 @@ export default async function handler(req, res) {
       }),
     });
 
-    const result = await solapiResponse.json();
+    // 응답 본문 읽기
+    const responseText = await solapiResponse.text();
+    let result;
+    
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('솔라피 API 응답 파싱 실패:', responseText);
+      throw new Error(`솔라피 API 응답 형식 오류: ${responseText.substring(0, 200)}`);
+    }
 
     if (!solapiResponse.ok) {
-      throw new Error(result.errorMessage || `솔라피 API 오류: ${solapiResponse.status}`);
+      const errorMsg = result.errorMessage || result.message || result.error || `솔라피 API 오류: ${solapiResponse.status}`;
+      console.error('솔라피 API 오류:', result);
+      throw new Error(errorMsg);
     }
 
     console.log('카카오톡 발송 성공:', result);

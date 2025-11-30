@@ -118,6 +118,22 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   // 전화번호 데이터 관리 (학생, 학부모)
   const [phoneNumbers, setPhoneNumbers] = useState({}); // {학생명: {student: '01012345678', parent: '01012345678'}}
   
+  // 전화번호 입력 중인 학생 추적 (입력 중에는 Firestore 업데이트 무시)
+  const phoneInputInProgressRef = useRef(new Set());
+  
+  // 카카오톡 전송 미리보기 상태
+  // { templateCode: string, messages: [{ student, phones: [{phone,type}], content }] }
+  const [kakaoPreview, setKakaoPreview] = useState(null);
+  
+  // 템플릿 코드 저장 (localStorage에 저장하여 다음에도 사용)
+  const [savedTemplateCode, setSavedTemplateCode] = useState(() => {
+    try {
+      return localStorage.getItem('kakaoTemplateCode') || '';
+    } catch {
+      return '';
+    }
+  });
+  
   // 진도와 과제 데이터 관리 (날짜별)
   const [progressDetailData, setProgressDetailData] = useState({});
   
@@ -423,14 +439,17 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                 filteredScores[student] = data.scores[student];
               }
               // 전화번호 데이터 처리 (기존 형식 호환성 유지)
-              if (data.phoneNumbers && data.phoneNumbers[student]) {
+              // 입력 중이거나 로컬에 전화번호가 있으면 로컬 값 유지 (입력 중인 전화번호 보호)
+              if (phoneInputInProgressRef.current.has(student) || phoneNumbers[student]) {
+                // 입력 중이거나 로컬에 전화번호가 있으면 로컬 값 유지 (입력 중인 전화번호 보호)
+                filteredPhoneNumbers[student] = phoneNumbers[student];
+              } else if (data.phoneNumbers && data.phoneNumbers[student]) {
+                // 로컬에 없을 때만 Firestore 데이터 사용
                 const phoneData = data.phoneNumbers[student];
                 // 기존 형식 (문자열)이면 student로 변환
-                if (typeof phoneData === 'string') {
-                  filteredPhoneNumbers[student] = { student: phoneData };
-                } else {
-                  filteredPhoneNumbers[student] = phoneData;
-                }
+                filteredPhoneNumbers[student] = typeof phoneData === 'string' 
+                  ? { student: phoneData }
+                  : phoneData;
               }
             });
             
@@ -614,6 +633,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   }, [students]);
   
   // 데이터가 변경될 때마다 저장 (debounce 적용) - 진도와 과제 데이터는 제외 (저장 버튼으로만 저장)
+  // 전화번호는 별도로 저장하므로 여기서는 제외
   useEffect(() => {
     if (!loading && students.length > 0) {
       const timeoutId = setTimeout(() => {
@@ -622,7 +642,38 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       
       return () => clearTimeout(timeoutId);
     }
-  }, [students, progressData, scores, headerTexts, phoneNumbers, saveData, loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, progressData, scores, headerTexts, saveData, loading]);
+  // phoneNumbers는 의존성에서 제외 (별도 저장 로직 사용)
+  
+  // 전화번호 전용 저장 (더 짧은 debounce로 즉시 저장)
+  const phoneSaveTimerRef = useRef(null);
+  useEffect(() => {
+    if (!loading && Object.keys(phoneNumbers).length > 0) {
+      // 이전 타이머 취소
+      if (phoneSaveTimerRef.current) {
+        clearTimeout(phoneSaveTimerRef.current);
+      }
+      
+      // 1초 후 저장 (입력이 완료된 후)
+      phoneSaveTimerRef.current = setTimeout(() => {
+        console.log('📞 전화번호 저장 시도:', phoneNumbers);
+        saveData(students, progressData, scores, headerTexts, phoneNumbers)
+          .then(() => {
+            console.log('✅ 전화번호 저장 완료');
+          })
+          .catch(error => {
+            console.error('❌ 전화번호 저장 실패:', error);
+          });
+      }, 1000);
+      
+      return () => {
+        if (phoneSaveTimerRef.current) {
+          clearTimeout(phoneSaveTimerRef.current);
+        }
+      };
+    }
+  }, [phoneNumbers, students, progressData, scores, headerTexts, saveData, loading]);
   
   // 헤더 텍스트 변경 시 저장
   useEffect(() => {
@@ -831,6 +882,11 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   const handlePhoneNumberChange = (student, phoneNumber, type = 'student') => {
     const formatted = formatPhoneNumber(phoneNumber);
     const cleanedPhone = formatted.replace(/-/g, '');
+    
+    // 입력 중 플래그 설정
+    phoneInputInProgressRef.current.add(student);
+    
+    // 즉시 상태 업데이트
     setPhoneNumbers(prev => ({
       ...prev,
       [student]: {
@@ -838,6 +894,11 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
         [type]: cleanedPhone,
       },
     }));
+    
+    // 3초 후 입력 중 플래그 제거 (입력이 끝났다고 가정)
+    setTimeout(() => {
+      phoneInputInProgressRef.current.delete(student);
+    }, 3000);
   };
   
   // 학생 전화번호만 변경하는 헬퍼 함수 (하위 호환성)
@@ -871,7 +932,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     });
   };
   
-  // 카카오톡 전송 (솔라피 API 사용) - 학생별 개별 발송
+  // 카카오톡 전송 미리보기 생성 (솔라피 API 사용 전 단계)
   const handleKakaoSend = async () => {
     if (students.length === 0) {
       alert('학생이 없습니다.');
@@ -895,23 +956,31 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       return;
     }
 
-    // 학생 목록 미리보기
-    const studentList = students.map((s, idx) => `${idx + 1}. ${s}`).join('\n');
-    const confirmMessage = `다음 ${students.length}명의 학생에게 개별 발송합니다:\n\n${studentList}\n\n계속하시겠습니까?`;
-    if (!confirm(confirmMessage)) {
+    // 템플릿 코드 입력 받기 (저장된 값이 있으면 제안)
+    const defaultTemplateCode = savedTemplateCode || '';
+    const promptMessage = defaultTemplateCode 
+      ? `카카오톡 템플릿 코드를 입력하세요:\n(이전 입력: ${defaultTemplateCode})`
+      : '카카오톡 템플릿 코드를 입력하세요:';
+    
+    const templateCode = prompt(promptMessage, defaultTemplateCode);
+    if (!templateCode || !templateCode.trim()) {
       return;
     }
-
-    // 템플릿 코드 입력 받기
-    const templateCode = prompt('카카오톡 템플릿 코드를 입력하세요:');
-    if (!templateCode) {
-      return;
+    
+    const trimmedTemplateCode = templateCode.trim();
+    
+    // 입력한 템플릿 코드를 저장 (localStorage 및 state)
+    setSavedTemplateCode(trimmedTemplateCode);
+    try {
+      localStorage.setItem('kakaoTemplateCode', trimmedTemplateCode);
+    } catch (error) {
+      console.warn('템플릿 코드를 localStorage에 저장하지 못했습니다:', error);
     }
-
-    // 각 학생별로 전화번호 확인하고 발송 (이미 위에서 전화번호가 모두 있는지 확인했으므로 바로 사용)
-    let successCount = 0;
-    let failCount = 0;
-
+  
+    // 미리보기용 메시지 배열 생성
+    const title = getTitle(); // 모든 학생에게 동일하게 사용
+    const messages = [];
+  
     for (const student of students) {
       // 저장된 전화번호 확인
       const phoneData = phoneNumbers[student];
@@ -922,103 +991,172 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       // 학생 전화번호 형식 최종 검증
       const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
       if (!studentPhone || !phoneRegex.test(studentPhone)) {
-        alert(`${student} 학생: 전화번호 형식이 올바르지 않습니다. 테이블에서 수정해주세요.`);
-        failCount++;
+        // 이 단계까지 오면 거의 없겠지만, 안전하게 한 번 더 검증
+        console.warn(`${student} 학생: 전화번호 형식 오류로 미리보기에서 제외됩니다.`);
         continue;
       }
-
+  
       // 해당 학생의 메시지 생성 (한 번만)
-      const title = getTitle(); // 원래 제목 사용
       let content = '';
+      
+      // 공지 문구 추가 (모든 학생 메시지에 포함)
+      content += `📢 2학기 기말고사(4차고사) 전체 과제 완료도입니다.\n\n`;
+      content += `1. 모든 과제는 선생님과 클리닉 선생님들께 검사를 받으면 됩니다.\n\n`;
+      content += `2. 일부 완료는 완료로 체크되지 않습니다. 전체 완료만 완료입니다.\n\n`;
+      content += `3. 완료하였는데 체크되지 않은 것이 있다면 채널로 알려주고 확인을 받아주세요.\n\n`;
+      content += `4. 제출기간이 아닌 것은 아직 숙제로 나가지 않았지만, 과제로 나갈 예정인 과제입니다.\n\n\n\n`;
       
       // 해당 학생의 진행 상황만 표시
       content += `👤 ${student}\n\n`;
         
-        // 강별(모의고사) 체크
-        chapterConfig.chapters.forEach(chapter => {
-          const field = `${chapterConfig.fieldPrefix}${chapter}`;
-          const isCompleted = progressData[student]?.[field] || false;
-          const chapterText = headerTexts.chapters?.[chapter] || 
-            (chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`);
-          const mainTitle = headerTexts.mainTitle || chapterConfig.title;
-          
-          // 반 전체 학생이 모두 미완료인지 확인
-          const allStudentsIncomplete = students.every(s => !progressData[s]?.[field]);
-          
-          if (allStudentsIncomplete) {
-            content += `✅ ${mainTitle} ${chapterText}: 제출기간 아님.\n`;
-          } else if (isCompleted) {
-            content += `✅ ${mainTitle} ${chapterText}: 완료\n`;
-          } else {
-            content += `✅ ${mainTitle} ${chapterText}: 미완료\n`;
-          }
-        });
+      // 강별(모의고사) 체크
+      chapterConfig.chapters.forEach(chapter => {
+        const field = `${chapterConfig.fieldPrefix}${chapter}`;
+        const isCompleted = progressData[student]?.[field] || false;
+        const chapterText = headerTexts.chapters?.[chapter] || 
+          (chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`);
+        const mainTitle = headerTexts.mainTitle || chapterConfig.title;
         
-        // 보듬내신모의고사
-        for (let i = 1; i <= 10; i++) {
-          const isCompleted = progressData[student]?.[`bodeum${i}`] || false;
-          const score = scores[student]?.[`bodeum${i}`];
-          const roundText = headerTexts.bodeum?.[i] || `${i}회`;
-          const bodeumTitle = headerTexts.bodeumTitle || '보듬내신모의고사';
-          
-          // 반 전체 학생이 모두 미완료인지 확인
-          const allStudentsIncomplete = students.every(s => !progressData[s]?.[`bodeum${i}`] && !scores[s]?.[`bodeum${i}`]);
-          
-          if (score) {
-            // 점수가 있으면 "완료(점수)" 형태로 표시
-            content += `✅ ${bodeumTitle} ${roundText}: 완료(${score}점)\n`;
-          } else if (allStudentsIncomplete) {
-            content += `✅ ${bodeumTitle} ${roundText}: 제출기간 아님.\n`;
-          } else if (isCompleted) {
-            content += `✅ ${bodeumTitle} ${roundText}: 완료\n`;
-          } else {
-            content += `✅ ${bodeumTitle} ${roundText}: 미완료\n`;
-          }
+        // 반 전체 학생이 모두 미완료인지 확인
+        const allStudentsIncomplete = students.every(s => !progressData[s]?.[field]);
+        
+        // 올림포스2는 📖 아이콘 사용
+        const icon = '📖';
+        if (allStudentsIncomplete) {
+          content += `${icon} ${mainTitle} ${chapterText}: 제출기간 아님.\n`;
+        } else if (isCompleted) {
+          content += `${icon} ${mainTitle} ${chapterText}: 완료\n`;
+        } else {
+          content += `${icon} ${mainTitle} ${chapterText}: 미완료\n`;
         }
+      });
+      
+      // 보듬내신모의고사
+      for (let i = 1; i <= 10; i++) {
+        const isCompleted = progressData[student]?.[`bodeum${i}`] || false;
+        const score = scores[student]?.[`bodeum${i}`];
+        const roundText = headerTexts.bodeum?.[i] || `${i}회`;
+        const bodeumTitle = headerTexts.bodeumTitle || '보듬내신모의고사';
         
-        // 보듬교육의 시선
-        for (let i = 1; i <= 4; i++) {
-          const isCompleted = progressData[student]?.[`vision${i}`] || false;
-          const roundText = headerTexts.vision?.[i] || `${i}회`;
-          const visionTitle = headerTexts.visionTitle || '보듬교육의 시선';
-          
-          // 반 전체 학생이 모두 미완료인지 확인
-          const allStudentsIncomplete = students.every(s => !progressData[s]?.[`vision${i}`]);
-          
-          if (allStudentsIncomplete) {
-            content += `✅ ${visionTitle} ${roundText}: 제출기간 아님.\n`;
-          } else if (isCompleted) {
-            content += `✅ ${visionTitle} ${roundText}: 완료\n`;
-          } else {
-            content += `✅ ${visionTitle} ${roundText}: 미완료\n`;
-          }
+        // 반 전체 학생이 모두 미완료인지 확인
+        const allStudentsIncomplete = students.every(s => !progressData[s]?.[`bodeum${i}`] && !scores[s]?.[`bodeum${i}`]);
+        
+        // 보듬내신모의고사는 📝 아이콘 사용
+        const bodeumIcon = '📝';
+        if (score) {
+          // 점수가 있으면 "완료(점수)" 형태로 표시
+          content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 완료(${score}점)\n`;
+        } else if (allStudentsIncomplete) {
+          content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 제출기간 아님.\n`;
+        } else if (isCompleted) {
+          content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 완료\n`;
+        } else {
+          content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 미완료\n`;
         }
+      }
+      
+      // 보듬교육의 시선
+      for (let i = 1; i <= 4; i++) {
+        const isCompleted = progressData[student]?.[`vision${i}`] || false;
+        const roundText = headerTexts.vision?.[i] || `${i}회`;
+        const visionTitle = headerTexts.visionTitle || '보듬교육의 시선';
         
+        // 반 전체 학생이 모두 미완료인지 확인
+        const allStudentsIncomplete = students.every(s => !progressData[s]?.[`vision${i}`]);
+        
+        // 보듬교육의 시선은 👁️ 아이콘 사용
+        const visionIcon = '👁️';
+        if (allStudentsIncomplete) {
+          content += `${visionIcon} ${visionTitle} ${roundText}: 제출기간 아님.\n`;
+        } else if (isCompleted) {
+          content += `${visionIcon} ${visionTitle} ${roundText}: 완료\n`;
+        } else {
+          content += `${visionIcon} ${visionTitle} ${roundText}: 미완료\n`;
+        }
+      }
+      
       // 어휘워크북
       const isVocabularyCompleted = progressData[student]?.vocabulary || false;
       const allStudentsIncompleteVocabulary = students.every(s => !progressData[s]?.vocabulary);
       
+      // 어휘워크북은 📚 아이콘 사용
+      const vocabularyIcon = '📚';
       if (allStudentsIncompleteVocabulary) {
-        content += `✅ 어휘워크북: 제출기간 아님.\n`;
+        content += `${vocabularyIcon} 어휘워크북: 제출기간 아님.\n`;
       } else if (isVocabularyCompleted) {
-        content += `✅ 어휘워크북: 완료\n`;
+        content += `${vocabularyIcon} 어휘워크북: 완료\n`;
       } else {
-        content += `✅ 어휘워크북: 미완료\n`;
+        content += `${vocabularyIcon} 어휘워크북: 미완료\n`;
       }
-
+  
       // 발송할 전화번호 목록 (학생 필수, 학부모 선택)
       const phonesToSend = [{ phone: studentPhone, type: '학생' }];
       if (parentPhone && phoneRegex.test(parentPhone)) {
         phonesToSend.push({ phone: parentPhone, type: '학부모' });
       }
-
-      // 각 전화번호로 발송
-      for (const { phone: phoneNumber, type } of phonesToSend) {
+  
+      messages.push({
+        student,
+        phones: phonesToSend,
+        content,
+      });
+    }
+    
+    if (messages.length === 0) {
+      alert('전송할 수 있는 카카오톡 메시지가 없습니다. 전화번호와 데이터를 다시 확인해주세요.');
+      return;
+    }
+  
+    setKakaoPreview({
+      templateCode,
+      messages,
+    });
+  
+    alert('카카오톡 전송 미리보기가 아래에 준비되었습니다. 내용을 확인한 후 "최종 카카오톡 발송하기" 버튼을 눌러주세요.');
+  };
+  
+  // 카카오톡 실제 전송 - 미리보기 확정 후 실행
+  const handleKakaoSendConfirm = async () => {
+    console.log('🔵 handleKakaoSendConfirm 함수 호출됨');
+    console.log('🔵 kakaoPreview 상태:', kakaoPreview);
+    
+    if (!kakaoPreview || !kakaoPreview.messages || kakaoPreview.messages.length === 0) {
+      alert('먼저 "카카오톡 전송 미리보기" 버튼을 눌러 미리보기를 생성해주세요.');
+      return;
+    }
+  
+    // 미리보기에서 저장된 템플릿 코드와 메시지 사용 (다시 입력받지 않음)
+    // ⚠️ 여기서는 prompt를 호출하지 않습니다!
+    const { templateCode, messages } = kakaoPreview;
+    
+    if (!templateCode) {
+      alert('템플릿 코드가 없습니다. 미리보기를 다시 생성해주세요.');
+      return;
+    }
+    
+    console.log('✅ 최종 발송 시작 - 템플릿 코드:', templateCode, '메시지 개수:', messages.length);
+    console.log('✅ prompt를 호출하지 않습니다. 저장된 템플릿 코드를 사용합니다.');
+    const title = getTitle();
+    let successCount = 0;
+    let failCount = 0;
+  
+    for (const message of messages) {
+      const { student, phones, content } = message;
+      const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
+      
+      for (const { phone, type } of phones) {
+        const phoneNumber = phone;
+        if (!phoneNumber || !phoneRegex.test(phoneNumber)) {
+          console.warn(`${student} ${type} 전화번호 형식 오류로 발송에서 제외됩니다.`);
+          failCount++;
+          continue;
+        }
+  
         try {
-          // 솔라피 API 호출
+          // API URL 설정 (로컬 개발 환경에서는 프로덕션 URL 사용)
           const apiUrl = import.meta.env.PROD 
             ? `${window.location.origin}/api/send-kakao`
-            : '/api/send-kakao';
+            : import.meta.env.VITE_API_URL || 'https://bodeumshjpocketbook.vercel.app/api/send-kakao';
           
           const response = await fetch(apiUrl, {
             method: 'POST',
@@ -1035,7 +1173,41 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
             }),
           });
           
-          const result = await response.json();
+          // 응답 본문 읽기 (상태 코드와 관계없이)
+          const responseText = await response.text();
+          
+          // 응답 상태 확인
+          if (!response.ok) {
+            // 오류 응답도 JSON일 수 있으므로 파싱 시도
+            let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            if (responseText) {
+              try {
+                const errorResult = JSON.parse(responseText);
+                errorMessage = errorResult.error || errorResult.message || errorMessage;
+                if (errorResult.details) {
+                  errorMessage += ` (${errorResult.details})`;
+                }
+              } catch (e) {
+                // JSON이 아니면 텍스트 그대로 사용
+                errorMessage = responseText || errorMessage;
+              }
+            }
+            throw new Error(errorMessage);
+          }
+          
+          // 응답 본문이 비어있는지 확인
+          if (!responseText || responseText.trim() === '') {
+            throw new Error('서버 응답이 비어있습니다.');
+          }
+          
+          // JSON 파싱 시도
+          let result;
+          try {
+            result = JSON.parse(responseText);
+          } catch (parseError) {
+            console.error('JSON 파싱 실패. 응답 내용:', responseText);
+            throw new Error(`서버 응답 형식 오류: ${parseError.message}`);
+          }
           
           if (result.success) {
             successCount++;
@@ -1046,17 +1218,21 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
         } catch (error) {
           console.error(`${student} 학생 ${type} 카카오톡 전송 실패:`, error);
           failCount++;
-          alert(`${student} 학생 ${type} 발송 실패: ${error.message || '알 수 없는 오류'}`);
+          const errorMessage = error.message || '알 수 없는 오류';
+          alert(`${student} 학생 ${type} 발송 실패: ${errorMessage}`);
         }
       }
     }
     
-    // 결과 알림
     if (successCount > 0) {
-      alert(`✅ ${successCount}명에게 카카오톡 메시지가 성공적으로 발송되었습니다!${failCount > 0 ? `\n❌ ${failCount}명 발송 실패` : ''}`);
+      alert(`✅ ${successCount}건의 카카오톡 메시지가 성공적으로 발송되었습니다!${failCount > 0 ? `\n❌ ${failCount}건 발송 실패` : ''}`);
+      // 발송 성공 후 미리보기 상태 유지 (같은 내용으로 다시 발송 가능)
     } else if (failCount > 0) {
-      alert(`❌ 모든 학생 발송 실패 (${failCount}명)`);
+      alert(`❌ 모든 카카오톡 발송 실패 (${failCount}건)`);
     }
+    
+    // 템플릿 코드는 kakaoPreview에서 가져온 것을 사용하므로 다시 물어보지 않음
+    console.log('카카오톡 발송 완료. 사용된 템플릿 코드:', templateCode);
   };
   
   // 제목 생성
@@ -1125,11 +1301,46 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                   )}
                   <button className="kakao-btn" onClick={handleKakaoSend}>
                     <span className="kakao-icon">💬</span>
-                    카카오톡 전송
+                    카카오톡 전송 미리보기
                   </button>
                 </div>
               </div>
               
+              {kakaoPreview && kakaoPreview.messages && kakaoPreview.messages.length > 0 && (
+                <div className="kakao-preview-panel">
+                  <h4>카카오톡 전송 미리보기</h4>
+                  <p className="kakao-preview-subtitle">
+                    템플릿 코드: <span className="kakao-preview-code">{kakaoPreview.templateCode}</span>
+                  </p>
+                  <div className="kakao-preview-list">
+                    {kakaoPreview.messages.map((msg) => (
+                      <div key={msg.student} className="kakao-preview-item">
+                        <div className="kakao-preview-item-header">
+                          <span className="kakao-preview-student">👤 {msg.student}</span>
+                          <span className="kakao-preview-phones">
+                            {msg.phones.map(({ phone, type }, idx) => (
+                              <span key={`${msg.student}-${type}-${idx}`}>
+                                {idx > 0 && ' / '}
+                                {type}: {formatPhoneNumber(phone)}
+                              </span>
+                            ))}
+                          </span>
+                        </div>
+                        <pre className="kakao-preview-content">
+{msg.content}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                  <button 
+                    className="kakao-btn kakao-send-final-btn" 
+                    onClick={handleKakaoSendConfirm}
+                  >
+                    ✅ 최종 카카오톡 발송하기
+                  </button>
+                </div>
+              )}
+
               <div className="progress-table-wrapper">
                 <table className="progress-table">
                   <thead>
