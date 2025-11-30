@@ -442,14 +442,44 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
               // 입력 중이거나 로컬에 전화번호가 있으면 로컬 값 유지 (입력 중인 전화번호 보호)
               if (phoneInputInProgressRef.current.has(student) || phoneNumbers[student]) {
                 // 입력 중이거나 로컬에 전화번호가 있으면 로컬 값 유지 (입력 중인 전화번호 보호)
-                filteredPhoneNumbers[student] = phoneNumbers[student];
+                const localPhone = phoneNumbers[student];
+                if (localPhone && typeof localPhone === 'object') {
+                  // undefined 값 제거
+                  const cleaned = {};
+                  if (localPhone.student !== undefined && localPhone.student !== null && localPhone.student !== '') {
+                    cleaned.student = localPhone.student;
+                  }
+                  if (localPhone.parent !== undefined && localPhone.parent !== null && localPhone.parent !== '') {
+                    cleaned.parent = localPhone.parent;
+                  }
+                  if (Object.keys(cleaned).length > 0) {
+                    filteredPhoneNumbers[student] = cleaned;
+                  }
+                } else if (localPhone && typeof localPhone === 'string' && localPhone.trim() !== '') {
+                  filteredPhoneNumbers[student] = localPhone;
+                }
               } else if (data.phoneNumbers && data.phoneNumbers[student]) {
                 // 로컬에 없을 때만 Firestore 데이터 사용
                 const phoneData = data.phoneNumbers[student];
-                // 기존 형식 (문자열)이면 student로 변환
-                filteredPhoneNumbers[student] = typeof phoneData === 'string' 
-                  ? { student: phoneData }
-                  : phoneData;
+                
+                // undefined 값 제거 및 정리
+                if (typeof phoneData === 'string') {
+                  // 기존 형식 (문자열)이면 student로 변환 (빈 문자열이 아닐 때만)
+                  if (phoneData.trim() !== '') {
+                    filteredPhoneNumbers[student] = { student: phoneData };
+                  }
+                } else if (typeof phoneData === 'object' && phoneData !== null) {
+                  const cleaned = {};
+                  if (phoneData.student !== undefined && phoneData.student !== null && phoneData.student !== '') {
+                    cleaned.student = phoneData.student;
+                  }
+                  if (phoneData.parent !== undefined && phoneData.parent !== null && phoneData.parent !== '') {
+                    cleaned.parent = phoneData.parent;
+                  }
+                  if (Object.keys(cleaned).length > 0) {
+                    filteredPhoneNumbers[student] = cleaned;
+                  }
+                }
               }
             });
             
@@ -588,11 +618,44 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     }
     
     try {
+      // phoneNumbers에서 undefined 값 제거 및 정리
+      const phoneNumbersToSave = phoneNumbersData !== null ? phoneNumbersData : phoneNumbers;
+      const cleanedPhoneNumbers = {};
+      
+      if (phoneNumbersToSave && typeof phoneNumbersToSave === 'object') {
+        Object.keys(phoneNumbersToSave).forEach(student => {
+          const studentPhone = phoneNumbersToSave[student];
+          
+          // studentPhone이 undefined이거나 null이면 스킵
+          if (!studentPhone) return;
+          
+          // 객체 형태인 경우 (student, parent)
+          if (typeof studentPhone === 'object') {
+            const cleaned = {};
+            if (studentPhone.student !== undefined && studentPhone.student !== null && studentPhone.student !== '') {
+              cleaned.student = studentPhone.student;
+            }
+            if (studentPhone.parent !== undefined && studentPhone.parent !== null && studentPhone.parent !== '') {
+              cleaned.parent = studentPhone.parent;
+            }
+            
+            // student와 parent 중 하나라도 값이 있으면 포함
+            if (Object.keys(cleaned).length > 0) {
+              cleanedPhoneNumbers[student] = cleaned;
+            }
+          } 
+          // 문자열 형태인 경우 (하위 호환성)
+          else if (typeof studentPhone === 'string' && studentPhone.trim() !== '') {
+            cleanedPhoneNumbers[student] = studentPhone;
+          }
+        });
+      }
+      
       const dataToSave = {
         students: studentsData,
         progressData: progressData,
         scores: scoresData,
-        phoneNumbers: phoneNumbersData !== null ? phoneNumbersData : phoneNumbers, // 전화번호도 함께 저장
+        phoneNumbers: cleanedPhoneNumbers, // 정리된 전화번호만 저장
         lastUpdated: new Date().toISOString(),
       };
       
@@ -881,19 +944,44 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   // 전화번호 변경 핸들러 (학생/학부모 구분)
   const handlePhoneNumberChange = (student, phoneNumber, type = 'student') => {
     const formatted = formatPhoneNumber(phoneNumber);
-    const cleanedPhone = formatted.replace(/-/g, '');
+    const cleanedPhone = formatted.replace(/-/g, '').trim();
     
     // 입력 중 플래그 설정
     phoneInputInProgressRef.current.add(student);
     
     // 즉시 상태 업데이트
-    setPhoneNumbers(prev => ({
-      ...prev,
-      [student]: {
-        ...(prev[student] || {}),
-        [type]: cleanedPhone,
-      },
-    }));
+    setPhoneNumbers(prev => {
+      const currentStudentPhone = prev[student] || {};
+      const updated = {
+        ...prev,
+        [student]: {
+          ...(typeof currentStudentPhone === 'object' ? currentStudentPhone : {}),
+        },
+      };
+      
+      // 빈 전화번호는 객체에서 제거 (undefined로 두지 않음)
+      if (cleanedPhone === '' || cleanedPhone === null) {
+        // 해당 타입의 전화번호 제거
+        if (updated[student] && typeof updated[student] === 'object') {
+          delete updated[student][type];
+          
+          // 모든 전화번호가 비어있으면 해당 학생 객체 삭제
+          if (Object.keys(updated[student]).length === 0) {
+            delete updated[student];
+          }
+        } else {
+          delete updated[student];
+        }
+      } else {
+        // 유효한 전화번호인 경우에만 설정
+        if (!updated[student] || typeof updated[student] !== 'object') {
+          updated[student] = {};
+        }
+        updated[student][type] = cleanedPhone;
+      }
+      
+      return updated;
+    });
     
     // 3초 후 입력 중 플래그 제거 (입력이 끝났다고 가정)
     setTimeout(() => {
