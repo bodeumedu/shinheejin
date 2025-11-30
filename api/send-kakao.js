@@ -68,13 +68,13 @@ export default async function handler(req, res) {
 
     // 솔라피 REST API로 알림톡 발송
     // 솔라피 API 엔드포인트: https://api.solapi.com/messages/v4/send
-    // 오류 메시지에 따라 bearer 인증 사용
+    // 솔라피는 API Key와 Secret을 Basic 인증으로 사용
     const authString = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
     
     const solapiResponse = await fetch('https://api.solapi.com/messages/v4/send', {
       method: 'POST',
       headers: {
-        'Authorization': `bearer ${authString}`,
+        'Authorization': `Basic ${authString}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

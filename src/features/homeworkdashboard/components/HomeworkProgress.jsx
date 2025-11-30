@@ -1139,6 +1139,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     const title = getTitle();
     let successCount = 0;
     let failCount = 0;
+    const errorMessages = []; // 오류 메시지 수집용
   
     for (const message of messages) {
       const { student, phones, content } = message;
@@ -1219,15 +1220,24 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
           console.error(`${student} 학생 ${type} 카카오톡 전송 실패:`, error);
           failCount++;
           const errorMessage = error.message || '알 수 없는 오류';
-          alert(`${student} 학생 ${type} 발송 실패: ${errorMessage}`);
+          // 오류 메시지 수집 (중복 제거)
+          if (!errorMessages.includes(errorMessage)) {
+            errorMessages.push(errorMessage);
+          }
         }
       }
+    }
+    
+    // 모든 발송 시도 후 오류 메시지 한 번만 표시
+    if (errorMessages.length > 0) {
+      alert(`❌ 카카오톡 발송 오류:\n${errorMessages.join('\n')}`);
     }
     
     if (successCount > 0) {
       alert(`✅ ${successCount}건의 카카오톡 메시지가 성공적으로 발송되었습니다!${failCount > 0 ? `\n❌ ${failCount}건 발송 실패` : ''}`);
       // 발송 성공 후 미리보기 상태 유지 (같은 내용으로 다시 발송 가능)
-    } else if (failCount > 0) {
+    } else if (failCount > 0 && errorMessages.length === 0) {
+      // 오류 메시지가 없으면 일반 실패 메시지 표시
       alert(`❌ 모든 카카오톡 발송 실패 (${failCount}건)`);
     }
     
