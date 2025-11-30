@@ -71,6 +71,30 @@ export default async function handler(req, res) {
     // 솔라피는 user 방식 인증 사용 (API Key:Secret을 Base64 인코딩)
     const authString = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
     
+    // 전화번호를 memberId 형식으로 변환 (14자리)
+    // 한국 전화번호: 010-1234-5678 → 01012345678 → 821012345678 → 82101234567800 (14자리)
+    const cleanPhoneNumber = phoneNumber.replace(/[^0-9]/g, ''); // 숫자만 추출
+    let memberId;
+    
+    if (cleanPhoneNumber.length === 11 && cleanPhoneNumber.startsWith('010')) {
+      // 010으로 시작하는 11자리 번호: 01012345678 → 82101234567800
+      memberId = `82${cleanPhoneNumber.substring(1)}00`; // 앞의 0 제거, 82 추가, 끝에 00 추가
+    } else if (cleanPhoneNumber.length === 10) {
+      // 10자리 번호: 1012345678 → 82101234567800
+      memberId = `8210${cleanPhoneNumber}00`;
+    } else if (cleanPhoneNumber.startsWith('82')) {
+      // 이미 국가코드가 포함된 경우: 821012345678 → 82101234567800
+      memberId = cleanPhoneNumber.padEnd(14, '0'); // 14자리로 맞춤
+    } else {
+      // 다른 형식: 숫자만 추출하여 14자리로 맞춤
+      memberId = cleanPhoneNumber.padEnd(14, '0').substring(0, 14);
+    }
+    
+    // memberId가 14자리인지 확인
+    if (memberId.length !== 14) {
+      throw new Error(`전화번호 변환 오류: memberId는 14자리여야 합니다. (현재: ${memberId.length}자리, 전화번호: ${phoneNumber})`);
+    }
+    
     const solapiResponse = await fetch('https://api.solapi.com/messages/v4/send', {
       method: 'POST',
       headers: {
@@ -79,7 +103,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         message: {
-          to: phoneNumber,
+          to: memberId, // memberId 형식으로 전송
           from: senderNumber || '01012345678',
           kakaoOptions: {
             pfId: pfId,
