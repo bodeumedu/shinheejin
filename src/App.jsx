@@ -12,6 +12,8 @@ import ParaphrasingInput from './features/paraphrasing/components/ParaphrasingIn
 import Sum15Input from './features/sum15/components/Sum15Input'
 import Sum15Viewer from './features/sum15/components/Sum15Viewer'
 import Sum40Input from './features/sum40/components/Sum40Input'
+import KoreanSummaryInput from './features/korean-summary/components/KoreanSummaryInput'
+import KoreanSummaryViewer from './features/korean-summary/components/KoreanSummaryViewer'
 import KeyInput from './features/key/components/KeyInput'
 import CsatClozeInput from './features/csat-cloze/components/CsatClozeInput'
 import ThirdWordInput from './features/third-word/components/ThirdWordInput'
@@ -22,6 +24,7 @@ import ClinicLog from './features/clinic-log/components/ClinicLog'
 import { exportToPdf } from './features/pocketbook/utils/pdfExporter'
 import { exportBlankToPdf } from './features/blank/utils/blankPdfExporter'
 import { exportSum15ToPdf } from './features/sum15/utils/sum15PdfExporter'
+import { exportKoreanSummaryToPdf } from './features/korean-summary/utils/koreanSummaryPdfExporter'
 import './App.css'
 import { analyzeText } from './features/pocketbook/utils/textAnalyzer'
 import { saveTextResult, generateTextId, saveSourceInfo, getSourceDocumentId } from './utils/firestoreUtils'
@@ -55,6 +58,9 @@ function App() {
   const [sum15Data, setSum15Data] = useState(null) // SUM15 결과
   const [showSum15Design, setShowSum15Design] = useState(false) // SUM15 디자인 페이지 표시 여부
   const [sum40Data, setSum40Data] = useState(null) // SUM40 결과
+  const [koreanSummaryData, setKoreanSummaryData] = useState(null) // 요약문 한글 결과
+  const [koreanSummaryProcessedText, setKoreanSummaryProcessedText] = useState('') // 요약문 한글 처리된 텍스트 (수정 가능)
+  const [showKoreanSummaryDesign, setShowKoreanSummaryDesign] = useState(false) // 요약문 한글 디자인 페이지 표시 여부
   const [keyData, setKeyData] = useState(null) // KEY 결과
   const [csatClozeData, setCsatClozeData] = useState(null) // 빈칸 수능문제 결과
   const [thirdWordData, setThirdWordData] = useState(null) // Third Word 결과
@@ -306,6 +312,9 @@ function App() {
     setSum15Data(null)
     setShowSum15Design(false)
     setSum40Data(null)
+    setKoreanSummaryData(null)
+    setKoreanSummaryProcessedText('')
+    setShowKoreanSummaryDesign(false)
     setKeyData(null)
     setCsatClozeData(null)
     setThirdWordData(null)
@@ -334,6 +343,9 @@ function App() {
     setSum15Data(null)
     setShowSum15Design(false)
     setSum40Data(null)
+    setKoreanSummaryData(null)
+    setKoreanSummaryProcessedText('')
+    setShowKoreanSummaryDesign(false)
     setKeyData(null)
     setCsatClozeData(null)
     setThirdWordData(null)
@@ -568,6 +580,10 @@ function App() {
     setMode('sum40')
   }
   
+  const handleSelectKoreanSummary = () => {
+    setMode('korean-summary')
+  }
+  
   const handleSelectKey = () => {
     setMode('key')
   }
@@ -614,6 +630,11 @@ function App() {
   
   const handleSum40Process = (data) => {
     setSum40Data(data)
+  }
+  
+  const handleKoreanSummaryProcess = (data) => {
+    setKoreanSummaryData(data)
+    setKoreanSummaryProcessedText(data.processed || data.summary || '')
   }
   
   const handleKeyProcess = (data) => {
@@ -670,6 +691,7 @@ function App() {
           onSelectParaphrasing={handleSelectParaphrasing}
           onSelectSum15={handleSelectSum15}
           onSelectSum40={handleSelectSum40}
+          onSelectKoreanSummary={handleSelectKoreanSummary}
           onSelectKey={handleSelectKey}
           onSelectCsatCloze={handleSelectCsatCloze}
           onSelectThirdWord={handleSelectThirdWord}
@@ -1870,7 +1892,8 @@ function App() {
             <div className="result-actions">
               <button 
                 onClick={() => { 
-                  setSum40Data(null); 
+                  setSum40Data(null)
+    setKoreanSummaryData(null); 
                   setText(''); 
                 }} 
                 className="btn btn-secondary"
@@ -1945,6 +1968,183 @@ function App() {
                     />
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 요약문 한글 모드
+  if (mode === 'korean-summary') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>요약문 한글</h1>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!koreanSummaryData ? (
+          <KoreanSummaryInput
+            text={text}
+            setText={setText}
+            onProcess={handleKoreanSummaryProcess}
+            apiKey={apiKey}
+          />
+        ) : showKoreanSummaryDesign ? (
+          <div className="result-container">
+            <div className="result-actions">
+              <button 
+                onClick={() => setShowKoreanSummaryDesign(false)} 
+                className="btn btn-secondary"
+              >
+                텍스트 모드로 돌아가기
+              </button>
+              <button 
+                onClick={async () => {
+                  try {
+                    await exportKoreanSummaryToPdf()
+                  } catch (error) {
+                    alert('PDF 저장 중 오류가 발생했습니다: ' + error.message)
+                  }
+                }} 
+                className="btn btn-primary"
+              >
+                PDF 저장하기
+              </button>
+              <button 
+                onClick={() => { 
+                  setKoreanSummaryData(null); 
+                  setKoreanSummaryProcessedText('')
+                  setShowKoreanSummaryDesign(false)
+                  setText(''); 
+                }} 
+                className="btn btn-secondary"
+              >
+                모두 삭제하고 처음부터
+              </button>
+            </div>
+            
+            {/* A4 페이지 형식으로 문제 출력 */}
+            <KoreanSummaryViewer data={koreanSummaryData} processedText={koreanSummaryProcessedText} />
+          </div>
+        ) : (
+          <div className="result-container">
+            <div className="result-actions">
+              <button 
+                onClick={() => { 
+                  setKoreanSummaryData(null); 
+                  setKoreanSummaryProcessedText('')
+                  setShowKoreanSummaryDesign(false)
+                  setText(''); 
+                }} 
+                className="btn btn-secondary"
+              >
+                모두 삭제하고 처음부터
+              </button>
+              <button 
+                onClick={() => {
+                  let fullText = koreanSummaryProcessedText || koreanSummaryData.summary || koreanSummaryData.processed
+                  navigator.clipboard.writeText(fullText)
+                  alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                }} 
+                className="btn btn-primary"
+              >
+                결과 복사하기
+              </button>
+            </div>
+            <div className="multiple-results">
+              <div style={{ marginBottom: '20px', color: '#6c757d' }}>
+                처리가 완료되었습니다. 아래 결과를 확인하세요.
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '20px',
+                marginBottom: '20px'
+              }}>
+                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
+                  <div style={{ 
+                    padding: '12px', 
+                    background: 'white', 
+                    borderRadius: '4px',
+                    border: '1px solid #e0e0e0',
+                    maxHeight: '500px',
+                    overflowY: 'auto'
+                  }}>
+                    <pre style={{ 
+                      margin: 0, 
+                      color: '#2c3e50', 
+                      whiteSpace: 'pre-wrap',
+                      fontFamily: 'inherit',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6'
+                    }}>
+                      {koreanSummaryData.original}
+                    </pre>
+                  </div>
+                </div>
+                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', textAlign: 'right' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트 (수정 가능)</h4>
+                  <textarea
+                    value={koreanSummaryProcessedText}
+                    onChange={(e) => setKoreanSummaryProcessedText(e.target.value)}
+                    style={{ 
+                      width: '100%',
+                      minHeight: '400px',
+                      padding: '12px', 
+                      background: 'white', 
+                      borderRadius: '4px',
+                      border: '1px solid #e0e0e0',
+                      fontFamily: 'inherit',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
+                      resize: 'vertical',
+                      boxSizing: 'border-box',
+                      textAlign: 'left'
+                    }}
+                  />
+                </div>
+              </div>
+              
+              {/* 디자인 추가 버튼 */}
+              <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                <button 
+                  onClick={() => setShowKoreanSummaryDesign(true)}
+                  className="btn btn-primary"
+                  style={{ 
+                    fontSize: '1.1rem', 
+                    padding: '12px 30px',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: 'white',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.transform = 'translateY(-2px)'
+                    e.target.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.transform = 'translateY(0)'
+                    e.target.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)'
+                  }}
+                >
+                  디자인 추가
+                </button>
               </div>
             </div>
           </div>

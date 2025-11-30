@@ -1,6 +1,6 @@
 import './MainMenu.css'
 
-function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onSelectComplexDescription, onSelectParaphrasing, onSelectSum15, onSelectSum40, onSelectKey, onSelectCsatCloze, onSelectThirdWord, onSelectOcr, onSelectEnglishHomeworkDashboard, onSelectMathHomeworkDashboard, onSelectClinicLog }) {
+function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onSelectComplexDescription, onSelectParaphrasing, onSelectSum15, onSelectSum40, onSelectKoreanSummary, onSelectKey, onSelectCsatCloze, onSelectThirdWord, onSelectOcr, onSelectEnglishHomeworkDashboard, onSelectMathHomeworkDashboard, onSelectClinicLog }) {
   return (
     <div className="main-menu">
       <div className="main-menu-container">
@@ -85,6 +85,13 @@ function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onS
                 className="main-menu-btn main-menu-btn-septenary"
               >
                 SUM40
+              </button>
+              
+              <button 
+                onClick={onSelectKoreanSummary} 
+                className="main-menu-btn main-menu-btn-septenary"
+              >
+                요약문 한글
               </button>
 
               <button 
