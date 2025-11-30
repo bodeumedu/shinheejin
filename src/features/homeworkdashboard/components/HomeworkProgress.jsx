@@ -658,7 +658,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     }
     
     try {
-      // phoneNumbers에서 undefined 값 제거 및 정리
+      // phoneNumbers에서 undefined 값 완전히 제거 및 정리
       const phoneNumbersToSave = phoneNumbersData !== null ? phoneNumbersData : phoneNumbers;
       const cleanedPhoneNumbers = {};
       
@@ -667,37 +667,74 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
           const studentPhone = phoneNumbersToSave[student];
           
           // studentPhone이 undefined이거나 null이면 스킵
-          if (!studentPhone) return;
+          if (studentPhone === undefined || studentPhone === null) return;
           
           // 객체 형태인 경우 (student, parent)
-          if (typeof studentPhone === 'object') {
+          if (typeof studentPhone === 'object' && !Array.isArray(studentPhone)) {
             const cleaned = {};
+            
+            // student 필드 처리
             if (studentPhone.student !== undefined && studentPhone.student !== null && studentPhone.student !== '') {
-              cleaned.student = studentPhone.student;
-            }
-            if (studentPhone.parent !== undefined && studentPhone.parent !== null && studentPhone.parent !== '') {
-              cleaned.parent = studentPhone.parent;
+              const studentValue = String(studentPhone.student).trim();
+              if (studentValue !== '') {
+                cleaned.student = studentValue;
+              }
             }
             
-            // student와 parent 중 하나라도 값이 있으면 포함
+            // parent 필드 처리
+            if (studentPhone.parent !== undefined && studentPhone.parent !== null && studentPhone.parent !== '') {
+              const parentValue = String(studentPhone.parent).trim();
+              if (parentValue !== '') {
+                cleaned.parent = parentValue;
+              }
+            }
+            
+            // student와 parent 중 하나라도 유효한 값이 있으면 포함
             if (Object.keys(cleaned).length > 0) {
               cleanedPhoneNumbers[student] = cleaned;
             }
           } 
           // 문자열 형태인 경우 (하위 호환성)
           else if (typeof studentPhone === 'string' && studentPhone.trim() !== '') {
-            cleanedPhoneNumbers[student] = studentPhone;
+            cleanedPhoneNumbers[student] = studentPhone.trim();
           }
         });
       }
+      
+      // 최종적으로 JSON 직렬화/역직렬화로 undefined 완전히 제거
+      const finalPhoneNumbers = JSON.parse(JSON.stringify(cleanedPhoneNumbers));
       
       const dataToSave = {
         students: studentsData,
         progressData: progressData,
         scores: scoresData,
-        phoneNumbers: cleanedPhoneNumbers, // 정리된 전화번호만 저장
+        phoneNumbers: finalPhoneNumbers, // 정리되고 undefined가 완전히 제거된 전화번호 저장
         lastUpdated: new Date().toISOString(),
       };
+      
+      // 저장 전 최종 검증: undefined 값이 있는지 확인
+      const hasUndefined = JSON.stringify(dataToSave).includes('undefined');
+      if (hasUndefined) {
+        console.error('⚠️ 저장할 데이터에 undefined 값이 포함되어 있습니다:', dataToSave);
+        // JSON 직렬화/역직렬화로 undefined 제거
+        const sanitizedData = JSON.parse(JSON.stringify(dataToSave, (key, value) => {
+          return value === undefined ? null : value;
+        }));
+        // null도 제거
+        Object.keys(sanitizedData.phoneNumbers || {}).forEach(student => {
+          if (sanitizedData.phoneNumbers[student]) {
+            Object.keys(sanitizedData.phoneNumbers[student]).forEach(type => {
+              if (sanitizedData.phoneNumbers[student][type] === null) {
+                delete sanitizedData.phoneNumbers[student][type];
+              }
+            });
+            if (Object.keys(sanitizedData.phoneNumbers[student]).length === 0) {
+              delete sanitizedData.phoneNumbers[student];
+            }
+          }
+        });
+        Object.assign(dataToSave, sanitizedData);
+      }
       
       // headerTexts가 제공되면 포함
       if (headerTextsData !== null) {
