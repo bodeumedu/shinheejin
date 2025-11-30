@@ -1150,12 +1150,13 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
         
         // 올림포스2는 📖 아이콘 사용
         const icon = '📖';
-        if (allStudentsIncomplete) {
-          content += `${icon} ${mainTitle} ${chapterText}: 제출기간 아님.\n`;
-        } else if (isCompleted) {
-          content += `${icon} ${mainTitle} ${chapterText}: 완료\n`;
-        } else {
-          content += `${icon} ${mainTitle} ${chapterText}: 미완료\n`;
+        // 제출기간 아님(모든 학생이 미완료)인 경우 메시지에서 제외
+        if (!allStudentsIncomplete) {
+          if (isCompleted) {
+            content += `${icon} ${mainTitle} ${chapterText}: 완료\n`;
+          } else {
+            content += `${icon} ${mainTitle} ${chapterText}: 미완료\n`;
+          }
         }
       });
       
@@ -1171,15 +1172,16 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
         
         // 보듬내신모의고사는 📝 아이콘 사용
         const bodeumIcon = '📝';
-        if (score) {
-          // 점수가 있으면 "완료(점수)" 형태로 표시
-          content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 완료(${score}점)\n`;
-        } else if (allStudentsIncomplete) {
-          content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 제출기간 아님.\n`;
-        } else if (isCompleted) {
-          content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 완료\n`;
-        } else {
-          content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 미완료\n`;
+        // 제출기간 아님(모든 학생이 미완료)인 경우 메시지에서 제외
+        if (!allStudentsIncomplete) {
+          if (score) {
+            // 점수가 있으면 "완료(점수)" 형태로 표시
+            content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 완료(${score}점)\n`;
+          } else if (isCompleted) {
+            content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 완료\n`;
+          } else {
+            content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 미완료\n`;
+          }
         }
       }
       
@@ -1194,12 +1196,13 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
         
         // 보듬교육의 시선은 👁️ 아이콘 사용
         const visionIcon = '👁️';
-        if (allStudentsIncomplete) {
-          content += `${visionIcon} ${visionTitle} ${roundText}: 제출기간 아님.\n`;
-        } else if (isCompleted) {
-          content += `${visionIcon} ${visionTitle} ${roundText}: 완료\n`;
-        } else {
-          content += `${visionIcon} ${visionTitle} ${roundText}: 미완료\n`;
+        // 제출기간 아님(모든 학생이 미완료)인 경우 메시지에서 제외
+        if (!allStudentsIncomplete) {
+          if (isCompleted) {
+            content += `${visionIcon} ${visionTitle} ${roundText}: 완료\n`;
+          } else {
+            content += `${visionIcon} ${visionTitle} ${roundText}: 미완료\n`;
+          }
         }
       }
       
@@ -1209,12 +1212,13 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       
       // 어휘워크북은 📚 아이콘 사용
       const vocabularyIcon = '📚';
-      if (allStudentsIncompleteVocabulary) {
-        content += `${vocabularyIcon} 어휘워크북: 제출기간 아님.\n`;
-      } else if (isVocabularyCompleted) {
-        content += `${vocabularyIcon} 어휘워크북: 완료\n`;
-      } else {
-        content += `${vocabularyIcon} 어휘워크북: 미완료\n`;
+      // 제출기간 아님(모든 학생이 미완료)인 경우 메시지에서 제외
+      if (!allStudentsIncompleteVocabulary) {
+        if (isVocabularyCompleted) {
+          content += `${vocabularyIcon} 어휘워크북: 완료\n`;
+        } else {
+          content += `${vocabularyIcon} 어휘워크북: 미완료\n`;
+        }
       }
   
       // 발송할 전화번호 목록 (학생 필수, 학부모 선택)
