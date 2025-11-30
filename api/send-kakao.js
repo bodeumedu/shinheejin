@@ -91,105 +91,39 @@ export default async function handler(req, res) {
       throw new Error(`유효하지 않은 전화번호입니다: ${phoneNumber} (길이: ${cleanPhoneNumber.length})`);
     }
     
-    // 한국 전화번호를 14자리 memberId 형식으로 변환
-    // Solapi 카카오톡 API는 14자리 memberId를 요구
-    // 형식: 8210XXXXXXXX00 (국가코드 82 + 전화번호 앞 0 제거 + 00)
-    let toPhoneNumber;
-    
-    console.log('🔵 [2단계] 전화번호 변환 시작:', {
+    // Solapi 공식 예제에 따르면 일반 전화번호 형식만 사용하면 됨
+    // 14자리 memberId 변환 불필요 - Solapi가 내부적으로 처리
+    console.log('🔵 [2단계] 전화번호 검증 완료 (변환 불필요)', {
       정리된번호: cleanPhoneNumber,
-      길이: cleanPhoneNumber.length,
-      시작문자: cleanPhoneNumber.substring(0, 3)
+      길이: cleanPhoneNumber.length
     });
     
-    if (cleanPhoneNumber.length === 11 && cleanPhoneNumber.startsWith('010')) {
-      // 010-1234-5678 형식: 01012345678 → 82101234567800
-      const withoutLeadingZero = cleanPhoneNumber.substring(1); // 1012345678
-      toPhoneNumber = `82${withoutLeadingZero}00`; // 82101234567800
-      console.log('🔵 변환 방식: 11자리 010 시작', { withoutLeadingZero, toPhoneNumber });
-    } else if (cleanPhoneNumber.length === 10 && cleanPhoneNumber.startsWith('10')) {
-      // 1012345678 형식: 82101234567800
-      toPhoneNumber = `82${cleanPhoneNumber}00`;
-      console.log('🔵 변환 방식: 10자리 10 시작', { toPhoneNumber });
-    } else if (cleanPhoneNumber.startsWith('82')) {
-      // 이미 국가코드 포함: 821012345678 → 82101234567800
-      if (cleanPhoneNumber.length === 12) {
-        toPhoneNumber = `${cleanPhoneNumber}00`;
-        console.log('🔵 변환 방식: 12자리 82 시작', { toPhoneNumber });
-      } else if (cleanPhoneNumber.length < 14) {
-        toPhoneNumber = cleanPhoneNumber.padEnd(14, '0');
-        console.log('🔵 변환 방식: 82 시작, 14자리 미만, 0으로 채움', { toPhoneNumber });
-      } else {
-        toPhoneNumber = cleanPhoneNumber.substring(0, 14);
-        console.log('🔵 변환 방식: 82 시작, 14자리 이상, 앞 14자리만', { toPhoneNumber });
-      }
-    } else {
-      // 기타: 숫자만 있고 국가코드 없음
-      const baseNumber = cleanPhoneNumber.startsWith('010') 
-        ? cleanPhoneNumber.substring(1) 
-        : cleanPhoneNumber;
-      toPhoneNumber = `82${baseNumber}00`.substring(0, 14).padEnd(14, '0');
-      console.log('🔵 변환 방식: 기타 형식', { baseNumber, toPhoneNumber });
-    }
-    
-    // 14자리 검증
-    console.log('🔵 [3단계] 변환 결과 검증:', {
-      변환결과: toPhoneNumber,
-      길이: toPhoneNumber.length,
-      숫자여부: /^\d{14}$/.test(toPhoneNumber)
-    });
-    
-    if (toPhoneNumber.length !== 14) {
-      console.error('❌ 전화번호 변환 실패 - 길이 불일치:', {
-        원본: phoneNumber,
-        정리된: cleanPhoneNumber,
-        변환결과: toPhoneNumber,
-        길이: toPhoneNumber.length,
-        예상길이: 14
-      });
-      throw new Error(`전화번호 변환 실패: 14자리가 아닙니다. (길이: ${toPhoneNumber.length}, 원본: ${phoneNumber}, 변환: ${toPhoneNumber})`);
-    }
-    
-    if (!/^\d{14}$/.test(toPhoneNumber)) {
-      console.error('❌ 전화번호 변환 실패 - 숫자가 아님:', {
-        원본: phoneNumber,
-        정리된: cleanPhoneNumber,
-        변환결과: toPhoneNumber
-      });
-      throw new Error(`전화번호 변환 실패: 숫자만 포함해야 합니다. (원본: ${phoneNumber}, 변환: ${toPhoneNumber})`);
-    }
-    
-    console.log('✅ [4단계] 전화번호 변환 완료:', {
-      원본: phoneNumber,
-      정리된: cleanPhoneNumber,
-      변환결과: toPhoneNumber,
-      길이: toPhoneNumber.length
-    });
-    
-    // Solapi API 요청 본문 생성
-    // 카카오톡 알림톡의 경우:
-    // - to 필드: 일반 전화번호 형식 (예: 01012345678)
-    // - kakaoOptions.memberId: 14자리 memberId 형식 (예: 82101234567800)
+    // Solapi API 요청 본문 생성 (공식 예제 코드 기반)
+    // Solapi 공식 예제에서는:
+    // - to: 일반 전화번호 형식 (예: 01030034420)
+    // - from: 일반 전화번호 형식 (예: 01030034420)
+    // - kakaoOptions에 memberId 필드 없음!
     const requestBody = {
       message: {
         to: cleanPhoneNumber, // 일반 전화번호 형식 (하이픈 제거, 숫자만)
-        from: senderNumber || '01012345678',
+        from: senderNumber || cleanPhoneNumber, // 발신번호 (받는 번호와 동일 또는 설정된 발신번호)
         kakaoOptions: {
           pfId: pfId,
           templateId: templateCode,
-          memberId: toPhoneNumber, // 카카오톡 알림톡용 memberId (14자리 필수)
+          // memberId 필드 제거 (Solapi 공식 예제에는 없음)
           variables: variables || {},
           disableSms: false, // SMS 대체 발송 허용
         },
       },
     };
     
-    console.log('🔵 [최종 요청 본문]', {
+    console.log('🔵 [최종 요청 본문] (Solapi 공식 형식)', {
       to: requestBody.message.to,
       toLength: requestBody.message.to.length,
-      memberId: requestBody.message.kakaoOptions.memberId,
-      memberIdLength: requestBody.message.kakaoOptions.memberId.length,
-      memberIdIs14: requestBody.message.kakaoOptions.memberId.length === 14
+      from: requestBody.message.from,
+      fromLength: requestBody.message.from.length,
+      pfId: requestBody.message.kakaoOptions.pfId,
+      templateId: requestBody.message.kakaoOptions.templateId
     });
     
     console.log('Solapi API 요청 본문:', JSON.stringify(requestBody, null, 2));
