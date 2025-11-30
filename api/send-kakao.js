@@ -154,8 +154,8 @@ export default async function handler(req, res) {
         statusText: solapiResponse.statusText,
         responseBody: result,
         requestBody: requestBody,
-        toPhoneNumber: toPhoneNumber,
-        toPhoneNumberLength: toPhoneNumber.length
+        cleanPhoneNumber: cleanPhoneNumber,
+        cleanPhoneNumberLength: cleanPhoneNumber.length
       });
       
       // 오류 메시지 상세 추출
