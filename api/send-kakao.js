@@ -167,6 +167,7 @@ export default async function handler(req, res) {
     });
     
     // Solapi API 요청 본문 생성
+    // 카카오톡 알림톡의 경우 to 필드와 kakaoOptions.memberId에 모두 14자리 memberId를 설정
     const requestBody = {
       message: {
         to: toPhoneNumber, // 14자리 memberId 형식
@@ -174,7 +175,9 @@ export default async function handler(req, res) {
         kakaoOptions: {
           pfId: pfId,
           templateId: templateCode,
+          memberId: toPhoneNumber, // 카카오톡 알림톡용 memberId (14자리 필수)
           variables: variables || {},
+          disableSms: false, // SMS 대체 발송 허용
         },
       },
     };
