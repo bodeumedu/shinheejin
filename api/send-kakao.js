@@ -72,8 +72,15 @@ export default async function handler(req, res) {
     const authString = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
     
     // 전화번호를 memberId 형식으로 변환 (14자리)
-    // 한국 전화번호: 010-1234-5678 → 01012345678 → 821012345678 → 82101234567800 (14자리)
+    // 한국 전화번호를 14자리 memberId로 변환하는 정확한 방법:
+    // 010-1234-5678 → 01012345678 → 1012345678 (앞의 0 제거) → 821012345678 (국가코드 추가) → 82101234567800 (14자리로 맞춤)
     const cleanPhoneNumber = phoneNumber.replace(/[^0-9]/g, ''); // 숫자만 추출
+    
+    console.log('전화번호 변환 시작:', {
+      원본: phoneNumber,
+      숫자만: cleanPhoneNumber,
+      길이: cleanPhoneNumber.length
+    });
     
     // 전화번호 유효성 검증
     if (!cleanPhoneNumber || cleanPhoneNumber.length < 10) {
@@ -82,54 +89,72 @@ export default async function handler(req, res) {
     
     let memberId;
     
+    // 한국 전화번호를 14자리 memberId로 변환
     if (cleanPhoneNumber.length === 11 && cleanPhoneNumber.startsWith('010')) {
-      // 010으로 시작하는 11자리 번호: 01012345678 → 82101234567800
-      // 앞의 0 제거 후 국가코드 82 추가, 끝에 00 추가하여 14자리로 만듦
+      // 010으로 시작하는 11자리 번호: 01012345678
+      // 1. 앞의 0 제거: 1012345678
+      // 2. 국가코드 82 추가: 821012345678 (12자리)
+      // 3. 끝에 00 추가하여 14자리로: 82101234567800
       const withoutLeadingZero = cleanPhoneNumber.substring(1); // 1012345678
       memberId = `82${withoutLeadingZero}00`; // 82101234567800
     } else if (cleanPhoneNumber.length === 10 && cleanPhoneNumber.startsWith('10')) {
-      // 10으로 시작하는 10자리 번호: 1012345678 → 82101234567800
+      // 10으로 시작하는 10자리 번호: 1012345678
       memberId = `82${cleanPhoneNumber}00`; // 82101234567800
     } else if (cleanPhoneNumber.startsWith('82')) {
-      // 이미 국가코드가 포함된 경우: 821012345678 → 82101234567800
-      const withoutCountryCode = cleanPhoneNumber.substring(2); // 1012345678
-      if (withoutCountryCode.length === 10) {
-        memberId = `82${withoutCountryCode}00`; // 82101234567800
+      // 이미 국가코드가 포함된 경우
+      if (cleanPhoneNumber.length === 12) {
+        // 821012345678 → 82101234567800
+        memberId = `${cleanPhoneNumber}00`;
+      } else if (cleanPhoneNumber.length < 14) {
+        // 14자리 미만이면 0으로 채움
+        memberId = cleanPhoneNumber.padEnd(14, '0');
       } else {
-        memberId = cleanPhoneNumber.padEnd(14, '0').substring(0, 14);
+        // 14자리 이상이면 앞 14자리만 사용
+        memberId = cleanPhoneNumber.substring(0, 14);
       }
-    } else if (cleanPhoneNumber.length === 9) {
-      // 9자리 번호: 123456789 → 82101234567890
-      memberId = `8210${cleanPhoneNumber}0`; // 14자리로 맞춤
     } else {
-      // 다른 형식: 앞에 82를 붙이고 14자리로 맞춤
+      // 기타 형식: 010으로 시작하면 0 제거 후 82 추가
       let baseNumber = cleanPhoneNumber;
+      if (baseNumber.startsWith('010')) {
+        baseNumber = baseNumber.substring(1); // 1012345678
+      }
+      // 국가코드 추가
       if (!baseNumber.startsWith('82')) {
-        // 010으로 시작하면 앞의 0 제거
-        if (baseNumber.startsWith('010')) {
-          baseNumber = baseNumber.substring(1);
-        }
         baseNumber = `82${baseNumber}`;
       }
-      // 14자리로 맞춤 (부족한 부분은 0으로 채움)
-      memberId = baseNumber.padEnd(14, '0').substring(0, 14);
+      // 14자리로 맞춤
+      if (baseNumber.length < 14) {
+        memberId = baseNumber.padEnd(14, '0');
+      } else {
+        memberId = baseNumber.substring(0, 14);
+      }
     }
     
-    // memberId가 정확히 14자리인지 확인
-    if (memberId.length !== 14 || !/^\d{14}$/.test(memberId)) {
-      console.error('전화번호 변환 실패:', {
+    // memberId가 정확히 14자리 숫자인지 최종 확인
+    if (memberId.length !== 14) {
+      console.error('전화번호 변환 실패 - 길이 불일치:', {
         원본전화번호: phoneNumber,
         숫자만: cleanPhoneNumber,
         변환된memberId: memberId,
         memberId길이: memberId.length
       });
-      throw new Error(`전화번호 변환 오류: memberId는 14자리 숫자여야 합니다. (현재: ${memberId.length}자리, 전화번호: ${phoneNumber}, 변환된 값: ${memberId})`);
+      throw new Error(`전화번호 변환 오류: memberId는 정확히 14자리여야 합니다. (현재: ${memberId.length}자리, 전화번호: ${phoneNumber}, 변환된 값: ${memberId})`);
+    }
+    
+    if (!/^\d{14}$/.test(memberId)) {
+      console.error('전화번호 변환 실패 - 숫자가 아님:', {
+        원본전화번호: phoneNumber,
+        숫자만: cleanPhoneNumber,
+        변환된memberId: memberId
+      });
+      throw new Error(`전화번호 변환 오류: memberId는 숫자만 포함해야 합니다. (전화번호: ${phoneNumber}, 변환된 값: ${memberId})`);
     }
     
     console.log('전화번호 변환 성공:', {
       원본: phoneNumber,
       숫자만: cleanPhoneNumber,
-      memberId: memberId
+      memberId: memberId,
+      memberId길이: memberId.length
     });
     
     // Solapi API 요청 본문 생성
