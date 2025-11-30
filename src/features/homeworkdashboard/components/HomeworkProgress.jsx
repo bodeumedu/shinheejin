@@ -438,55 +438,95 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
               if (data.scores && data.scores[student]) {
                 filteredScores[student] = data.scores[student];
               }
-              // 전화번호 데이터 처리 (기존 형식 호환성 유지)
-              // 입력 중이거나 로컬에 전화번호가 있으면 로컬 값 유지 (입력 중인 전화번호 보호)
-              if (phoneInputInProgressRef.current.has(student) || phoneNumbers[student]) {
-                // 입력 중이거나 로컬에 전화번호가 있으면 로컬 값 유지 (입력 중인 전화번호 보호)
-                const localPhone = phoneNumbers[student];
-                if (localPhone && typeof localPhone === 'object') {
-                  // undefined 값 제거
-                  const cleaned = {};
-                  if (localPhone.student !== undefined && localPhone.student !== null && localPhone.student !== '') {
-                    cleaned.student = localPhone.student;
-                  }
-                  if (localPhone.parent !== undefined && localPhone.parent !== null && localPhone.parent !== '') {
-                    cleaned.parent = localPhone.parent;
-                  }
-                  if (Object.keys(cleaned).length > 0) {
-                    filteredPhoneNumbers[student] = cleaned;
-                  }
-                } else if (localPhone && typeof localPhone === 'string' && localPhone.trim() !== '') {
-                  filteredPhoneNumbers[student] = localPhone;
-                }
-              } else if (data.phoneNumbers && data.phoneNumbers[student]) {
-                // 로컬에 없을 때만 Firestore 데이터 사용
-                const phoneData = data.phoneNumbers[student];
-                
-                // undefined 값 제거 및 정리
-                if (typeof phoneData === 'string') {
-                  // 기존 형식 (문자열)이면 student로 변환 (빈 문자열이 아닐 때만)
-                  if (phoneData.trim() !== '') {
-                    filteredPhoneNumbers[student] = { student: phoneData };
-                  }
-                } else if (typeof phoneData === 'object' && phoneData !== null) {
-                  const cleaned = {};
-                  if (phoneData.student !== undefined && phoneData.student !== null && phoneData.student !== '') {
-                    cleaned.student = phoneData.student;
-                  }
-                  if (phoneData.parent !== undefined && phoneData.parent !== null && phoneData.parent !== '') {
-                    cleaned.parent = phoneData.parent;
-                  }
-                  if (Object.keys(cleaned).length > 0) {
-                    filteredPhoneNumbers[student] = cleaned;
-                  }
-                }
-              }
             });
             
             setStudents(filteredStudents);
             setProgressData(filteredProgressData);
             setScores(filteredScores);
-            setPhoneNumbers(filteredPhoneNumbers);
+            
+            // 전화번호는 항상 현재 로컬 상태를 우선 (입력 중인 값 보호)
+            // 최근 저장 후 5초 이내이면 전화번호는 업데이트하지 않음 (입력 중일 수 있음)
+            const shouldPreservePhoneNumbers = (now - lastSaveTimeRef.current < 5000);
+            
+            setPhoneNumbers(prev => {
+              // 최근 저장 후 5초 이내이거나 입력 중인 전화번호가 있으면 로컬 상태 유지
+              if (shouldPreservePhoneNumbers || phoneInputInProgressRef.current.size > 0) {
+                console.log('📞 전화번호 로컬 상태 보존:', { 
+                  timeSinceSave: now - lastSaveTimeRef.current,
+                  inputInProgress: Array.from(phoneInputInProgressRef.current)
+                });
+                return prev; // 로컬 상태 그대로 유지
+              }
+              
+              // Firestore에서 불러온 전화번호 데이터 준비
+              filteredStudents.forEach(student => {
+                // 입력 중인 학생은 항상 로컬 값 유지
+                if (phoneInputInProgressRef.current.has(student)) {
+                  return;
+                }
+                
+                // 로컬에 이미 값이 있으면 항상 유지 (Firestore로 덮어쓰지 않음)
+                if (prev[student]) {
+                  return;
+                }
+                
+                // 로컬에 없을 때만 Firestore 데이터 사용
+                if (data.phoneNumbers && data.phoneNumbers[student]) {
+                  const phoneData = data.phoneNumbers[student];
+                  
+                  // undefined 값 제거 및 정리
+                  if (typeof phoneData === 'string' && phoneData.trim() !== '') {
+                    filteredPhoneNumbers[student] = { student: phoneData };
+                  } else if (typeof phoneData === 'object' && phoneData !== null) {
+                    const cleaned = {};
+                    if (phoneData.student !== undefined && phoneData.student !== null && phoneData.student !== '') {
+                      cleaned.student = phoneData.student;
+                    }
+                    if (phoneData.parent !== undefined && phoneData.parent !== null && phoneData.parent !== '') {
+                      cleaned.parent = phoneData.parent;
+                    }
+                    if (Object.keys(cleaned).length > 0) {
+                      filteredPhoneNumbers[student] = cleaned;
+                    }
+                  }
+                }
+              });
+              
+              // 로컬 전화번호(prev)와 Firestore 전화번호(filteredPhoneNumbers) 병합
+              // 로컬 값이 항상 우선
+              const merged = { ...prev };
+              
+              // Firestore에서 불러온 데이터 중 로컬에 없는 것만 추가
+              Object.keys(filteredPhoneNumbers).forEach(student => {
+                // 입력 중이 아니고 로컬에 없을 때만 추가
+                if (!phoneInputInProgressRef.current.has(student) && !merged[student]) {
+                  merged[student] = filteredPhoneNumbers[student];
+                }
+              });
+              
+              // undefined 값 제거
+              Object.keys(merged).forEach(student => {
+                const phone = merged[student];
+                if (phone && typeof phone === 'object') {
+                  const cleaned = {};
+                  if (phone.student !== undefined && phone.student !== null && phone.student !== '') {
+                    cleaned.student = phone.student;
+                  }
+                  if (phone.parent !== undefined && phone.parent !== null && phone.parent !== '') {
+                    cleaned.parent = phone.parent;
+                  }
+                  if (Object.keys(cleaned).length > 0) {
+                    merged[student] = cleaned;
+                  } else {
+                    delete merged[student];
+                  }
+                } else if (!phone || (typeof phone === 'string' && phone.trim() === '')) {
+                  delete merged[student];
+                }
+              });
+              
+              return merged;
+            });
             
             // 헤더 텍스트 불러오기
             if (data.headerTexts) {
@@ -983,10 +1023,10 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       return updated;
     });
     
-    // 3초 후 입력 중 플래그 제거 (입력이 끝났다고 가정)
+    // 5초 후 입력 중 플래그 제거 (입력이 끝났다고 가정)
     setTimeout(() => {
       phoneInputInProgressRef.current.delete(student);
-    }, 3000);
+    }, 5000);
   };
   
   // 학생 전화번호만 변경하는 헬퍼 함수 (하위 호환성)
