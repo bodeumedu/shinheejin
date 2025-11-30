@@ -167,10 +167,12 @@ export default async function handler(req, res) {
     });
     
     // Solapi API 요청 본문 생성
-    // 카카오톡 알림톡의 경우 to 필드와 kakaoOptions.memberId에 모두 14자리 memberId를 설정
+    // 카카오톡 알림톡의 경우:
+    // - to 필드: 일반 전화번호 형식 (예: 01012345678)
+    // - kakaoOptions.memberId: 14자리 memberId 형식 (예: 82101234567800)
     const requestBody = {
       message: {
-        to: toPhoneNumber, // 14자리 memberId 형식
+        to: cleanPhoneNumber, // 일반 전화번호 형식 (하이픈 제거, 숫자만)
         from: senderNumber || '01012345678',
         kakaoOptions: {
           pfId: pfId,
@@ -181,6 +183,14 @@ export default async function handler(req, res) {
         },
       },
     };
+    
+    console.log('🔵 [최종 요청 본문]', {
+      to: requestBody.message.to,
+      toLength: requestBody.message.to.length,
+      memberId: requestBody.message.kakaoOptions.memberId,
+      memberIdLength: requestBody.message.kakaoOptions.memberId.length,
+      memberIdIs14: requestBody.message.kakaoOptions.memberId.length === 14
+    });
     
     console.log('Solapi API 요청 본문:', JSON.stringify(requestBody, null, 2));
     
