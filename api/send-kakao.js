@@ -171,8 +171,8 @@ export default async function handler(req, res) {
         statusText: solapiResponse.statusText,
         responseBody: result,
         requestBody: requestBody,
-        memberId: memberId,
-        memberIdLength: memberId.length
+        toPhoneNumber: toPhoneNumber,
+        toPhoneNumberLength: toPhoneNumber.length
       });
       
       // 오류 메시지 상세 추출
