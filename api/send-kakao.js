@@ -132,23 +132,28 @@ export default async function handler(req, res) {
       memberId: memberId
     });
     
+    // Solapi API 요청 본문 생성
+    const requestBody = {
+      message: {
+        to: memberId, // 14자리 memberId 형식으로 전송
+        from: senderNumber || '01012345678',
+        kakaoOptions: {
+          pfId: pfId,
+          templateId: templateCode,
+          variables: variables || {},
+        },
+      },
+    };
+    
+    console.log('Solapi API 요청 본문:', JSON.stringify(requestBody, null, 2));
+    
     const solapiResponse = await fetch('https://api.solapi.com/messages/v4/send', {
       method: 'POST',
       headers: {
         'Authorization': `user ${authString}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        message: {
-          to: memberId, // memberId 형식으로 전송
-          from: senderNumber || '01012345678',
-          kakaoOptions: {
-            pfId: pfId,
-            templateId: templateCode,
-            variables: variables || {},
-          },
-        },
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     // 응답 본문 읽기
@@ -163,8 +168,35 @@ export default async function handler(req, res) {
     }
 
     if (!solapiResponse.ok) {
-      const errorMsg = result.errorMessage || result.message || result.error || `솔라피 API 오류: ${solapiResponse.status}`;
-      console.error('솔라피 API 오류:', result);
+      console.error('솔라피 API 오류 응답:', {
+        status: solapiResponse.status,
+        statusText: solapiResponse.statusText,
+        responseBody: result,
+        requestBody: requestBody,
+        memberId: memberId,
+        memberIdLength: memberId.length
+      });
+      
+      // 오류 메시지 상세 추출
+      let errorMsg = `솔라피 API 오류: ${solapiResponse.status}`;
+      if (result.errorMessage) {
+        errorMsg = result.errorMessage;
+      } else if (result.message) {
+        errorMsg = result.message;
+      } else if (result.error) {
+        if (typeof result.error === 'string') {
+          errorMsg = result.error;
+        } else if (result.error.message) {
+          errorMsg = result.error.message;
+        }
+      } else if (result.errors && Array.isArray(result.errors)) {
+        errorMsg = result.errors.map(e => {
+          if (typeof e === 'string') return e;
+          if (e.message) return e.message;
+          return JSON.stringify(e);
+        }).join(', ');
+      }
+      
       throw new Error(errorMsg);
     }
 
