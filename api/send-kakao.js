@@ -98,32 +98,30 @@ export default async function handler(req, res) {
       길이: cleanPhoneNumber.length
     });
     
-    // Solapi API 요청 본문 생성 (공식 예제 코드 기반)
-    // Solapi 공식 예제에서는:
-    // - to: 일반 전화번호 형식 (예: 01030034420)
-    // - from: 일반 전화번호 형식 (예: 01030034420)
-    // - kakaoOptions에 memberId 필드 없음!
+    // Solapi REST API 요청 본문 생성
+    // Solapi REST API는 messages 배열 형식을 사용
     const requestBody = {
-      message: {
-        to: cleanPhoneNumber, // 일반 전화번호 형식 (하이픈 제거, 숫자만)
-        from: senderNumber || cleanPhoneNumber, // 발신번호 (받는 번호와 동일 또는 설정된 발신번호)
-        kakaoOptions: {
-          pfId: pfId,
-          templateId: templateCode,
-          // memberId 필드 제거 (Solapi 공식 예제에는 없음)
-          variables: variables || {},
-          disableSms: false, // SMS 대체 발송 허용
+      messages: [
+        {
+          to: cleanPhoneNumber, // 일반 전화번호 형식 (하이픈 제거, 숫자만)
+          from: senderNumber || cleanPhoneNumber, // 발신번호
+          kakaoOptions: {
+            pfId: pfId,
+            templateId: templateCode,
+            variables: variables || {},
+            disableSms: false, // SMS 대체 발송 허용
+          },
         },
-      },
+      ],
     };
     
-    console.log('🔵 [최종 요청 본문] (Solapi 공식 형식)', {
-      to: requestBody.message.to,
-      toLength: requestBody.message.to.length,
-      from: requestBody.message.from,
-      fromLength: requestBody.message.from.length,
-      pfId: requestBody.message.kakaoOptions.pfId,
-      templateId: requestBody.message.kakaoOptions.templateId
+    console.log('🔵 [최종 요청 본문] (Solapi REST API 형식)', {
+      to: requestBody.messages[0].to,
+      toLength: requestBody.messages[0].to.length,
+      from: requestBody.messages[0].from,
+      fromLength: requestBody.messages[0].from.length,
+      pfId: requestBody.messages[0].kakaoOptions.pfId,
+      templateId: requestBody.messages[0].kakaoOptions.templateId
     });
     
     console.log('Solapi API 요청 본문:', JSON.stringify(requestBody, null, 2));
