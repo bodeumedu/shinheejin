@@ -207,6 +207,18 @@
                 <div class="section-title">기본 정보</div>
                 
                 <div class="form-group">
+                    <label for="apiUrl">🌐 API 서버 URL (선택사항)</label>
+                    <input 
+                        type="text" 
+                        id="apiUrl" 
+                        placeholder="비워두면 현재 도메인 사용"
+                    >
+                    <small style="color: #666; display: block; margin-top: 5px; font-size: 12px;">
+                        💡 로컬 개발 환경(localhost:5173)에서는 프로덕션 URL 입력 필요: https://bodeumshjpocketbook.vercel.app
+                    </small>
+                </div>
+                
+                <div class="form-group">
                     <label for="phoneNumber">📞 수신 전화번호 (필수)</label>
                     <input 
                         type="tel" 
@@ -302,12 +314,18 @@
 
             try {
                 // API URL 설정
-                const apiUrl = window.location.origin + '/api/send-kakao';
+                let apiUrl = document.getElementById('apiUrl').value.trim();
+                if (!apiUrl) {
+                    apiUrl = window.location.origin + '/api/send-kakao';
+                } else {
+                    apiUrl = apiUrl.replace(/\/$/, '') + '/api/send-kakao';
+                }
 
                 console.log('📤 요청 시작:', {
                     apiUrl,
                     phoneNumber: cleanPhone,
-                    templateCode
+                    templateCode,
+                    origin: window.location.origin
                 });
 
                 // API 요청
@@ -327,16 +345,43 @@
                 });
 
                 console.log('📥 응답 상태:', response.status, response.statusText);
+                console.log('📥 응답 헤더:', Object.fromEntries(response.headers.entries()));
 
                 // 응답 본문 읽기
                 const responseText = await response.text();
-                console.log('📥 응답 본문:', responseText);
+                console.log('📥 응답 본문 (원본):', responseText);
+                console.log('📥 응답 본문 길이:', responseText.length);
+                console.log('📥 응답 본문 타입:', typeof responseText);
 
+                // 빈 응답 처리
+                if (!responseText || responseText.trim() === '') {
+                    showResult('error', 
+                        `❌ 서버 응답이 비어있습니다!\n\n` +
+                        `HTTP 상태: ${response.status} ${response.statusText}\n` +
+                        `서버에서 응답을 받지 못했습니다.\n\n` +
+                        `가능한 원인:\n` +
+                        `- 서버 오류 또는 타임아웃\n` +
+                        `- CORS 오류\n` +
+                        `- API 엔드포인트가 존재하지 않음\n` +
+                        `- 환경 변수가 설정되지 않음`
+                    );
+                    return;
+                }
+
+                // JSON 파싱 시도
                 let responseData;
                 try {
                     responseData = JSON.parse(responseText);
                 } catch (parseError) {
-                    throw new Error(`서버 응답 파싱 실패: ${responseText.substring(0, 200)}`);
+                    showResult('error', 
+                        `❌ 서버 응답 파싱 실패!\n\n` +
+                        `HTTP 상태: ${response.status} ${response.statusText}\n` +
+                        `응답 본문 (처음 500자):\n${responseText.substring(0, 500)}\n\n` +
+                        `파싱 오류: ${parseError.message}\n\n` +
+                        `서버가 JSON 형식이 아닌 응답을 보냈습니다.\n` +
+                        `브라우저 콘솔(F12)에서 상세 로그를 확인하세요.`
+                    );
+                    return;
                 }
 
                 if (response.ok && responseData.success) {
@@ -348,7 +393,7 @@
                         JSON.stringify(responseData, null, 2)
                     );
                 } else {
-                    const errorMsg = responseData.error || responseData.message || '알 수 없는 오류';
+                    const errorMsg = responseData.error || responseData.message || responseData.details || '알 수 없는 오류';
                     showResult('error', 
                         `❌ 카카오톡 발송 실패!\n\n` +
                         `HTTP 상태: ${response.status} ${response.statusText}\n` +
