@@ -1,0 +1,112 @@
+.reference-description-viewer {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.reference-description-page {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 20mm;
+  margin: 0 auto 20px;
+  background: white;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  page-break-after: always;
+}
+
+.reference-description-page-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 출처 */
+.reference-description-source {
+  margin-bottom: 20px;
+}
+
+.reference-description-source-content {
+  border-left: 4px solid #ff6b35;
+  padding-left: 12px;
+}
+
+.reference-description-source-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+/* 영어원문 */
+.reference-description-original {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.reference-description-original-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #2c3e50;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* 문제 */
+.reference-description-question {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: #2c3e50;
+}
+
+.reference-description-question u {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: #ff6b35;
+}
+
+/* 조건 */
+.reference-description-condition {
+  margin-bottom: 20px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #495057;
+}
+
+/* 정답 */
+.reference-description-answer {
+  margin-top: auto;
+  padding: 12px;
+  background: #e8f5e9;
+  border-radius: 6px;
+  border: 1px solid #c8e6c9;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2e7d32;
+}
+
+/* 인쇄용 스타일 */
+@media print {
+  .reference-description-page {
+    margin: 0;
+    box-shadow: none;
+    page-break-after: always;
+  }
+  
+  .reference-description-viewer {
+    max-width: 100%;
+  }
+}
+

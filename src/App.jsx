@@ -18,6 +18,9 @@ import KeyInput from './features/key/components/KeyInput'
 import CsatClozeInput from './features/csat-cloze/components/CsatClozeInput'
 import ThirdWordInput from './features/third-word/components/ThirdWordInput'
 import OcrInput from './features/ocr/components/OcrInput'
+import ReferenceDescriptionInput from './features/reference-description/components/ReferenceDescriptionInput'
+import ReferenceDescriptionViewer from './features/reference-description/components/ReferenceDescriptionViewer'
+import { exportReferenceDescriptionToPdf } from './features/reference-description/utils/referenceDescriptionPdfExporter'
 import HomeworkDashboard from './features/homeworkdashboard/components/HomeworkDashboard'
 import HomeworkProgress from './features/homeworkdashboard/components/HomeworkProgress'
 import ClinicLog from './features/clinic-log/components/ClinicLog'
@@ -65,6 +68,9 @@ function App() {
   const [csatClozeData, setCsatClozeData] = useState(null) // 빈칸 수능문제 결과
   const [thirdWordData, setThirdWordData] = useState(null) // Third Word 결과
   const [ocrData, setOcrData] = useState(null) // OCR 결과
+  const [referenceDescriptionData, setReferenceDescriptionData] = useState(null) // 지칭서술형 결과
+  const [referenceDescriptionProcessedText, setReferenceDescriptionProcessedText] = useState('') // 지칭서술형 처리된 텍스트
+  const [showReferenceDescriptionDesign, setShowReferenceDescriptionDesign] = useState(false) // 지칭서술형 디자인 페이지 표시 여부
   const [homeworkProgressData, setHomeworkProgressData] = useState(null) // 과제 진행 데이터
   const [apiKey, setApiKey] = useState('')
   const [isSavingPdf, setIsSavingPdf] = useState(false)
@@ -595,6 +601,13 @@ function App() {
   const handleSelectThirdWord = () => {
     setMode('third-word')
   }
+
+  const handleSelectReferenceDescription = () => {
+    setMode('reference-description')
+    setText('')
+    setReferenceDescriptionData(null)
+    setReferenceDescriptionProcessedText('')
+  }
   
   const handleSelectOcr = () => {
     setMode('ocr')
@@ -648,6 +661,11 @@ function App() {
   const handleThirdWordProcess = (data) => {
     setThirdWordData(data)
   }
+
+  const handleReferenceDescriptionProcess = (data, processedText) => {
+    setReferenceDescriptionData(data)
+    setReferenceDescriptionProcessedText(processedText || '')
+  }
   
   const handleApiKeySet = (key) => {
     setApiKey(key)
@@ -695,6 +713,7 @@ function App() {
           onSelectKey={handleSelectKey}
           onSelectCsatCloze={handleSelectCsatCloze}
           onSelectThirdWord={handleSelectThirdWord}
+          onSelectReferenceDescription={handleSelectReferenceDescription}
           onSelectOcr={handleSelectOcr}
           onSelectEnglishHomeworkDashboard={handleSelectEnglishHomeworkDashboard}
           onSelectMathHomeworkDashboard={handleSelectMathHomeworkDashboard}
@@ -2257,6 +2276,230 @@ function App() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 지칭서술형 모드
+  if (mode === 'reference-description') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>지칭서술형(지문 안에서,어형변화무)</h1>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!referenceDescriptionData ? (
+          <ReferenceDescriptionInput
+            text={text}
+            setText={setText}
+            onProcess={handleReferenceDescriptionProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            {showReferenceDescriptionDesign ? (
+              // 디자인된 페이지 모드
+              <>
+                <div className="result-actions">
+                  <button 
+                    onClick={() => setShowReferenceDescriptionDesign(false)} 
+                    className="btn btn-secondary"
+                  >
+                    텍스트 보기로 돌아가기
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      setIsSavingPdf(true)
+                      try {
+                        await exportReferenceDescriptionToPdf()
+                      } catch (error) {
+                        alert(error.message || 'PDF 저장 중 오류가 발생했습니다.')
+                      } finally {
+                        setIsSavingPdf(false)
+                      }
+                    }}
+                    className="btn btn-primary"
+                    disabled={isSavingPdf}
+                  >
+                    {isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      setReferenceDescriptionData(null); 
+                      setReferenceDescriptionProcessedText('');
+                      setText('');
+                      setShowReferenceDescriptionDesign(false);
+                    }} 
+                    className="btn btn-secondary"
+                  >
+                    모두 삭제하고 처음부터
+                  </button>
+                </div>
+                
+                {/* A4 페이지 형식으로 문제 출력 */}
+                <ReferenceDescriptionViewer data={referenceDescriptionData} />
+              </>
+            ) : (
+              // 원래 텍스트 결과 모드
+              <>
+                <div className="result-actions">
+                  <button 
+                    onClick={() => { 
+                      setReferenceDescriptionData(null); 
+                      setReferenceDescriptionProcessedText('');
+                      setText(''); 
+                    }} 
+                    className="btn btn-secondary"
+                  >
+                    모두 삭제하고 처음부터
+                  </button>
+                  <button 
+                    onClick={() => {
+                      let fullText = referenceDescriptionProcessedText || referenceDescriptionData.processed || referenceDescriptionData.original
+                      navigator.clipboard.writeText(fullText)
+                      alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                    }} 
+                    className="btn btn-primary"
+                  >
+                    결과 복사하기
+                  </button>
+                  <button 
+                    onClick={() => setShowReferenceDescriptionDesign(true)} 
+                    className="btn btn-primary"
+                    style={{ marginLeft: '10px' }}
+                  >
+                    디자인 추가
+                  </button>
+                </div>
+            <div className="multiple-results">
+              <div style={{ marginBottom: '20px', color: '#6c757d' }}>
+                처리가 완료되었습니다. 아래 결과를 확인하세요.
+              </div>
+              
+              {/* 문제가 있는 항목이 있는 경우 경고 표시 */}
+              {referenceDescriptionData && Array.isArray(referenceDescriptionData) && referenceDescriptionData.some(r => (r.needsManualCheck || (!r.hasUnderline || !r.hasAnswer))) && (
+                <div style={{
+                  marginBottom: '20px',
+                  padding: '15px',
+                  backgroundColor: '#fff3cd',
+                  border: '2px solid #ffc107',
+                  borderRadius: '8px',
+                  color: '#856404',
+                  fontSize: '14px',
+                  lineHeight: '1.6'
+                }}>
+                  <strong>⚠️ 주의:</strong> 밑줄이 없거나 답이 없는 항목이 있습니다. 처리된 텍스트에서 <strong>[⚠️ 수동 확인 필요]</strong>로 표시된 부분을 찾아 수정해주세요.
+                  <ul style={{ marginTop: '10px', marginLeft: '20px', paddingLeft: '0' }}>
+                    {referenceDescriptionData.filter(r => (r.needsManualCheck || (!r.hasUnderline || !r.hasAnswer))).map((r, idx) => (
+                      <li key={idx} style={{ marginBottom: '5px' }}>
+                        지문 {r.index + 1}: {!r.hasUnderline && '밑줄 없음'} {!r.hasUnderline && !r.hasAnswer && ', '} {!r.hasAnswer && '답 없음'}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '20px',
+                marginBottom: '20px'
+              }}>
+                <div>
+                  <h3 style={{ marginBottom: '10px', color: '#333' }}>원문</h3>
+                  <div style={{
+                    border: '1px solid #ddd',
+                    borderRadius: '8px',
+                    padding: '15px',
+                    backgroundColor: '#f9f9f9',
+                    maxHeight: '600px',
+                    overflowY: 'auto'
+                  }}>
+                    {Array.isArray(referenceDescriptionData) ? (
+                      <div>
+                        {referenceDescriptionData.map((result, idx) => (
+                          <div key={idx} style={{
+                            marginBottom: '20px',
+                            padding: '10px',
+                            backgroundColor: (result.needsManualCheck || (!result.hasUnderline || !result.hasAnswer)) ? '#fff3cd' : 'transparent',
+                            border: (result.needsManualCheck || (!result.hasUnderline || !result.hasAnswer)) ? '2px solid #ffc107' : 'none',
+                            borderRadius: '6px'
+                          }}>
+                            <div style={{ marginBottom: '5px', fontWeight: 'bold', color: '#856404' }}>
+                              {result.needsManualCheck || (!result.hasUnderline || !result.hasAnswer) ? '⚠️ ' : ''}지문 {result.index + 1}
+                            </div>
+                            <pre style={{ 
+                              margin: 0, 
+                              color: '#2c3e50', 
+                              whiteSpace: 'pre-wrap',
+                              fontFamily: 'inherit',
+                              fontSize: '0.95rem',
+                              lineHeight: '1.8'
+                            }}>
+                              {result.original}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <pre style={{ 
+                        margin: 0, 
+                        color: '#2c3e50', 
+                        whiteSpace: 'pre-wrap',
+                        fontFamily: 'inherit',
+                        fontSize: '0.95rem',
+                        lineHeight: '1.8'
+                      }}>
+                        {referenceDescriptionData?.original || ''}
+                      </pre>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h3 style={{ marginBottom: '10px', color: '#333' }}>처리된 텍스트 (수정 가능)</h3>
+                  <textarea
+                    value={referenceDescriptionProcessedText || ''}
+                    onChange={(e) => setReferenceDescriptionProcessedText(e.target.value)}
+                    style={{
+                      width: '100%',
+                      minHeight: '600px',
+                      padding: '15px',
+                      border: '2px solid #ddd',
+                      borderRadius: '8px',
+                      backgroundColor: '#fff',
+                      fontFamily: 'inherit',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.8',
+                      resize: 'vertical',
+                      whiteSpace: 'pre-wrap',
+                      wordWrap: 'break-word'
+                    }}
+                    placeholder="처리된 텍스트가 여기에 표시됩니다. 수정할 수 있습니다."
+                  />
+                  <div style={{
+                    marginTop: '10px',
+                    fontSize: '12px',
+                    color: '#666'
+                  }}>
+                    💡 텍스트를 직접 수정할 수 있습니다. 문제가 있는 부분은 <strong>[⚠️ 수동 확인 필요]</strong>로 표시되어 있습니다.
+                  </div>
+                </div>
+              </div>
+            </div>
+              </>
+            )}
           </div>
         )}
       </div>

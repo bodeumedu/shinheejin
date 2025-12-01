@@ -4,11 +4,30 @@ let jsPDF, html2canvas
 
 // 동적 import로 변경 (패키지가 없을 경우를 대비)
 async function loadPdfLibraries() {
-  if (!jsPDF) {
-    jsPDF = (await import('jspdf')).default
-  }
-  if (!html2canvas) {
-    html2canvas = (await import('html2canvas')).default
+  try {
+    if (!jsPDF) {
+      const jsPDFModule = await import('jspdf')
+      // jspdf 2.x는 default export 사용
+      jsPDF = jsPDFModule.default
+      if (!jsPDF) {
+        throw new Error('jspdf 모듈을 찾을 수 없습니다. 패키지가 제대로 설치되었는지 확인해주세요.')
+      }
+    }
+    if (!html2canvas) {
+      const html2canvasModule = await import('html2canvas')
+      // html2canvas는 default export 사용
+      html2canvas = html2canvasModule.default
+      if (!html2canvas) {
+        throw new Error('html2canvas 모듈을 찾을 수 없습니다. 패키지가 제대로 설치되었는지 확인해주세요.')
+      }
+    }
+  } catch (error) {
+    console.error('PDF 라이브러리 로드 오류:', error)
+    // 더 자세한 오류 정보 제공
+    if (error.message && error.message.includes('Failed to fetch')) {
+      throw new Error('PDF 라이브러리를 로드할 수 없습니다. 개발 서버를 재시작해주세요.')
+    }
+    throw error
   }
 }
 
@@ -16,8 +35,15 @@ export async function exportToPdf(selectedIndices = null) {
   try {
     // 라이브러리 로드
     await loadPdfLibraries()
+    
+    // 라이브러리가 제대로 로드되었는지 확인
+    if (!jsPDF || !html2canvas) {
+      throw new Error('PDF 라이브러리가 제대로 로드되지 않았습니다.')
+    }
   } catch (error) {
-    throw new Error('PDF 라이브러리를 로드할 수 없습니다. 패키지를 설치해주세요: npm install jspdf html2canvas')
+    console.error('PDF 라이브러리 로드 실패:', error)
+    const errorMessage = error.message || '알 수 없는 오류'
+    throw new Error(`PDF 라이브러리를 로드할 수 없습니다: ${errorMessage}\n\n패키지 설치: npm install jspdf html2canvas\n개발 서버 재시작이 필요할 수 있습니다.`)
   }
 
   // 단일 페이지(레거시)와 다중 페이지(id에 인덱스 포함) 모두 지원
