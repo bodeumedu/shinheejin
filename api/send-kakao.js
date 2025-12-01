@@ -91,15 +91,44 @@ export default async function handler(req, res) {
       throw new Error(`유효하지 않은 전화번호입니다: ${phoneNumber} (길이: ${cleanPhoneNumber.length})`);
     }
     
-    // Solapi 공식 예제에 따르면 일반 전화번호 형식만 사용하면 됨
-    // 14자리 memberId 변환 불필요 - Solapi가 내부적으로 처리
-    console.log('🔵 [2단계] 전화번호 검증 완료 (변환 불필요)', {
+    // 한국 전화번호를 14자리 memberId 형식으로 변환
+    // Solapi가 memberId를 요구하므로 변환 필요
+    let memberId;
+    if (cleanPhoneNumber.length === 11 && cleanPhoneNumber.startsWith('010')) {
+      // 010-1234-5678 형식: 01012345678 → 82101234567800
+      const withoutLeadingZero = cleanPhoneNumber.substring(1); // 1012345678
+      memberId = `82${withoutLeadingZero}00`; // 82101234567800
+    } else if (cleanPhoneNumber.length === 10 && cleanPhoneNumber.startsWith('10')) {
+      // 1012345678 형식: 82101234567800
+      memberId = `82${cleanPhoneNumber}00`;
+    } else if (cleanPhoneNumber.startsWith('82')) {
+      // 이미 국가코드 포함
+      if (cleanPhoneNumber.length === 12) {
+        memberId = `${cleanPhoneNumber}00`;
+      } else {
+        memberId = cleanPhoneNumber.padEnd(14, '0').substring(0, 14);
+      }
+    } else {
+      // 기타: 기본 변환
+      const baseNumber = cleanPhoneNumber.startsWith('010') 
+        ? cleanPhoneNumber.substring(1) 
+        : cleanPhoneNumber;
+      memberId = `82${baseNumber}00`.substring(0, 14).padEnd(14, '0');
+    }
+    
+    // 14자리 검증
+    if (memberId.length !== 14 || !/^\d{14}$/.test(memberId)) {
+      throw new Error(`memberId 변환 실패: 14자리 형식이 아닙니다. (원본: ${phoneNumber}, 변환: ${memberId})`);
+    }
+    
+    console.log('🔵 [2단계] memberId 변환 완료:', {
       정리된번호: cleanPhoneNumber,
-      길이: cleanPhoneNumber.length
+      memberId: memberId,
+      memberId길이: memberId.length
     });
     
     // Solapi REST API 요청 본문 생성
-    // Solapi REST API는 messages 배열 형식을 사용
+    // memberId를 14자리 형식으로 kakaoOptions에 추가
     const requestBody = {
       messages: [
         {
@@ -108,6 +137,7 @@ export default async function handler(req, res) {
           kakaoOptions: {
             pfId: pfId,
             templateId: templateCode,
+            memberId: memberId, // 14자리 memberId 형식 (필수)
             variables: variables || {},
             disableSms: false, // SMS 대체 발송 허용
           },
