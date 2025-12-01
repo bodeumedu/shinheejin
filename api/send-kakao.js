@@ -128,12 +128,12 @@ export default async function handler(req, res) {
     });
     
     // Solapi REST API 요청 본문 생성
-    // memberId를 14자리 형식으로 kakaoOptions에 추가
+    // to 필드와 kakaoOptions.memberId 모두 14자리 형식으로 설정
     const requestBody = {
       messages: [
         {
-          to: cleanPhoneNumber, // 일반 전화번호 형식 (하이픈 제거, 숫자만)
-          from: senderNumber || cleanPhoneNumber, // 발신번호
+          to: memberId, // 14자리 memberId 형식으로 변경
+          from: senderNumber || cleanPhoneNumber, // 발신번호는 일반 형식 유지
           kakaoOptions: {
             pfId: pfId,
             templateId: templateCode,
@@ -150,11 +150,14 @@ export default async function handler(req, res) {
       toLength: requestBody.messages[0].to.length,
       from: requestBody.messages[0].from,
       fromLength: requestBody.messages[0].from.length,
+      memberId: requestBody.messages[0].kakaoOptions.memberId,
+      memberIdLength: requestBody.messages[0].kakaoOptions.memberId.length,
+      memberIdIs14: requestBody.messages[0].kakaoOptions.memberId.length === 14,
       pfId: requestBody.messages[0].kakaoOptions.pfId,
       templateId: requestBody.messages[0].kakaoOptions.templateId
     });
     
-    console.log('Solapi API 요청 본문:', JSON.stringify(requestBody, null, 2));
+    console.log('🔵 [완전한 요청 본문]:', JSON.stringify(requestBody, null, 2));
     
     const solapiResponse = await fetch('https://api.solapi.com/messages/v4/send', {
       method: 'POST',
@@ -177,14 +180,21 @@ export default async function handler(req, res) {
     }
 
     if (!solapiResponse.ok) {
-      console.error('솔라피 API 오류 응답:', {
+      console.error('❌ 솔라피 API 오류 응답:', {
         status: solapiResponse.status,
         statusText: solapiResponse.statusText,
         responseBody: result,
         requestBody: requestBody,
+        requestBodyString: JSON.stringify(requestBody, null, 2),
         cleanPhoneNumber: cleanPhoneNumber,
-        cleanPhoneNumberLength: cleanPhoneNumber.length
+        cleanPhoneNumberLength: cleanPhoneNumber.length,
+        memberId: memberId,
+        memberIdLength: memberId.length,
+        memberIdIs14: memberId.length === 14
       });
+      
+      // 원본 응답 본문도 로그
+      console.error('❌ 원본 응답 본문:', responseText);
       
       // 오류 메시지 상세 추출
       let errorMsg = `솔라피 API 오류: ${solapiResponse.status}`;
