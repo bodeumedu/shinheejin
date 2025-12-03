@@ -2,7 +2,7 @@
  * Vercel Serverless Function
  * POST /api/send-kakao
  * 
- * 솔라피 REST API를 통한 카카오톡 알림톡 발송
+ * 솔라피 SDK를 통한 카카오톡 알림톡 발송
  */
 export default async function handler(req, res) {
   // CORS 헤더 설정
@@ -66,19 +66,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // 솔라피 REST API로 알림톡 발송
-    // 솔라피 API 엔드포인트: https://api.solapi.com/messages/v4/send
-    // 솔라피는 user 방식 인증 사용 (API Key:Secret을 Base64 인코딩)
-    const authString = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-    
     // 전화번호 정리 (하이픈 제거, 숫자만 추출)
-    const cleanPhoneNumber = phoneNumber.replace(/[^0-9]/g, '').trim(); // 숫자만 추출
+    const cleanPhoneNumber = phoneNumber.replace(/[^0-9]/g, '').trim();
     
-    console.log('🔵 [1단계] 전화번호 처리 시작:', {
+    console.log('🔵 [1단계] 전화번호 처리:', {
       원본: phoneNumber,
       정리된번호: cleanPhoneNumber,
-      길이: cleanPhoneNumber.length,
-      타입: typeof phoneNumber
+      길이: cleanPhoneNumber.length
     });
     
     // 전화번호 유효성 검증
@@ -92,7 +86,7 @@ export default async function handler(req, res) {
     }
     
     // 한국 전화번호를 14자리 memberId 형식으로 변환
-    // Solapi가 memberId를 요구하므로 변환 필요
+    // Solapi SDK도 memberId를 요구하므로 변환 필요
     let memberId;
     if (cleanPhoneNumber.length === 11 && cleanPhoneNumber.startsWith('010')) {
       // 010-1234-5678 형식: 01012345678 → 82101234567800
@@ -121,105 +115,73 @@ export default async function handler(req, res) {
       throw new Error(`memberId 변환 실패: 14자리 형식이 아닙니다. (원본: ${phoneNumber}, 변환: ${memberId})`);
     }
     
-    console.log('🔵 [2단계] memberId 변환 완료:', {
+    console.log('🔵 [1-2단계] memberId 변환 완료:', {
       정리된번호: cleanPhoneNumber,
       memberId: memberId,
       memberId길이: memberId.length
     });
     
-    // Solapi REST API 요청 본문 생성
-    // to 필드와 kakaoOptions.memberId 모두 14자리 형식으로 설정
-    const requestBody = {
-      messages: [
-        {
-          to: memberId, // 14자리 memberId 형식으로 변경
-          from: senderNumber || cleanPhoneNumber, // 발신번호는 일반 형식 유지
-          kakaoOptions: {
-            pfId: pfId,
-            templateId: templateCode,
-            memberId: memberId, // 14자리 memberId 형식 (필수)
-            variables: variables || {},
-            disableSms: false, // SMS 대체 발송 허용
-          },
-        },
-      ],
-    };
-    
-    console.log('🔵 [최종 요청 본문] (Solapi REST API 형식)', {
-      to: requestBody.messages[0].to,
-      toLength: requestBody.messages[0].to.length,
-      from: requestBody.messages[0].from,
-      fromLength: requestBody.messages[0].from.length,
-      memberId: requestBody.messages[0].kakaoOptions.memberId,
-      memberIdLength: requestBody.messages[0].kakaoOptions.memberId.length,
-      memberIdIs14: requestBody.messages[0].kakaoOptions.memberId.length === 14,
-      pfId: requestBody.messages[0].kakaoOptions.pfId,
-      templateId: requestBody.messages[0].kakaoOptions.templateId
-    });
-    
-    console.log('🔵 [완전한 요청 본문]:', JSON.stringify(requestBody, null, 2));
-    
-    const solapiResponse = await fetch('https://api.solapi.com/messages/v4/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': `user ${authString}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    // 응답 본문 읽기
-    const responseText = await solapiResponse.text();
-    let result;
-    
+    // 솔라피 SDK 동적 import (CommonJS/ES Module 호환)
+    let SolapiMessageService;
     try {
-      result = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('솔라피 API 응답 파싱 실패:', responseText);
-      throw new Error(`솔라피 API 응답 형식 오류: ${responseText.substring(0, 200)}`);
+      const solapiModule = await import('solapi');
+      // CommonJS와 ES Module 모두 지원
+      SolapiMessageService = solapiModule.SolapiMessageService || solapiModule.default?.SolapiMessageService || solapiModule.default;
+      
+      if (!SolapiMessageService) {
+        throw new Error('SolapiMessageService를 찾을 수 없습니다. SDK 모듈 구조를 확인해주세요.');
+      }
+      
+      console.log('🔵 [2단계] SDK 모듈 로드 완료');
+    } catch (importError) {
+      console.error('❌ SDK 모듈 로드 실패:', importError);
+      throw new Error(`SDK 모듈을 로드할 수 없습니다: ${importError.message}`);
     }
-
-    if (!solapiResponse.ok) {
-      console.error('❌ 솔라피 API 오류 응답:', {
-        status: solapiResponse.status,
-        statusText: solapiResponse.statusText,
-        responseBody: result,
-        requestBody: requestBody,
-        requestBodyString: JSON.stringify(requestBody, null, 2),
-        cleanPhoneNumber: cleanPhoneNumber,
-        cleanPhoneNumberLength: cleanPhoneNumber.length,
-        memberId: memberId,
-        memberIdLength: memberId.length,
-        memberIdIs14: memberId.length === 14
+    
+    // 솔라피 SDK 초기화
+    const messageService = new SolapiMessageService(apiKey, apiSecret);
+    
+    console.log('🔵 [3단계] SDK 초기화 완료');
+    
+    // 알림톡 발송 (SDK 사용)
+    // SDK가 자동으로 전화번호 형식 변환 및 인증 처리
+    let result;
+    try {
+      result = await messageService.send({
+        to: cleanPhoneNumber,
+        from: senderNumber || cleanPhoneNumber,
+        kakaoOptions: {
+          pfId: pfId,
+          templateId: templateCode,
+          memberId: memberId, // 14자리 memberId 형식 (필수)
+          variables: variables || {},
+          disableSms: false, // SMS 대체 발송 허용
+        },
+      });
+    } catch (sdkError) {
+      console.error('❌ 솔라피 SDK 오류:', {
+        error: sdkError.message,
+        stack: sdkError.stack,
+        phoneNumber: cleanPhoneNumber,
+        templateCode: templateCode,
+        pfId: pfId,
+        fullError: sdkError
       });
       
-      // 원본 응답 본문도 로그
-      console.error('❌ 원본 응답 본문:', responseText);
-      
-      // 오류 메시지 상세 추출
-      let errorMsg = `솔라피 API 오류: ${solapiResponse.status}`;
-      if (result.errorMessage) {
-        errorMsg = result.errorMessage;
-      } else if (result.message) {
-        errorMsg = result.message;
-      } else if (result.error) {
-        if (typeof result.error === 'string') {
-          errorMsg = result.error;
-        } else if (result.error.message) {
-          errorMsg = result.error.message;
-        }
-      } else if (result.errors && Array.isArray(result.errors)) {
-        errorMsg = result.errors.map(e => {
-          if (typeof e === 'string') return e;
-          if (e.message) return e.message;
-          return JSON.stringify(e);
-        }).join(', ');
+      // SDK 오류 메시지 추출
+      let errorMsg = '카카오톡 발송 중 오류가 발생했습니다.';
+      if (sdkError.message) {
+        errorMsg = sdkError.message;
+      } else if (sdkError.errorMessage) {
+        errorMsg = sdkError.errorMessage;
+      } else if (typeof sdkError === 'string') {
+        errorMsg = sdkError;
       }
       
       throw new Error(errorMsg);
     }
 
-    console.log('카카오톡 발송 성공:', result);
+    console.log('✅ 카카오톡 발송 성공 (SDK 사용):', result);
 
     return res.status(200).json({
       success: true,
