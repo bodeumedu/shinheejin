@@ -131,11 +131,43 @@ Return ONLY valid JSON.`
     if (wordLimit !== actualWordCount) {
       console.warn(`단어 수 불일치: wordLimit=${wordLimit}, 실제 답 단어 수=${actualWordCount}. wordLimit을 실제 단어 수로 조정합니다.`)
       wordLimit = actualWordCount
+      
+      // 질문 텍스트의 단어 수도 함께 업데이트
+      // 다양한 패턴 처리: "N단어 이하", "[N]단어 이하", "N단어 이하로 쓰시오" 등
+      if (result.question) {
+        // 패턴 1: "N단어 이하로 쓰시오" (공백 유연하게 처리)
+        result.question = result.question.replace(
+          /(\d+)\s*단어\s*이하로\s*쓰시오/gi,
+          `${actualWordCount}단어 이하로 쓰시오`
+        )
+        // 패턴 2: "[N]단어 이하로 쓰시오"
+        result.question = result.question.replace(
+          /\[(\d+)\]\s*단어\s*이하로\s*쓰시오/gi,
+          `${actualWordCount}단어 이하로 쓰시오`
+        )
+        // 패턴 3: "N단어 이하" (쓰시오 없이)
+        result.question = result.question.replace(
+          /(\d+)\s*단어\s*이하/gi,
+          (match, num) => {
+            // 질문 내에서 단어 수 관련 부분만 교체 (조건 부분은 제외)
+            if (match.includes('조건') || match.includes('본문')) {
+              return match // 조건 부분은 그대로 유지
+            }
+            return `${actualWordCount}단어 이하`
+          }
+        )
+        // 패턴 4: "[N]단어 이하" (쓰시오 없이)
+        result.question = result.question.replace(
+          /\[(\d+)\]\s*단어\s*이하/gi,
+          `${actualWordCount}단어 이하`
+        )
+      }
     }
 
-    // 답이 1-10단어 범위 내인지 확인
+    // 답이 1-10단어 범위 내인지 확인 - 경고만 표시하고 계속 진행
     if (actualWordCount < 1 || actualWordCount > 10) {
-      throw new Error(`답의 단어 수가 범위를 벗어났습니다: ${actualWordCount}단어 (1-10단어 범위 필요)`)
+      console.warn(`⚠️ 답의 단어 수가 범위를 벗어났습니다: ${actualWordCount}단어 (1-10단어 범위 권장). 계속 진행합니다.`)
+      // 오류를 던지지 않고 경고만 표시
     }
 
     // 질문의 지칭어와 텍스트의 밑줄 표시가 일치하는지 확인

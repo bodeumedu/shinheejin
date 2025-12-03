@@ -6,95 +6,210 @@
 
 .reference-description-page {
   width: 210mm;
+  height: 297mm;
   min-height: 297mm;
-  padding: 20mm;
+  padding: 18mm;
   margin: 0 auto 20px;
   background: white;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
   page-break-after: always;
+  box-sizing: border-box;
 }
 
 .reference-description-page-content {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 100%;
+  gap: 0;
+}
+
+/* 문제 아이템 (한 페이지에 2개) */
+.reference-description-question-item {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* 첫 번째 문제: 상반부 차지 (정확히 50%) */
+.reference-description-question-item.question-first {
+  flex: 0 0 50%;
+  height: 50%;
+  overflow-y: auto;
+}
+
+/* 두 번째 문제: 하반부에서 시작 (페이지의 정확히 50% 지점) */
+.reference-description-question-item.question-second {
+  flex: 0 0 50%;
+  height: 50%;
+  overflow-y: auto;
+}
+
+/* 문제가 하나만 있는 경우 */
+.reference-description-question-item:only-child:not(.question-first):not(.question-second) {
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* 문제 구분선 */
+.reference-description-question-divider {
+  height: 1px;
+  background: #ddd;
+  margin: 16px 0;
 }
 
 /* 출처 */
 .reference-description-source {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .reference-description-source-content {
   border-left: 4px solid #ff6b35;
-  padding-left: 12px;
+  padding-left: 10px;
 }
 
 .reference-description-source-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
   color: #333;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
-/* 영어원문 */
+/* 질문 - Q.에 붙여서 표시 (박스 없이) */
+.reference-description-question-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.reference-description-question-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2c3e50;
+  flex-shrink: 0;
+}
+
+.reference-description-question-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #2c3e50;
+  font-weight: 700; /* Q.부터 쓰시오까지 전체 볼드 */
+  font-family: 'Noto Sans KR', 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+}
+
+/* 영어원문 박스 (원래 아래에 있던 것) */
 .reference-description-original {
-  margin-bottom: 24px;
-  padding: 16px;
-  background: #f8f9fa;
-  border-radius: 6px;
-  border: 1px solid #e0e0e0;
+  margin-bottom: 14px;
+  padding: 12px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 5px;
 }
 
 .reference-description-original-text {
   margin: 0;
-  font-size: 14px;
-  line-height: 1.8;
+  font-size: 12px;
+  line-height: 1.7;
   color: #2c3e50;
   white-space: pre-wrap;
   word-wrap: break-word;
+  font-family: 'Noto Sans KR', 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
 }
 
-/* 문제 */
-.reference-description-question {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 15px;
-  line-height: 1.8;
+.reference-description-original-text strong {
+  font-weight: 700;
+  color: #2c3e50;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: #ff6b35;
+}
+
+.reference-description-question-text u {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: #ff6b35; /* 주황색 밑줄 */
+  font-weight: 700; /* 밑줄 부분 볼드 */
+}
+
+.reference-description-question-text strong {
+  font-weight: 700;
   color: #2c3e50;
 }
 
-.reference-description-question u {
+/* 본문(지문)에서도 밑줄 부분은 주황색 밑줄 + 볼드 */
+.reference-description-original-text u {
   text-decoration: underline;
   text-decoration-thickness: 2px;
   text-decoration-color: #ff6b35;
+  font-weight: 700;
+}
+
+/* 디자인 페이지에서는 모든 텍스트를 검은색으로 */
+.reference-description-viewer * {
+  color: #000 !important;
+}
+
+.reference-description-viewer span[style*="color: #dc3545"] {
+  color: #000 !important;
 }
 
 /* 조건 */
 .reference-description-condition {
-  margin-bottom: 20px;
-  padding: 12px;
+  margin-bottom: 0;
+  padding: 10px;
   background: #f8f9fa;
-  border-radius: 6px;
+  border-radius: 5px;
   border: 1px solid #e0e0e0;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.6;
   color: #495057;
+  white-space: pre-line;
 }
 
-/* 정답 */
-.reference-description-answer {
-  margin-top: auto;
-  padding: 12px;
-  background: #e8f5e9;
-  border-radius: 6px;
-  border: 1px solid #c8e6c9;
-  font-size: 14px;
-  font-weight: 600;
-  color: #2e7d32;
+/* 정답 페이지 */
+.reference-description-answer-page {
+  background: #fffef5;
+}
+
+.reference-description-answer-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #e74c3c;
+  text-align: center;
+  margin-bottom: 32px;
+  padding-bottom: 16px;
+  border-bottom: 3px solid #e74c3c;
+}
+
+.reference-description-answer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.reference-description-answer-item {
+  padding: 16px;
+  background: white;
+  border-left: 4px solid #3498db;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.reference-description-answer-source {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 8px;
+}
+
+.reference-description-answer-text {
+  font-size: 1rem;
+  color: #2c3e50;
+  line-height: 1.8;
+  padding: 8px 0;
 }
 
 /* 인쇄용 스타일 */

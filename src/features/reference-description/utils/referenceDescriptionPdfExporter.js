@@ -43,13 +43,23 @@ export async function exportReferenceDescriptionToPdf() {
     throw new Error(`PDF 라이브러리를 로드할 수 없습니다: ${errorMessage}\n\n패키지 설치: npm install jspdf html2canvas\n개발 서버 재시작이 필요할 수 있습니다.`)
   }
 
-  // 모든 지칭서술형 페이지 찾기
-  const pages = Array.from(document.querySelectorAll('[id^="reference-description-page-"]'))
+  // 모든 지칭서술형 페이지 찾기 (정답 페이지 제외)
+  const questionPages = Array.from(document.querySelectorAll('[id^="reference-description-page-"]'))
+    .filter(el => !el.id.includes('answer'))
     .sort((a, b) => {
       const aIdx = parseInt(a.id.replace('reference-description-page-', ''), 10)
       const bIdx = parseInt(b.id.replace('reference-description-page-', ''), 10)
       return aIdx - bIdx
     })
+  
+  // 정답 페이지 찾기
+  const answerPage = document.getElementById('reference-description-answer-page')
+  
+  // 문제 페이지 + 정답 페이지 순서로 배열 구성
+  const pages = [...questionPages]
+  if (answerPage) {
+    pages.push(answerPage)
+  }
 
   if (pages.length === 0) {
     throw new Error('PDF로 변환할 페이지를 찾을 수 없습니다.')

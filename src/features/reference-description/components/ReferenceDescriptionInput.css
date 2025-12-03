@@ -138,6 +138,12 @@
   color: #666;
 }
 
+/* 처리된 텍스트의 에러 스타일 */
+.reference-description-error {
+  color: #dc3545 !important;
+  font-weight: bold !important;
+}
+
 @media (max-width: 768px) {
   .reference-description-input {
     padding: 20px 15px;

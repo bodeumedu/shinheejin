@@ -134,27 +134,44 @@ function ReferenceDescriptionInput({ text, setText, onProcess, apiKey }) {
         const hasAnswer = result.answer && result.answer.trim().length > 0
         const needsCheck = !hasUnderline || !hasAnswer
 
-        // 문제가 있는 경우 경고 표시 (HTML 형식으로 하이라이트)
+        // 질문에서 "다음 글을 읽고 ~ 쓰시오." 부분과 지문 부분 분리
+        const questionText = result.question || ''
+        const questionParts = questionText.split(/\n\s*\n/)
+        
+        // 질문 부분 (쓰시오까지)
+        let questionPart = questionParts[0] || questionText
+        const writeIndex = questionPart.indexOf('쓰시오')
+        if (writeIndex !== -1) {
+          questionPart = questionPart.substring(0, writeIndex + 3).trim()
+        }
+        
+        // 지문 부분 (질문에 포함된 지문만, 밑줄 <u> 태그 유지)
+        const passagePart = questionParts.length > 1 ? questionParts.slice(1).join('\n\n').trim() : ''
+        
+        // 문제가 있는 경우 빨간색으로 표시 (CSS 클래스 사용)
+        const errorClass = needsCheck ? ' class="reference-description-error"' : ''
+        
         if (needsCheck) {
           const warnings = []
           if (!hasUnderline) warnings.push('밑줄 없음')
           if (!hasAnswer) warnings.push('답 없음')
-          processedText += `[⚠️ 수동 확인 필요: ${warnings.join(', ')}]\n\n`
+          processedText += `<span${errorClass}>[⚠️ 수동 확인 필요: ${warnings.join(', ')}]</span>\n\n`
         }
 
-        processedText += `${result.source ? result.source + '\n' : ''}${result.original}\n\n`
+        // 출처 제거하고 질문만 표시
+        processedText += `${questionPart}\n\n`
         
-        // 문제가 있으면 질문 부분도 강조
-        if (needsCheck) {
-          processedText += `[⚠️ ${!hasUnderline ? '밑줄 없음 - ' : ''}${!hasAnswer ? '답 없음 - ' : ''}수동 작성 필요]\n`
+        // 지문 부분 표시 (밑줄 <u> 태그 유지)
+        if (passagePart) {
+          processedText += `${passagePart}\n\n`
         }
-        processedText += `${result.question}\n\n`
+        
         processedText += `${result.condition}\n\n`
         
         if (hasAnswer) {
           processedText += `정답: ${result.answer} (${result.wordLimit}단어)\n\n`
         } else {
-          processedText += `정답: [답 없음 - 수동 작성 필요]\n\n`
+          processedText += `<span${errorClass}>정답: [답 없음 - 수동 작성 필요]</span>\n\n`
         }
         
         processedText += '━━━━━━━━━━━━━━━━━━━━\n\n'

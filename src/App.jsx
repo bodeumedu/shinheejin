@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TextInput from './features/pocketbook/components/TextInput'
 import TextOrganizer from './features/pocketbook/components/TextOrganizer'
 import ApiKeyInput from './components/ApiKeyInput'
@@ -34,6 +34,82 @@ import { saveTextResult, generateTextId, saveSourceInfo, getSourceDocumentId } f
 import { parseSourceWithAI, formatSourceString } from './utils/sourceParser'
 import SourceInputPopup from './components/SourceInputPopup'
 import SourceLoader from './components/SourceLoader'
+
+// 처리된 텍스트 편집기 컴포넌트
+function ProcessedTextEditor({ value, onChange }) {
+  const editorRef = useRef(null)
+  const isUpdatingRef = useRef(false)
+  
+  useEffect(() => {
+    if (editorRef.current && value !== undefined && !isUpdatingRef.current) {
+      try {
+        isUpdatingRef.current = true
+        const currentContent = editorRef.current.innerHTML || ''
+        const newContent = value || ''
+        
+        // 내용이 다를 때만 업데이트
+        // HTML 문자열을 안전하게 처리 (React가 파싱하지 않도록)
+        if (currentContent !== newContent) {
+          // HTML 문자열을 직접 DOM에 설정 (React 렌더링 파이프라인 우회)
+          editorRef.current.innerHTML = newContent
+        }
+      } catch (error) {
+        console.error('ProcessedTextEditor 업데이트 오류:', error)
+        // 오류 발생 시 텍스트로만 표시 (HTML 제거)
+        if (editorRef.current) {
+          try {
+            // HTML 태그 제거하고 텍스트만 표시
+            const textOnly = (value || '').replace(/<[^>]*>/g, '')
+            editorRef.current.textContent = textOnly
+          } catch (e) {
+            editorRef.current.textContent = value || ''
+          }
+        }
+      } finally {
+        // 약간의 지연 후 플래그 리셋 (무한 루프 방지)
+        setTimeout(() => {
+          isUpdatingRef.current = false
+        }, 100)
+      }
+    }
+  }, [value])
+  
+  const handleBlur = (e) => {
+    try {
+      if (!isUpdatingRef.current && e.target.innerHTML !== value) {
+        onChange(e.target.innerHTML)
+      }
+    } catch (error) {
+      console.error('ProcessedTextEditor 저장 오류:', error)
+    }
+  }
+  
+  return (
+    <>
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        onBlur={handleBlur}
+        style={{
+          width: '100%',
+          minHeight: '600px',
+          padding: '15px',
+          border: '2px solid #ddd',
+          borderRadius: '8px',
+          backgroundColor: '#fff',
+          fontFamily: 'inherit',
+          fontSize: '0.95rem',
+          lineHeight: '1.8',
+          whiteSpace: 'pre-wrap',
+          wordWrap: 'break-word',
+          outline: 'none'
+        }}
+        data-placeholder="처리된 텍스트가 여기에 표시됩니다. 수정할 수 있습니다."
+      />
+    </>
+  )
+}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -664,6 +740,8 @@ function App() {
 
   const handleReferenceDescriptionProcess = (data, processedText) => {
     setReferenceDescriptionData(data)
+    setReferenceDescriptionProcessedText(processedText || '')
+    setShowReferenceDescriptionDesign(false) // 디자인 페이지 초기화
     setReferenceDescriptionProcessedText(processedText || '')
   }
   
@@ -2469,31 +2547,16 @@ function App() {
                 </div>
                 <div>
                   <h3 style={{ marginBottom: '10px', color: '#333' }}>처리된 텍스트 (수정 가능)</h3>
-                  <textarea
-                    value={referenceDescriptionProcessedText || ''}
-                    onChange={(e) => setReferenceDescriptionProcessedText(e.target.value)}
-                    style={{
-                      width: '100%',
-                      minHeight: '600px',
-                      padding: '15px',
-                      border: '2px solid #ddd',
-                      borderRadius: '8px',
-                      backgroundColor: '#fff',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.8',
-                      resize: 'vertical',
-                      whiteSpace: 'pre-wrap',
-                      wordWrap: 'break-word'
-                    }}
-                    placeholder="처리된 텍스트가 여기에 표시됩니다. 수정할 수 있습니다."
+                  <ProcessedTextEditor
+                    value={referenceDescriptionProcessedText}
+                    onChange={setReferenceDescriptionProcessedText}
                   />
                   <div style={{
                     marginTop: '10px',
                     fontSize: '12px',
                     color: '#666'
                   }}>
-                    💡 텍스트를 직접 수정할 수 있습니다. 문제가 있는 부분은 <strong>[⚠️ 수동 확인 필요]</strong>로 표시되어 있습니다.
+                    💡 텍스트를 직접 수정할 수 있습니다. <strong>밑줄 부분은 볼드</strong>로, <span style={{ color: '#dc3545', fontWeight: 'bold' }}>문제가 있는 부분은 빨간색</span>으로 표시되어 있습니다.
                   </div>
                 </div>
               </div>
