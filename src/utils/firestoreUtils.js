@@ -238,28 +238,250 @@ export async function loadAllHomeworkStudents() {
   }
 
   try {
-    const snapshot = await getDocs(collection(db, 'homeworkProgress'));
+    // 영어와 수학 두 컬렉션 모두에서 데이터 불러오기
+    const englishSnapshot = await getDocs(collection(db, 'englishHomeworkProgress'));
+    const mathSnapshot = await getDocs(collection(db, 'mathHomeworkProgress'));
     const students = [];
 
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data() || {};
-      const meta = parseHomeworkDocMeta(docSnap.id, data.meta);
-      const list = data.students || [];
+    // 영어 과제 데이터 처리
+    const processDocuments = (snapshot, collectionType) => {
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        const meta = parseHomeworkDocMeta(docSnap.id, data.meta);
+        const list = data.students || [];
+        const phoneNumbers = data.phoneNumbers || {};
+        
+        // 디버깅: 모든 문서의 전체 데이터 구조 확인
+        const dataKeys = Object.keys(data);
+        const hasPhoneNumbers = 'phoneNumbers' in data;
+        const phoneNumbersValue = data.phoneNumbers;
+        const phoneNumbersKeys = phoneNumbersValue ? Object.keys(phoneNumbersValue) : [];
+        
+        // 전화번호 데이터를 문자열로 변환하여 로그 출력
+        console.log(`📋 [Firestore 문서] ${docSnap.id}`);
+        console.log(`   학교: ${meta.school}, 학년: ${meta.grade}, 반: ${meta.className}`);
+        console.log(`   전체데이터키: [${dataKeys.join(', ')}]`);
+        console.log(`   phoneNumbers 필드 존재: ${hasPhoneNumbers}`);
+        console.log(`   phoneNumbers 값:`, phoneNumbersValue);
+        console.log(`   phoneNumbers 타입: ${typeof phoneNumbersValue}`);
+        console.log(`   phoneNumbers 키 개수: ${phoneNumbersKeys.length}`);
+        console.log(`   phoneNumbers 키 목록: [${phoneNumbersKeys.join(', ')}]`);
+        console.log(`   학생 목록: [${list.join(', ')}]`);
+        console.log(`   학생 수: ${list.length}`);
+        
+        // phoneNumbers 객체의 각 항목 상세 출력
+        if (phoneNumbersValue && typeof phoneNumbersValue === 'object') {
+          console.log(`   📞 전화번호 상세:`);
+          Object.entries(phoneNumbersValue).forEach(([studentName, phoneData]) => {
+            console.log(`      - ${studentName}:`, phoneData, `(타입: ${typeof phoneData})`);
+          });
+        }
+        
+        // 전화번호 데이터가 있는 경우 상세 로그
+        if (Object.keys(phoneNumbers).length > 0) {
+          console.log(`📞 [전화번호 상세] ${docSnap.id}`, {
+            전화번호데이터: phoneNumbers,
+            전화번호타입: typeof phoneNumbers,
+            전화번호키목록: Object.keys(phoneNumbers),
+            각학생별전화번호: Object.entries(phoneNumbers).map(([name, phone]) => ({
+              이름: name,
+              전화번호데이터: phone,
+              타입: typeof phone,
+              학생전화번호: typeof phone === 'object' ? phone?.student : phone,
+              학부모전화번호: typeof phone === 'object' ? phone?.parent : null
+            }))
+          });
+        } else if ('phoneNumbers' in data && data.phoneNumbers) {
+          // phoneNumbers 필드는 있지만 비어있거나 다른 형태
+          console.log(`⚠️ [전화번호 필드 존재하나 비어있음] ${docSnap.id}`, {
+            phoneNumbers필드값: data.phoneNumbers,
+            phoneNumbers타입: typeof data.phoneNumbers,
+            phoneNumbers키수: Object.keys(data.phoneNumbers || {}).length,
+            phoneNumbers직렬화: JSON.stringify(data.phoneNumbers)
+          });
+        }
+        
+        // 특정 학생이 이 문서에 있는지 확인
+        const targetStudentNames = ['권보나', '김민솔', '백채훈', '신은성'];
+        const foundTargetStudents = list.filter(name => targetStudentNames.includes(name));
+        if (foundTargetStudents.length > 0) {
+          console.log(`🎯 [대상 학생 발견] ${docSnap.id}`);
+          console.log(`   발견된 학생: [${foundTargetStudents.join(', ')}]`);
+          console.log(`   전체 학생 목록: [${list.join(', ')}]`);
+          console.log(`   phoneNumbers 키 목록: [${Object.keys(phoneNumbers).join(', ')}]`);
+          foundTargetStudents.forEach(name => {
+            const hasPhone = name in phoneNumbers;
+            const phoneValue = phoneNumbers[name];
+            console.log(`   📞 ${name}:`);
+            console.log(`      - phoneNumbers에 있는가: ${hasPhone}`);
+            console.log(`      - 전화번호 값:`, phoneValue);
+            console.log(`      - 전화번호 타입: ${typeof phoneValue}`);
+            if (phoneValue) {
+              if (typeof phoneValue === 'object') {
+                console.log(`      - student: ${phoneValue.student}`);
+                console.log(`      - parent: ${phoneValue.parent}`);
+              } else {
+                console.log(`      - 문자열 값: ${phoneValue}`);
+              }
+            }
+          });
+        }
 
-      list.forEach((studentName) => {
-        students.push({
-          id: `${docSnap.id}__${studentName}`,
-          student: studentName,
-          school: meta.school || '',
-          grade: meta.grade || '',
-          className: meta.className || meta.teacher || '',
-          teacher: meta.teacher || '',
-          docId: docSnap.id,
+        list.forEach((studentName) => {
+          // 전화번호 정보 추출 (학생, 학부모)
+          const phoneData = phoneNumbers[studentName];
+          let studentPhone = null;
+          let parentPhone = null;
+          
+          // 디버깅: 특정 학생의 전화번호 추출 과정 확인
+          if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
+            console.log(`📞 [전화번호 추출 시작] ${studentName} (문서: ${docSnap.id})`);
+            console.log(`   - phoneNumbers 객체:`, phoneNumbers);
+            console.log(`   - phoneNumbers[${studentName}]:`, phoneData);
+            console.log(`   - phoneData 타입: ${typeof phoneData}`);
+            console.log(`   - phoneData 값:`, phoneData);
+          }
+          
+          if (typeof phoneData === 'string' && phoneData.trim() !== '') {
+            // 기존 형식: 문자열로 저장된 경우
+            studentPhone = phoneData.trim();
+            if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
+              console.log(`   ✅ 문자열 형식으로 추출: ${studentPhone}`);
+            }
+          } else if (typeof phoneData === 'object' && phoneData !== null) {
+            // 새 형식: 객체로 저장된 경우 {student: '010...', parent: '010...'}
+            if (phoneData.student && typeof phoneData.student === 'string' && phoneData.student.trim() !== '') {
+              studentPhone = phoneData.student.trim();
+              if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
+                console.log(`   ✅ 객체 형식에서 student 추출: ${studentPhone}`);
+              }
+            }
+            if (phoneData.parent && typeof phoneData.parent === 'string' && phoneData.parent.trim() !== '') {
+              parentPhone = phoneData.parent.trim();
+              if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
+                console.log(`   ✅ 객체 형식에서 parent 추출: ${parentPhone}`);
+              }
+            }
+            if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName) && !studentPhone && !parentPhone) {
+              console.log(`   ⚠️ 객체이지만 student/parent가 없음:`, phoneData);
+            }
+          } else {
+            if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
+              console.log(`   ❌ 전화번호 데이터 없음 (phoneData: ${phoneData}, 타입: ${typeof phoneData})`);
+            }
+          }
+
+          students.push({
+            id: `${docSnap.id}__${studentName}`,
+            student: studentName,
+            school: meta.school || '',
+            grade: meta.grade || '',
+            className: meta.className || meta.teacher || '',
+            teacher: meta.teacher || '',
+            docId: docSnap.id,
+            phoneNumber: (studentPhone && studentPhone.trim() !== '') ? studentPhone : null, // 학생 전화번호
+            parentPhoneNumber: (parentPhone && parentPhone.trim() !== '') ? parentPhone : null, // 학부모 전화번호
+          });
         });
       });
-    });
+    };
+    
+    // 두 컬렉션 모두 처리
+    processDocuments(englishSnapshot, '영어');
+    processDocuments(mathSnapshot, '수학');
 
-    console.log(`✅ 클리닉 대장 학생 ${students.length}명 불러옴`);
+    console.log(`✅ 클리닉 대장 학생 ${students.length}명 불러옴 (영어 문서: ${englishSnapshot.size}개, 수학 문서: ${mathSnapshot.size}개)`);
+    
+    // 전화번호가 있는 학생 수 확인
+    const studentsWithPhone = students.filter(s => s.phoneNumber);
+    console.log(`📞 전화번호가 등록된 학생: ${studentsWithPhone.length}명`, 
+      studentsWithPhone.map(s => `${s.student}(${s.phoneNumber})`));
+    
+    // 특정 학생들의 정보 확인 (전화번호가 null인 경우)
+    const targetStudents = students.filter(s => ['권보나', '김민솔', '백채훈', '신은성'].includes(s.student));
+    if (targetStudents.length > 0) {
+      console.log(`\n🔍 [대상 학생 정보 요약]`);
+      targetStudents.forEach(s => {
+        console.log(`   ${s.student} (${s.school} ${s.grade} ${s.className})`);
+        console.log(`      문서ID: ${s.docId}`);
+        console.log(`      학생 전화번호: ${s.phoneNumber || '❌ 없음'}`);
+        console.log(`      학부모 전화번호: ${s.parentPhoneNumber || '❌ 없음'}`);
+      });
+      console.log(`\n`);
+    }
+    
+    // 모든 문서의 phoneNumbers 필드 요약 (두 컬렉션 모두)
+    console.log(`\n📊 [Firestore 문서별 phoneNumbers 필드 요약]`);
+    const summaryMap = new Map();
+    
+    // 영어 컬렉션 문서들 추가
+    englishSnapshot.forEach((docSnap) => {
+      const data = docSnap.data() || {};
+      const hasField = 'phoneNumbers' in data;
+      const phoneNums = data.phoneNumbers;
+      const keys = phoneNums && typeof phoneNums === 'object' ? Object.keys(phoneNums) : [];
+      
+      if (hasField) {
+        summaryMap.set(`[영어] ${docSnap.id}`, {
+          존재: true,
+          키개수: keys.length,
+          키목록: keys,
+          값: phoneNums,
+          값타입: typeof phoneNums,
+          값직렬화: JSON.stringify(phoneNums)
+        });
+      }
+    });
+    
+    // 수학 컬렉션 문서들 추가
+    mathSnapshot.forEach((docSnap) => {
+      const data = docSnap.data() || {};
+      const hasField = 'phoneNumbers' in data;
+      const phoneNums = data.phoneNumbers;
+      const keys = phoneNums && typeof phoneNums === 'object' ? Object.keys(phoneNums) : [];
+      
+      // 필드가 존재하면 무조건 기록 (빈 객체여도)
+      if (hasField) {
+        summaryMap.set(`[수학] ${docSnap.id}`, {
+          존재: true,
+          키개수: keys.length,
+          키목록: keys,
+          값: phoneNums,
+          값타입: typeof phoneNums,
+          값직렬화: JSON.stringify(phoneNums)
+        });
+      }
+    });
+    
+    if (summaryMap.size === 0) {
+      console.log(`   ⚠️ phoneNumbers 필드가 있는 문서가 없습니다.`);
+      console.log(`   💡 과제 진행 상황 페이지에서 전화번호를 입력하고 저장했는지 확인하세요.`);
+    } else {
+      summaryMap.forEach((info, docId) => {
+        console.log(`   📄 ${docId}`);
+        console.log(`      - 필드 존재: ${info.존재}`);
+        console.log(`      - 값 타입: ${info.값타입}`);
+        console.log(`      - 키 개수: ${info.키개수}`);
+        if (info.값직렬화) {
+          console.log(`      - 값 직렬화: ${info.값직렬화}`);
+        }
+        if (info.키개수 > 0) {
+          console.log(`      - 키 목록: [${info.키목록.join(', ')}]`);
+          info.키목록.forEach(key => {
+            const value = info.값[key];
+            if (typeof value === 'object') {
+              console.log(`         ${key}: {student: "${value.student || '없음'}", parent: "${value.parent || '없음'}"}`);
+            } else {
+              console.log(`         ${key}: "${value}"`);
+            }
+          });
+        } else {
+          console.log(`      - ⚠️ 빈 객체입니다 (필드는 있지만 데이터가 없음)`);
+        }
+      });
+    }
+    console.log(`\n`);
+    
     return students;
   } catch (error) {
     console.error('❌ 학생 목록 불러오기 실패:', error);
