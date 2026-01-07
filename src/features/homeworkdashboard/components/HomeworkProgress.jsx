@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../../../utils/firebase';
+import { loadCentralPhoneNumbers } from '../../../utils/firestoreUtils';
 import './HomeworkProgress.css';
 
 // 과제 진행 상황 컴포넌트
@@ -470,8 +471,9 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                   return;
                 }
                 
-                // 로컬에 없을 때만 Firestore 데이터 사용
-                if (data.phoneNumbers && data.phoneNumbers[student]) {
+                // 로컬에 없을 때만 Firestore 데이터 사용 (중앙 저장소는 이미 위에서 불러옴)
+                // Firestore 문서의 phoneNumbers는 하위 호환성을 위해 유지하되, 중앙 저장소가 우선
+                if (data.phoneNumbers && data.phoneNumbers[student] && !prev[student]) {
                   const phoneData = data.phoneNumbers[student];
                   
                   // undefined 값 제거 및 정리

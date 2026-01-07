@@ -12,7 +12,8 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "your-app-id"
 };
 
-// Firebase 설정 확인
+// Firebase 설정 확인 (로그는 한 번만 출력)
+let hasLoggedConfig = false;
 const isFirebaseConfigured = () => {
   const configured = firebaseConfig.apiKey !== "your-api-key" &&
          firebaseConfig.apiKey !== undefined &&
@@ -24,18 +25,17 @@ const isFirebaseConfigured = () => {
          firebaseConfig.authDomain !== undefined &&
          firebaseConfig.authDomain !== "";
   
-  // 디버깅 정보 출력
-  if (!configured) {
-    console.warn('Firebase 설정 확인:', {
-      apiKey: firebaseConfig.apiKey ? '설정됨' : '미설정',
-      projectId: firebaseConfig.projectId ? '설정됨' : '미설정',
-      authDomain: firebaseConfig.authDomain ? '설정됨' : '미설정',
-      env: {
-        VITE_FIREBASE_API_KEY: import.meta.env.VITE_FIREBASE_API_KEY ? '존재' : '없음',
-        VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID ? '존재' : '없음',
-        VITE_FIREBASE_AUTH_DOMAIN: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ? '존재' : '없음',
-      }
-    });
+  // 로그는 한 번만 출력 (초기화 시에만)
+  if (!hasLoggedConfig) {
+    hasLoggedConfig = true;
+    if (configured) {
+      console.log('✅ Firebase 설정 확인 완료:', {
+        projectId: firebaseConfig.projectId,
+        authDomain: firebaseConfig.authDomain,
+      });
+    } else {
+      console.warn('⚠️ Firebase가 제대로 설정되지 않았습니다.');
+    }
   }
   
   return configured;
@@ -47,6 +47,7 @@ let db = null;
 
 try {
   if (isFirebaseConfigured()) {
+    console.log('🚀 Firebase 초기화 시도 중...');
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     
@@ -61,9 +62,10 @@ try {
       }
     });
     
-    console.log('✅ Firebase 초기화 성공', {
+    console.log('✅ Firebase 초기화 성공!', {
       projectId: firebaseConfig.projectId,
-      authDomain: firebaseConfig.authDomain
+      authDomain: firebaseConfig.authDomain,
+      db: db ? '생성됨' : '생성 실패'
     });
   } else {
     console.error('❌ Firebase 환경 변수가 설정되지 않았습니다.');
@@ -74,10 +76,13 @@ try {
     console.error('- VITE_FIREBASE_STORAGE_BUCKET');
     console.error('- VITE_FIREBASE_MESSAGING_SENDER_ID');
     console.error('- VITE_FIREBASE_APP_ID');
+    console.error('');
+    console.error('💡 Vercel에 환경 변수를 설정한 경우, 재배포가 필요합니다.');
   }
 } catch (error) {
   console.error('❌ Firebase 초기화 실패:', error);
   console.error('오류 상세:', error.message);
+  console.error('스택:', error.stack);
 }
 
 export { db, isFirebaseConfigured };

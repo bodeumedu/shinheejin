@@ -1,6 +1,6 @@
 import './MainMenu.css'
 
-function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onSelectComplexDescription, onSelectParaphrasing, onSelectSum15, onSelectSum40, onSelectKoreanSummary, onSelectKey, onSelectCsatCloze, onSelectThirdWord, onSelectOcr, onSelectEnglishHomeworkDashboard, onSelectMathHomeworkDashboard, onSelectClinicLog, onSelectReferenceDescription }) {
+function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onSelectComplexDescription, onSelectParaphrasing, onSelectSum15, onSelectSum30, onSelectSum40, onSelectKoreanSummary, onSelectKey, onSelectCsatCloze, onSelectThirdWord, onSelectOcr, onSelectEnglishHomeworkDashboard, onSelectMathHomeworkDashboard, onSelectClinicLog, onSelectStudentPhoneManager, onSelectHomeworkCompletion, onSelectReferenceDescription, onSelectGrammarAnalysis, onSelectWeeklySchedule, onSelectNotes, onSelectWordShuffler, onSelectGwacheonCentralHigh1 }) {
   return (
     <div className="main-menu">
       <div className="main-menu-container">
@@ -41,17 +41,37 @@ function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onS
               </button>
 
               <button 
-                onClick={onSelectCsatCloze} 
-                className="main-menu-btn main-menu-btn-nonary"
-              >
-                빈칸 수능문제 출제기
-              </button>
-
-              <button 
                 onClick={onSelectThirdWord} 
                 className="main-menu-btn main-menu-btn-denary"
               >
                 Third Word
+              </button>
+              
+              <button 
+                onClick={onSelectSum40} 
+                className="main-menu-btn main-menu-btn-septenary"
+              >
+                SUM40
+              </button>
+            </div>
+          </div>
+
+          {/* 중간: 내신 추가 자료 만들기 */}
+          <div className="main-menu-center">
+            <h2 className="section-title">내신 추가 자료 만들기</h2>
+            <div className="main-menu-buttons">
+              <button 
+                onClick={onSelectBlank} 
+                className="main-menu-btn main-menu-btn-secondary"
+              >
+                빈칸 만들기
+              </button>
+
+              <button 
+                onClick={onSelectCsatCloze} 
+                className="main-menu-btn main-menu-btn-nonary"
+              >
+                빈칸 수능문제 출제기
               </button>
 
               <button 
@@ -60,24 +80,19 @@ function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onS
               >
                 지칭서술형(지문 안에서,어형변화무)
               </button>
-            </div>
-          </div>
 
-          {/* 오른쪽: 기타 기능 */}
-          <div className="main-menu-right">
-            <div className="main-menu-buttons">
+              <button 
+                onClick={onSelectGrammarAnalysis} 
+                className="main-menu-btn main-menu-btn-grammar"
+              >
+                분석지 만들기
+              </button>
+
               <button 
                 onClick={onSelectPocketbook} 
                 className="main-menu-btn main-menu-btn-primary"
               >
                 포켓북 만들기
-              </button>
-              
-              <button 
-                onClick={onSelectBlank} 
-                className="main-menu-btn main-menu-btn-secondary"
-              >
-                빈칸 만들기
               </button>
               
               <button 
@@ -88,10 +103,10 @@ function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onS
               </button>
               
               <button 
-                onClick={onSelectSum40} 
-                className="main-menu-btn main-menu-btn-septenary"
+                onClick={onSelectSum30} 
+                className="main-menu-btn main-menu-btn-senary"
               >
-                SUM40
+                SUM30 (2학년)
               </button>
               
               <button 
@@ -100,19 +115,25 @@ function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onS
               >
                 요약문 한글
               </button>
+            </div>
+          </div>
 
+          {/* 오른쪽: 운영 TOOL 및 유용한 기능 */}
+          <div className="main-menu-right">
+            <h2 className="section-title">운영 TOOL</h2>
+            <div className="main-menu-buttons">
               <button 
-                onClick={onSelectOcr} 
-                className="main-menu-btn main-menu-btn-undenary"
+                onClick={onSelectWeeklySchedule} 
+                className="main-menu-btn main-menu-btn-schedule"
               >
-                📷 사진 텍스트 추출
+                📅 영어과제관리 주간시간표
               </button>
 
               <button 
                 onClick={onSelectEnglishHomeworkDashboard} 
                 className="main-menu-btn main-menu-btn-duodenary"
               >
-                📚 영어 과제관리 대시보드
+                📚 대시보드
               </button>
 
               <button 
@@ -127,6 +148,47 @@ function MainMenu({ onSelectPocketbook, onSelectBlank, onSelectPreprocessor, onS
                 className="main-menu-btn main-menu-btn-clinic"
               >
                 🗂️ 클리닉 대장
+              </button>
+
+              <button 
+                onClick={onSelectStudentPhoneManager} 
+                className="main-menu-btn main-menu-btn-phone"
+              >
+                📞 학생 전화번호 관리
+              </button>
+
+              <button 
+                onClick={onSelectHomeworkCompletion} 
+                className="main-menu-btn main-menu-btn-completion"
+              >
+                📚 숙제 과제 완료도
+              </button>
+            </div>
+
+            <h2 className="section-title">유용한 기능</h2>
+            <div className="main-menu-buttons">
+              <button 
+                onClick={onSelectWordShuffler} 
+                className="main-menu-btn main-menu-btn-shuffler"
+              >
+                🔀 Word Shuffler
+              </button>
+
+              <button 
+                onClick={onSelectOcr} 
+                className="main-menu-btn main-menu-btn-undenary"
+              >
+                📷 사진 텍스트 추출
+              </button>
+            </div>
+
+            <h2 className="section-title" style={{ marginTop: '40px' }}>과천 지역 내신 상세 분석</h2>
+            <div className="main-menu-buttons">
+              <button 
+                onClick={onSelectGwacheonCentralHigh1} 
+                className="main-menu-btn main-menu-btn-primary"
+              >
+                과천중앙고1학년
               </button>
             </div>
           </div>

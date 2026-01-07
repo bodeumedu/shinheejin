@@ -11,6 +11,8 @@ import ComplexDescriptionInput from './features/complex-description/components/C
 import ParaphrasingInput from './features/paraphrasing/components/ParaphrasingInput'
 import Sum15Input from './features/sum15/components/Sum15Input'
 import Sum15Viewer from './features/sum15/components/Sum15Viewer'
+import Sum30Input from './features/sum30/components/Sum30Input'
+import Sum30Viewer from './features/sum30/components/Sum30Viewer'
 import Sum40Input from './features/sum40/components/Sum40Input'
 import KoreanSummaryInput from './features/korean-summary/components/KoreanSummaryInput'
 import KoreanSummaryViewer from './features/korean-summary/components/KoreanSummaryViewer'
@@ -21,12 +23,25 @@ import OcrInput from './features/ocr/components/OcrInput'
 import ReferenceDescriptionInput from './features/reference-description/components/ReferenceDescriptionInput'
 import ReferenceDescriptionViewer from './features/reference-description/components/ReferenceDescriptionViewer'
 import { exportReferenceDescriptionToPdf } from './features/reference-description/utils/referenceDescriptionPdfExporter'
+import GrammarAnalysisInput from './features/grammar-analysis/components/GrammarAnalysisInput'
+import GrammarAnalysisViewer from './features/grammar-analysis/components/GrammarAnalysisViewer'
+import GrammarAnalysisDesignViewer from './features/grammar-analysis/components/GrammarAnalysisDesignViewer'
 import HomeworkDashboard from './features/homeworkdashboard/components/HomeworkDashboard'
 import HomeworkProgress from './features/homeworkdashboard/components/HomeworkProgress'
 import ClinicLog from './features/clinic-log/components/ClinicLog'
+import WeeklyScheduleInput from './features/weekly-schedule/components/WeeklyScheduleInput'
+import WeeklyScheduleViewer from './features/weekly-schedule/components/WeeklyScheduleViewer'
+import Notes from './features/notes/components/Notes'
+import StudentPhoneManager from './features/student-phone/components/StudentPhoneManager'
+import HomeworkCompletion from './features/homework-completion/components/HomeworkCompletion'
+import WordShuffler from './features/word-shuffler/components/WordShuffler'
+import SentenceInsertionProblemMaker from './features/sentence-insertion/components/SentenceInsertionProblemMaker'
+import GwacheonAnalysisInput from './features/gwacheon-analysis/components/GwacheonAnalysisInput'
+import GwacheonAnalysisViewer from './features/gwacheon-analysis/components/GwacheonAnalysisViewer'
 import { exportToPdf } from './features/pocketbook/utils/pdfExporter'
 import { exportBlankToPdf } from './features/blank/utils/blankPdfExporter'
 import { exportSum15ToPdf } from './features/sum15/utils/sum15PdfExporter'
+import { exportSum30ToPdf } from './features/sum30/utils/sum30PdfExporter'
 import { exportKoreanSummaryToPdf } from './features/korean-summary/utils/koreanSummaryPdfExporter'
 import './App.css'
 import { analyzeText } from './features/pocketbook/utils/textAnalyzer'
@@ -136,6 +151,9 @@ function App() {
   const [paraphrasingData, setParaphrasingData] = useState(null) // Paraphrasing 결과
   const [sum15Data, setSum15Data] = useState(null) // SUM15 결과
   const [showSum15Design, setShowSum15Design] = useState(false) // SUM15 디자인 페이지 표시 여부
+  const [sum30Data, setSum30Data] = useState(null) // SUM30 결과
+  const [sum30ProcessedText, setSum30ProcessedText] = useState('') // SUM30 처리된 텍스트 (수정 가능)
+  const [showSum30Design, setShowSum30Design] = useState(false) // SUM30 디자인 페이지 표시 여부
   const [sum40Data, setSum40Data] = useState(null) // SUM40 결과
   const [koreanSummaryData, setKoreanSummaryData] = useState(null) // 요약문 한글 결과
   const [koreanSummaryProcessedText, setKoreanSummaryProcessedText] = useState('') // 요약문 한글 처리된 텍스트 (수정 가능)
@@ -147,7 +165,13 @@ function App() {
   const [referenceDescriptionData, setReferenceDescriptionData] = useState(null) // 지칭서술형 결과
   const [referenceDescriptionProcessedText, setReferenceDescriptionProcessedText] = useState('') // 지칭서술형 처리된 텍스트
   const [showReferenceDescriptionDesign, setShowReferenceDescriptionDesign] = useState(false) // 지칭서술형 디자인 페이지 표시 여부
+  const [grammarAnalysisData, setGrammarAnalysisData] = useState(null) // 문법 분석 결과
+  const [grammarAnalysisText, setGrammarAnalysisText] = useState('') // 문법 분석 입력 텍스트
+  const [showGrammarAnalysisDesign, setShowGrammarAnalysisDesign] = useState(false) // 분석지 디자인 페이지 표시 여부
+  const [weeklyScheduleData, setWeeklyScheduleData] = useState(null) // 주간시간표 데이터 (배열)
+  const [weeklyScheduleWeek, setWeeklyScheduleWeek] = useState(null) // 주간시간표 주차 정보
   const [homeworkProgressData, setHomeworkProgressData] = useState(null) // 과제 진행 데이터
+  const [gwacheonAnalysisData, setGwacheonAnalysisData] = useState(null) // 과천중앙고 내신 분석 결과
   const [apiKey, setApiKey] = useState('')
   const [isSavingPdf, setIsSavingPdf] = useState(false)
 
@@ -393,6 +417,9 @@ function App() {
     setParaphrasingData(null)
     setSum15Data(null)
     setShowSum15Design(false)
+    setSum30Data(null)
+    setSum30ProcessedText('')
+    setShowSum30Design(false)
     setSum40Data(null)
     setKoreanSummaryData(null)
     setKoreanSummaryProcessedText('')
@@ -401,6 +428,7 @@ function App() {
     setCsatClozeData(null)
     setThirdWordData(null)
     setOcrData(null)
+    setWeeklyScheduleData(null)
     setHomeworkProgressData(null)
     setMode('main')
   }
@@ -424,6 +452,9 @@ function App() {
     setParaphrasingData(null)
     setSum15Data(null)
     setShowSum15Design(false)
+    setSum30Data(null)
+    setSum30ProcessedText('')
+    setShowSum30Design(false)
     setSum40Data(null)
     setKoreanSummaryData(null)
     setKoreanSummaryProcessedText('')
@@ -432,6 +463,7 @@ function App() {
     setCsatClozeData(null)
     setThirdWordData(null)
     setOcrData(null)
+    setWeeklyScheduleData(null)
     setHomeworkProgressData(null)
     setMode('main')
   }
@@ -658,6 +690,13 @@ function App() {
     setMode('sum15')
   }
   
+  const handleSelectSum30 = () => {
+    setMode('sum30')
+    setText('')
+    setSum30Data(null)
+    setSum30ProcessedText('')
+  }
+  
   const handleSelectSum40 = () => {
     setMode('sum40')
   }
@@ -683,6 +722,17 @@ function App() {
     setText('')
     setReferenceDescriptionData(null)
     setReferenceDescriptionProcessedText('')
+    setWeeklyScheduleData(null)
+  }
+
+  const handleSelectGrammarAnalysis = () => {
+    setMode('grammar-analysis')
+    setGrammarAnalysisText('')
+    setGrammarAnalysisData(null)
+  }
+
+  const handleGrammarAnalysisProcess = (result) => {
+    setGrammarAnalysisData(result)
   }
   
   const handleSelectOcr = () => {
@@ -700,6 +750,48 @@ function App() {
   const handleSelectClinicLog = () => {
     setMode('clinic-log')
   }
+
+  const handleSelectStudentPhoneManager = () => {
+    setMode('student-phone-manager')
+  }
+
+  const handleSelectHomeworkCompletion = () => {
+    setMode('homework-completion')
+  }
+
+  const handleSelectWeeklySchedule = () => {
+    setMode('weekly-schedule')
+    setWeeklyScheduleData(null)
+    setWeeklyScheduleWeek(null)
+  }
+
+  const handleSelectNotes = () => {
+    setMode('notes')
+  }
+
+  const handleSelectWordShuffler = () => {
+    setMode('word-shuffler')
+  }
+
+  const handleSelectGwacheonCentralHigh1 = () => {
+    setMode('gwacheon-central-high-1')
+    setGwacheonAnalysisData(null)
+  }
+
+  const handleGwacheonAnalysisProcess = (data) => {
+    setGwacheonAnalysisData(data)
+  }
+
+  const handleSelectSentenceInsertion = () => {
+    setMode('sentence-insertion')
+  }
+
+  const handleWeeklyScheduleProcess = (data, grade, week) => {
+    // 주차 정보 저장
+    setWeeklyScheduleWeek(week);
+    // 현재 처리한 학년 데이터 저장 (뷰어에서 주차별 모든 학년 데이터를 합쳐서 표시)
+    setWeeklyScheduleData(data)
+  }
   
   const handlePreprocessorProcess = (data) => {
     setPreprocessorData(data)
@@ -715,6 +807,11 @@ function App() {
   
   const handleSum15Process = (data) => {
     setSum15Data(data)
+  }
+  
+  const handleSum30Process = (data) => {
+    setSum30Data(data)
+    setSum30ProcessedText(data.processed || '')
   }
   
   const handleSum40Process = (data) => {
@@ -786,17 +883,43 @@ function App() {
           onSelectComplexDescription={handleSelectComplexDescription}
           onSelectParaphrasing={handleSelectParaphrasing}
           onSelectSum15={handleSelectSum15}
+          onSelectSum30={handleSelectSum30}
           onSelectSum40={handleSelectSum40}
           onSelectKoreanSummary={handleSelectKoreanSummary}
           onSelectKey={handleSelectKey}
           onSelectCsatCloze={handleSelectCsatCloze}
           onSelectThirdWord={handleSelectThirdWord}
           onSelectReferenceDescription={handleSelectReferenceDescription}
+          onSelectGrammarAnalysis={handleSelectGrammarAnalysis}
           onSelectOcr={handleSelectOcr}
           onSelectEnglishHomeworkDashboard={handleSelectEnglishHomeworkDashboard}
           onSelectMathHomeworkDashboard={handleSelectMathHomeworkDashboard}
           onSelectClinicLog={handleSelectClinicLog}
+          onSelectStudentPhoneManager={handleSelectStudentPhoneManager}
+          onSelectHomeworkCompletion={handleSelectHomeworkCompletion}
+          onSelectWeeklySchedule={handleSelectWeeklySchedule}
+          onSelectNotes={handleSelectNotes}
+          onSelectWordShuffler={handleSelectWordShuffler}
+          onSelectGwacheonCentralHigh1={handleSelectGwacheonCentralHigh1}
         />
+      </div>
+    )
+  }
+
+  // 전화번호 관리 모드
+  if (mode === 'student-phone-manager') {
+    return (
+      <div className="app">
+        <StudentPhoneManager onClose={handleBackToMain} />
+      </div>
+    )
+  }
+
+  // 숙제 과제 완료도 모드
+  if (mode === 'homework-completion') {
+    return (
+      <div className="app">
+        <HomeworkCompletion onClose={handleBackToMain} />
       </div>
     )
   }
@@ -820,6 +943,112 @@ function App() {
         <div className="main-content">
           <ClinicLog />
         </div>
+      </div>
+    )
+  }
+
+  // 주간시간표 모드
+  if (mode === 'weekly-schedule') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>📅 주간시간표</h1>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <div className="main-content">
+          {!weeklyScheduleData ? (
+            <WeeklyScheduleInput onProcess={handleWeeklyScheduleProcess} />
+          ) : (
+            <div className="result-container">
+              <div className="result-actions">
+                <button 
+                  onClick={() => { 
+                    setWeeklyScheduleData(null)
+                    setWeeklyScheduleWeek(null)
+                  }} 
+                  className="btn btn-secondary"
+                >
+                  다시 입력하기
+                </button>
+              </div>
+              <WeeklyScheduleViewer scheduleData={weeklyScheduleData} weekKey={weeklyScheduleWeek} />
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // 노트 모드
+  if (mode === 'notes') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>📝 노트</h1>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <div className="main-content">
+          <Notes />
+        </div>
+      </div>
+    )
+  }
+
+  // Word Shuffler 모드
+  if (mode === 'word-shuffler') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>🔀 Word Shuffler</h1>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <div className="main-content">
+          <WordShuffler />
+        </div>
+      </div>
+    )
+  }
+
+  // 문장삽입 문제 생성 모드
+  if (mode === 'sentence-insertion') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>📝 문장삽입 문제 생성기</h1>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+        <SentenceInsertionProblemMaker preprocessorData={preprocessorData} />
       </div>
     )
   }
@@ -1297,6 +1526,15 @@ function App() {
                 className="btn btn-primary"
               >
                 결과 복사하기
+              </button>
+              <button 
+                onClick={() => {
+                  setMode('sentence-insertion')
+                }} 
+                className="btn btn-primary"
+                style={{ background: 'linear-gradient(135deg, #27ae60 0%, #229954 100%)' }}
+              >
+                문장삽입 문제 생성하기
               </button>
             </div>
             <div className="multiple-results">
@@ -1959,6 +2197,193 @@ function App() {
     )
   }
 
+  // SUM30 모드
+  if (mode === 'sum30') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>SUM30</h1>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!sum30Data ? (
+          <Sum30Input
+            text={text}
+            setText={setText}
+            onProcess={handleSum30Process}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            {showSum30Design ? (
+              // 디자인된 페이지 모드
+              <>
+                <div className="result-actions">
+                  <button 
+                    onClick={() => setShowSum30Design(false)} 
+                    className="btn btn-secondary"
+                  >
+                    텍스트 보기로 돌아가기
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      setIsSavingPdf(true)
+                      try {
+                        await exportSum30ToPdf()
+                      } catch (error) {
+                        alert(error.message || 'PDF 저장 중 오류가 발생했습니다.')
+                      } finally {
+                        setIsSavingPdf(false)
+                      }
+                    }}
+                    className="btn btn-primary"
+                    disabled={isSavingPdf}
+                  >
+                    {isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      setSum30Data(null); 
+                      setText('');
+                      setSum30ProcessedText('');
+                      setShowSum30Design(false);
+                    }} 
+                    className="btn btn-secondary"
+                  >
+                    모두 삭제하고 처음부터
+                  </button>
+                </div>
+                
+                {/* A4 페이지 형식으로 문제 출력 */}
+                <Sum30Viewer data={sum30Data} />
+              </>
+            ) : (
+              // 원래 텍스트 결과 모드
+              <>
+                <div className="result-actions">
+                  <button 
+                    onClick={() => { 
+                      setSum30Data(null); 
+                      setText(''); 
+                      setSum30ProcessedText('');
+                    }} 
+                    className="btn btn-secondary"
+                  >
+                    모두 삭제하고 처음부터
+                  </button>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(sum30ProcessedText || sum30Data.processed || '')
+                      alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                    }} 
+                    className="btn btn-primary"
+                  >
+                    결과 복사하기
+                  </button>
+                </div>
+                
+                <div className="multiple-results">
+              <div style={{ marginBottom: '20px', color: '#6c757d' }}>
+                처리가 완료되었습니다. 아래 결과를 확인하세요.
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '20px',
+                marginBottom: '20px'
+              }}>
+                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
+                  <div style={{ 
+                    padding: '12px', 
+                    background: 'white', 
+                    borderRadius: '4px',
+                    border: '1px solid #e0e0e0',
+                    maxHeight: '500px',
+                    overflowY: 'auto'
+                  }}>
+                    <pre style={{ 
+                      margin: 0, 
+                      color: '#2c3e50', 
+                      whiteSpace: 'pre-wrap',
+                      fontFamily: 'inherit',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6'
+                    }}>
+                      {sum30Data.original}
+                    </pre>
+                  </div>
+                </div>
+                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트 (수정 가능)</h4>
+                  <textarea
+                    value={sum30ProcessedText || sum30Data.processed || ''}
+                    onChange={(e) => setSum30ProcessedText(e.target.value)}
+                    style={{ 
+                      width: '100%',
+                      minHeight: '450px',
+                      padding: '12px', 
+                      background: 'white', 
+                      borderRadius: '4px',
+                      border: '1px solid #e0e0e0',
+                      fontFamily: 'inherit',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
+                      resize: 'vertical',
+                      whiteSpace: 'pre-wrap',
+                      wordWrap: 'break-word'
+                    }}
+                    placeholder="처리된 텍스트가 여기에 표시됩니다. 수정할 수 있습니다."
+                  />
+                </div>
+              </div>
+              
+              {/* 디자인 추가 버튼 */}
+              <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                <button 
+                  onClick={() => setShowSum30Design(true)}
+                  className="btn btn-primary"
+                  style={{ 
+                    fontSize: '1.1rem', 
+                    padding: '12px 30px',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: 'white',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.transform = 'translateY(-2px)'
+                    e.target.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.transform = 'translateY(0)'
+                    e.target.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)'
+                  }}
+                >
+                  디자인 추가
+                </button>
+              </div>
+            </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // SUM40 모드
   if (mode === 'sum40') {
     return (
@@ -2569,6 +2994,138 @@ function App() {
     )
   }
 
+  // 문법 분석 (분석지 만들기) 모드
+  if (mode === 'grammar-analysis') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>분석지 만들기</h1>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!grammarAnalysisData ? (
+          <GrammarAnalysisInput
+            text={grammarAnalysisText}
+            setText={setGrammarAnalysisText}
+            onProcess={handleGrammarAnalysisProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            {showGrammarAnalysisDesign ? (
+              // 디자인된 페이지 모드
+              <>
+                <div className="result-actions">
+                  <button 
+                    onClick={() => setShowGrammarAnalysisDesign(false)} 
+                    className="btn btn-secondary"
+                  >
+                    텍스트 보기로 돌아가기
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      setIsSavingPdf(true)
+                      try {
+                        // PDF 저장 기능은 나중에 추가
+                        await new Promise(resolve => setTimeout(resolve, 500))
+                        alert('PDF 저장 기능은 곧 추가될 예정입니다.')
+                      } catch (error) {
+                        alert(error.message || 'PDF 저장 중 오류가 발생했습니다.')
+                      } finally {
+                        setIsSavingPdf(false)
+                      }
+                    }}
+                    className="btn btn-primary"
+                    disabled={isSavingPdf}
+                  >
+                    {isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      setGrammarAnalysisData(null); 
+                      setGrammarAnalysisText('');
+                      setShowGrammarAnalysisDesign(false);
+                    }} 
+                    className="btn btn-secondary"
+                  >
+                    모두 삭제하고 처음부터
+                  </button>
+                </div>
+                
+                {/* A4 페이지 형식으로 출력 */}
+                <GrammarAnalysisDesignViewer 
+                  data={grammarAnalysisData} 
+                  source={grammarAnalysisText}
+                />
+              </>
+            ) : (
+              // 원래 분석 결과 모드
+              <>
+                <div className="result-actions">
+                  <button 
+                    onClick={() => { 
+                      setGrammarAnalysisData(null); 
+                      setGrammarAnalysisText(''); 
+                    }} 
+                    className="btn btn-secondary"
+                  >
+                    입력 초기화
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      setGrammarAnalysisData(null); 
+                    }} 
+                    className="btn btn-secondary"
+                  >
+                    다시 분석하기
+                  </button>
+                </div>
+                
+                <GrammarAnalysisViewer analysis={grammarAnalysisData} />
+                
+                {/* 디자인 추가 버튼 */}
+                <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                  <button 
+                    onClick={() => setShowGrammarAnalysisDesign(true)}
+                    className="btn btn-primary"
+                    style={{ 
+                      padding: '15px 40px',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
+                      transition: 'all 0.3s ease',
+                      cursor: 'pointer'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.transform = 'translateY(-2px)'
+                      e.target.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.transform = 'translateY(0)'
+                      e.target.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)'
+                    }}
+                  >
+                    디자인 추가
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // KEY 모드
 
   if (mode === 'key') {
@@ -2674,6 +3231,49 @@ function App() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 과천중앙고1학년 모드
+  if (mode === 'gwacheon-central-high-1') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>과천 지역 내신 상세 분석</h1>
+          <p>과천중앙고 1학년 내신 분석</p>
+          <p>by 신희진</p>
+          <button 
+            onClick={handleBackToMain} 
+            className="btn btn-secondary" 
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!gwacheonAnalysisData ? (
+          <GwacheonAnalysisInput
+            apiKey={apiKey}
+            onProcess={handleGwacheonAnalysisProcess}
+          />
+        ) : (
+          <div className="result-container">
+            <div className="result-actions">
+              <button 
+                onClick={() => { 
+                  setGwacheonAnalysisData(null); 
+                }} 
+                className="btn btn-secondary"
+              >
+                다시 분석하기
+              </button>
+            </div>
+            <GwacheonAnalysisViewer data={gwacheonAnalysisData} />
           </div>
         )}
       </div>

@@ -188,6 +188,14 @@ function PreprocessorInput({ text, setText, onProcess }) {
       blocks.push(currentBlock)
     }
     
+    // 마지막 지문 뒤에 // 가 있는지 확인
+    const lastSeparator = inputText.trim().endsWith('//') ? '//' : ''
+    if (blocks.length > 0 && lastSeparator) {
+      // 마지막 블록의 separator에 추가
+      const lastBlock = blocks[blocks.length - 1]
+      lastBlock.separator = lastSeparator
+    }
+    
     // // 가 없어서 블록이 없는 경우
     if (blocks.length === 0 && inputText.trim().length > 0) {
       blocks.push({ text: inputText, separator: '' })
@@ -196,9 +204,19 @@ function PreprocessorInput({ text, setText, onProcess }) {
     const results = []
 
     blocks.forEach((blockInfo, blockIndex) => {
+      // "출처/영어지문/한글해석//" 구조 확인
       const textBlock = blockInfo.text
-      const sentences = splitSentences(textBlock)
-      const candidates = []
+      const parts = textBlock.split(/\n\/\s*\n?/).filter(part => part.trim())
+      
+      // 출처/영어지문/한글해석 구조인지 확인
+      if (parts.length >= 2) {
+        const source = parts[0].trim() // 출처
+        const englishText = parts[1].trim() // 영어 지문
+        const koreanText = parts.length > 2 ? parts[2].trim() : '' // 한글 해석
+        
+        // 영어 지문만 전처리
+        const sentences = splitSentences(englishText)
+        const candidates = []
 
       // 각 문장을 우선순위에 따라 분류
       sentences.forEach((sentence, sentenceIndex) => {
@@ -227,7 +245,8 @@ function PreprocessorInput({ text, setText, onProcess }) {
           reason = 'determiner'
         }
 
-        if (priority < 999) {
+        // 첫 번째 문장(sentenceIndex === 0)은 제외
+        if (priority < 999 && sentenceIndex > 0) {
           candidates.push({
             sentence,
             priority,
@@ -274,18 +293,120 @@ function PreprocessorInput({ text, setText, onProcess }) {
         return -1
       }).filter(idx => idx >= 0).sort((a, b) => b - a) // 내림차순 정렬
 
-      let processedText = textBlock
-      insertions.forEach(insertIndex => {
-        processedText = processedText.substring(0, insertIndex) + '///' + processedText.substring(insertIndex)
-      })
+        // 영어 지문만 전처리
+        let processedEnglishText = englishText
+        insertions.forEach(insertIndex => {
+          processedEnglishText = processedEnglishText.substring(0, insertIndex) + '///' + processedEnglishText.substring(insertIndex)
+        })
+        
+        // 출처/영어지문/한글해석 구조로 다시 조합
+        let processedText = source
+        if (koreanText) {
+          processedText += '\n/\n' + processedEnglishText + '\n/\n' + koreanText
+        } else {
+          processedText += '\n/\n' + processedEnglishText
+        }
+        
+        results.push({
+          original: textBlock,
+          processed: processedText,
+          separator: blockInfo.separator,
+          slashCount,
+          isValid: slashCount === 2
+        })
+      } else {
+        // 일반 구조 (출처/영어지문/한글해석 구조가 아닌 경우)
+        const sentences = splitSentences(textBlock)
+        const candidates = []
 
-      results.push({
-        original: textBlock,
-        processed: processedText,
-        separator: blockInfo.separator,
-        slashCount,
-        isValid: slashCount === 2
-      })
+        // 각 문장을 우선순위에 따라 분류
+        sentences.forEach((sentence, sentenceIndex) => {
+          const sentenceText = sentence.text.trim()
+          let priority = 999
+          let reason = ''
+
+          // 우선순위 1: 연결부사
+          if (hasConnectingAdverb(sentence.text)) {
+            priority = 1
+            reason = 'connecting-adverb'
+          }
+          // 우선순위 2: such
+          else if (hasSuch(sentenceText)) {
+            priority = 2
+            reason = 'such'
+          }
+          // 우선순위 3: 대명사
+          else if (startsWithPronoun(sentenceText)) {
+            priority = 3
+            reason = 'pronoun'
+          }
+          // 우선순위 4: 한정사
+          else if (startsWithDeterminer(sentenceText)) {
+            priority = 4
+            reason = 'determiner'
+          }
+
+          // 첫 번째 문장(sentenceIndex === 0)은 제외
+          if (priority < 999 && sentenceIndex > 0) {
+            candidates.push({
+              sentence,
+              priority,
+              reason,
+              sentenceIndex
+            })
+          }
+        })
+
+        // 우선순위 순으로 정렬하고 상위 2개만 선택
+        candidates.sort((a, b) => {
+          if (a.priority !== b.priority) {
+            return a.priority - b.priority
+          }
+          return a.sentenceIndex - b.sentenceIndex
+        })
+
+        const selected = candidates.slice(0, 2)
+        const slashCount = selected.length
+
+        // 원문을 그대로 유지하면서 슬래시만 추가
+        // 역순으로 처리하여 인덱스 오프셋 문제 방지
+        const insertions = selected.map(({ sentence, reason }) => {
+          // 연결부사든 다른 조건이든 모두 문장의 첫 번째 단어 앞에 슬래시 추가
+          if (reason === 'connecting-adverb') {
+            // 연결부사가 문장 중간에 있어도 문장의 첫 번째 단어 앞에 추가
+            const firstCapitalIndex = findFirstCapital(sentence.text)
+            if (firstCapitalIndex >= 0) {
+              return sentence.startIndex + firstCapitalIndex
+            }
+          } else if (reason === 'determiner') {
+            // 한정사인 경우: 첫 대문자 앞에 추가
+            const firstCapitalIndex = findFirstCapital(sentence.text)
+            if (firstCapitalIndex >= 0) {
+              return sentence.startIndex + firstCapitalIndex
+            }
+          } else {
+            // such나 대명사인 경우: 첫 대문자 앞에 추가
+            const firstCapitalIndex = findFirstCapital(sentence.text)
+            if (firstCapitalIndex >= 0) {
+              return sentence.startIndex + firstCapitalIndex
+            }
+          }
+          return -1
+        }).filter(idx => idx >= 0).sort((a, b) => b - a) // 내림차순 정렬
+
+        let processedText = textBlock
+        insertions.forEach(insertIndex => {
+          processedText = processedText.substring(0, insertIndex) + '///' + processedText.substring(insertIndex)
+        })
+
+        results.push({
+          original: textBlock,
+          processed: processedText,
+          separator: blockInfo.separator,
+          slashCount,
+          isValid: slashCount === 2
+        })
+      }
     })
 
     // 전체 결과 조합 (원본의 줄바꿈과 // 구분자 보존)
@@ -294,11 +415,27 @@ function PreprocessorInput({ text, setText, onProcess }) {
     
     results.forEach((result, idx) => {
       if (idx > 0) {
+        // 지문 사이에 줄바꿈 추가
+        if (!finalProcessed.endsWith('\n') && !finalProcessed.endsWith('\r\n')) {
+          finalProcessed += '\n'
+        }
         finalProcessed += result.separator
+        // separator 뒤에도 줄바꿈 추가 (없는 경우)
+        if (!result.separator.endsWith('\n') && !result.separator.endsWith('\r\n')) {
+          finalProcessed += '\n'
+        }
         charOffset += result.separator.length
       }
       finalProcessed += result.processed
       charOffset += result.processed.length
+      
+      // 마지막 지문 뒤에 separator가 있으면 추가
+      if (idx === results.length - 1 && result.separator) {
+        if (!finalProcessed.endsWith('\n') && !finalProcessed.endsWith('\r\n')) {
+          finalProcessed += '\n'
+        }
+        finalProcessed += result.separator
+      }
     })
 
     const allValid = results.every(r => r.isValid)

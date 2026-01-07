@@ -231,6 +231,32 @@ function parseHomeworkDocMeta(docId, dataMeta = {}) {
   };
 }
 
+// 중앙 전화번호 저장소에서 전화번호 불러오기
+export async function loadCentralPhoneNumbers() {
+  if (!isFirebaseConfigured() || !db) {
+    console.warn('Firebase 설정이 없어 전화번호 데이터를 불러올 수 없습니다.');
+    return {};
+  }
+
+  try {
+    const docRef = doc(db, 'studentPhoneNumbers', 'all');
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const phoneNumbers = data.phoneNumbers || {};
+      console.log('✅ 중앙 전화번호 데이터 불러옴:', { 전화번호수: Object.keys(phoneNumbers).length });
+      return phoneNumbers;
+    } else {
+      console.log('📝 중앙 전화번호 문서가 없음.');
+      return {};
+    }
+  } catch (error) {
+    console.error('❌ 중앙 전화번호 데이터 불러오기 실패:', error);
+    return {};
+  }
+}
+
 export async function loadAllHomeworkStudents() {
   if (!isFirebaseConfigured() || !db) {
     console.warn('Firebase 설정이 없어 학생 데이터를 불러올 수 없습니다.');
@@ -238,6 +264,10 @@ export async function loadAllHomeworkStudents() {
   }
 
   try {
+    // 중앙 전화번호 저장소에서 전화번호 불러오기 (우선 사용)
+    const centralPhoneNumbers = await loadCentralPhoneNumbers();
+    console.log('✅ 중앙 전화번호 저장소에서 전화번호 불러옴:', { 전화번호수: Object.keys(centralPhoneNumbers).length });
+    
     // 영어와 수학 두 컬렉션 모두에서 데이터 불러오기
     const englishSnapshot = await getDocs(collection(db, 'englishHomeworkProgress'));
     const mathSnapshot = await getDocs(collection(db, 'mathHomeworkProgress'));
@@ -328,46 +358,38 @@ export async function loadAllHomeworkStudents() {
         }
 
         list.forEach((studentName) => {
-          // 전화번호 정보 추출 (학생, 학부모)
-          const phoneData = phoneNumbers[studentName];
+          // 전화번호 정보 추출 (중앙 저장소 우선, 없으면 문서의 phoneNumbers 사용)
           let studentPhone = null;
           let parentPhone = null;
           
-          // 디버깅: 특정 학생의 전화번호 추출 과정 확인
-          if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
-            console.log(`📞 [전화번호 추출 시작] ${studentName} (문서: ${docSnap.id})`);
-            console.log(`   - phoneNumbers 객체:`, phoneNumbers);
-            console.log(`   - phoneNumbers[${studentName}]:`, phoneData);
-            console.log(`   - phoneData 타입: ${typeof phoneData}`);
-            console.log(`   - phoneData 값:`, phoneData);
+          // 1. 중앙 전화번호 저장소에서 먼저 확인
+          const centralPhoneData = centralPhoneNumbers[studentName];
+          if (centralPhoneData) {
+            if (typeof centralPhoneData === 'string' && centralPhoneData.trim() !== '') {
+              studentPhone = centralPhoneData.trim();
+            } else if (typeof centralPhoneData === 'object' && centralPhoneData !== null) {
+              if (centralPhoneData.student && typeof centralPhoneData.student === 'string' && centralPhoneData.student.trim() !== '') {
+                studentPhone = centralPhoneData.student.trim();
+              }
+              if (centralPhoneData.parent && typeof centralPhoneData.parent === 'string' && centralPhoneData.parent.trim() !== '') {
+                parentPhone = centralPhoneData.parent.trim();
+              }
+            }
           }
           
-          if (typeof phoneData === 'string' && phoneData.trim() !== '') {
-            // 기존 형식: 문자열로 저장된 경우
-            studentPhone = phoneData.trim();
-            if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
-              console.log(`   ✅ 문자열 형식으로 추출: ${studentPhone}`);
-            }
-          } else if (typeof phoneData === 'object' && phoneData !== null) {
-            // 새 형식: 객체로 저장된 경우 {student: '010...', parent: '010...'}
-            if (phoneData.student && typeof phoneData.student === 'string' && phoneData.student.trim() !== '') {
-              studentPhone = phoneData.student.trim();
-              if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
-                console.log(`   ✅ 객체 형식에서 student 추출: ${studentPhone}`);
+          // 2. 중앙 저장소에 없으면 문서의 phoneNumbers에서 확인 (하위 호환성)
+          if (!studentPhone && !parentPhone) {
+            const phoneData = phoneNumbers[studentName];
+            
+            if (typeof phoneData === 'string' && phoneData.trim() !== '') {
+              studentPhone = phoneData.trim();
+            } else if (typeof phoneData === 'object' && phoneData !== null) {
+              if (phoneData.student && typeof phoneData.student === 'string' && phoneData.student.trim() !== '') {
+                studentPhone = phoneData.student.trim();
               }
-            }
-            if (phoneData.parent && typeof phoneData.parent === 'string' && phoneData.parent.trim() !== '') {
-              parentPhone = phoneData.parent.trim();
-              if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
-                console.log(`   ✅ 객체 형식에서 parent 추출: ${parentPhone}`);
+              if (phoneData.parent && typeof phoneData.parent === 'string' && phoneData.parent.trim() !== '') {
+                parentPhone = phoneData.parent.trim();
               }
-            }
-            if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName) && !studentPhone && !parentPhone) {
-              console.log(`   ⚠️ 객체이지만 student/parent가 없음:`, phoneData);
-            }
-          } else {
-            if (['권보나', '김민솔', '백채훈', '신은성'].includes(studentName)) {
-              console.log(`   ❌ 전화번호 데이터 없음 (phoneData: ${phoneData}, 타입: ${typeof phoneData})`);
             }
           }
 

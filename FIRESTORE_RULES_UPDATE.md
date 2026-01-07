@@ -76,3 +76,5 @@ service cloud.firestore {
 - Firebase Console에서 규칙이 제대로 저장되었는지 확인
 - 브라우저 개발자 도구의 콘솔에서 상세한 오류 메시지 확인
 
+
+

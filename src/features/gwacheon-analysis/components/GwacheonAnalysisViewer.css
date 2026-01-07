@@ -1,0 +1,393 @@
+.gwacheon-analysis-viewer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.viewer-header {
+  text-align: center;
+  margin-bottom: 40px;
+  padding-bottom: 20px;
+  border-bottom: 3px solid #3498db;
+}
+
+.viewer-header h2 {
+  font-size: 2.2rem;
+  color: #2c3e50;
+  margin-bottom: 10px;
+}
+
+.viewer-header p {
+  font-size: 1.2rem;
+  color: #7f8c8d;
+}
+
+.analysis-section {
+  margin-bottom: 50px;
+}
+
+.analysis-section h3 {
+  font-size: 1.8rem;
+  color: #2c3e50;
+  margin-bottom: 25px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+.analysis-box {
+  background: #f8f9fa;
+  padding: 25px;
+  border-radius: 12px;
+  margin-bottom: 25px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.analysis-box h4 {
+  font-size: 1.3rem;
+  color: #2c3e50;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.distribution-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 15px;
+}
+
+.distribution-item {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.type-name,
+.difficulty-name {
+  font-size: 1rem;
+  color: #7f8c8d;
+  margin-bottom: 8px;
+}
+
+.type-count,
+.difficulty-count {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #3498db;
+}
+
+.areas-list,
+.patterns-list,
+.skills-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.areas-list li,
+.patterns-list li,
+.skills-list li {
+  padding: 12px 15px;
+  margin-bottom: 10px;
+  background: white;
+  border-radius: 8px;
+  border-left: 4px solid #3498db;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.summary-box {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+}
+
+.summary-text {
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.questions-section {
+  margin-bottom: 50px;
+}
+
+.questions-section h3 {
+  font-size: 1.8rem;
+  color: #2c3e50;
+  margin-bottom: 25px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+.questions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.question-item {
+  background: #f8f9fa;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.question-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.question-number {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #3498db;
+  background: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.question-type {
+  font-size: 1rem;
+  color: #7f8c8d;
+  background: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+
+.question-difficulty {
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: white;
+}
+
+.difficulty-상 {
+  background: #e74c3c;
+}
+
+.difficulty-중 {
+  background: #f39c12;
+}
+
+.difficulty-하 {
+  background: #27ae60;
+}
+
+.question-content {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: white;
+  border-radius: 8px;
+  line-height: 1.8;
+}
+
+.question-content p {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.option-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 15px;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #e0e0e0;
+  transition: all 0.3s;
+}
+
+.option-item.correct {
+  border-color: #27ae60;
+  background: #e8f5e9;
+}
+
+.option-number {
+  font-weight: 700;
+  color: #7f8c8d;
+  min-width: 30px;
+}
+
+.option-text {
+  flex: 1;
+  color: #2c3e50;
+}
+
+.correct-badge {
+  background: #27ae60;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.extracted-text-section {
+  margin-bottom: 50px;
+}
+
+.extracted-text-section h3 {
+  font-size: 1.8rem;
+  color: #2c3e50;
+  margin-bottom: 25px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+.extracted-text-box {
+  background: #f8f9fa;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.extracted-text-box pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.8;
+  color: #2c3e50;
+}
+
+/* 출제범위 섹션 */
+.scope-section,
+.classification-section,
+.detailed-analysis-section {
+  margin-bottom: 40px;
+}
+
+.scope-section h3,
+.classification-section h3,
+.detailed-analysis-section h3 {
+  font-size: 1.5rem;
+  color: #2c3e50;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+/* 테이블 스타일 */
+.scope-table,
+.classification-table,
+.detailed-analysis-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.scope-table th,
+.classification-table th,
+.detailed-analysis-table th {
+  background: #3498db;
+  color: white;
+  padding: 12px 15px;
+  text-align: center;
+  font-weight: 600;
+  border: 1px solid #2980b9;
+}
+
+.scope-table td,
+.classification-table td,
+.detailed-analysis-table td {
+  padding: 12px 15px;
+  text-align: center;
+  border: 1px solid #e0e0e0;
+  vertical-align: middle;
+}
+
+.scope-table tr:nth-child(even),
+.classification-table tr:nth-child(even),
+.detailed-analysis-table tr:nth-child(even) {
+  background: #f8f9fa;
+}
+
+.scope-table tr:hover,
+.classification-table tr:hover,
+.detailed-analysis-table tr:hover {
+  background: #e8f4f8;
+}
+
+.external-label {
+  font-weight: 600;
+  background: #fff3cd !important;
+  color: #856404;
+}
+
+.difficulty-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: white;
+}
+
+.difficulty-badge.difficulty-상 {
+  background: #e74c3c;
+}
+
+.difficulty-badge.difficulty-중 {
+  background: #f39c12;
+}
+
+.difficulty-badge.difficulty-하 {
+  background: #27ae60;
+}
+
+/* 모바일 반응형 */
+@media (max-width: 768px) {
+  .gwacheon-analysis-viewer {
+    padding: 20px 15px;
+  }
+
+  .scope-table,
+  .classification-table,
+  .detailed-analysis-table {
+    font-size: 0.85rem;
+  }
+
+  .scope-table th,
+  .classification-table th,
+  .detailed-analysis-table th,
+  .scope-table td,
+  .classification-table td,
+  .detailed-analysis-table td {
+    padding: 8px 10px;
+  }
+
+  .distribution-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+  }
+
+  .question-header {
+    flex-wrap: wrap;
+  }
+
+  .option-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+

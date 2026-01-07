@@ -302,3 +302,5 @@ curl -X POST https://your-domain.vercel.app/api/send-kakao \
 - [ ] 템플릿 미리보기로 실제 모습 확인
 - [ ] 검수 승인 후 실제 발송 테스트
 
+
+
