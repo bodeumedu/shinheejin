@@ -1,6 +1,6 @@
 import './Sum15Viewer.css'
 
-function Sum15Viewer({ data }) {
+function Sum15Viewer({ data, blankPrefix = 'The passage suggests that ', blankSuffix = '.', answerKey = 'summary', showSummaryBeforeBlank = false, hideBlankLine = false }) {
   if (!data || !data.results || data.results.length === 0) {
     return <div>데이터가 없습니다.</div>
   }
@@ -28,11 +28,20 @@ function Sum15Viewer({ data }) {
               <div className="sum15-original">
                 <pre className="sum15-original-text">{result.original?.trimStart()}</pre>
               </div>
+
+              {/* 인터뷰 등: summary를 빈칸 위에 표시 (showSummaryBeforeBlank일 때만) */}
+              {showSummaryBeforeBlank && result.summary && (
+                <div className="sum15-original sum15-interview-text">
+                  <pre className="sum15-original-text" style={{ whiteSpace: 'pre-wrap' }}>{result.summary}</pre>
+                </div>
+              )}
               
-              {/* 빈칸 문제 */}
-              <div className="sum15-question">
-                The passage suggests that <span className="sum15-blank-line"></span>.
-              </div>
+              {/* 빈칸 문제 (hideBlankLine이면 표시 안 함, e.g. 인터뷰는 summary 안에 빈칸 포함) */}
+              {!hideBlankLine && (
+                <div className="sum15-question">
+                  {blankPrefix}<span className="sum15-blank-line"></span>{blankSuffix}
+                </div>
+              )}
               
               {/* AI 요약문 (투명하게, 보이지 않음) */}
               <div className="sum15-summary">
@@ -73,7 +82,7 @@ function Sum15Viewer({ data }) {
               .map((r, idx) => (
                 <div key={`answer-${idx}`} className="sum15-answer-item">
                   <div className="sum15-answer-source">{r.source || `지문 ${idx + 1}`}</div>
-                  <div className="sum15-answer-summary">{r.summary}</div>
+                  <div className="sum15-answer-summary">{r[answerKey] ?? r.summary}</div>
                 </div>
               ))
             }

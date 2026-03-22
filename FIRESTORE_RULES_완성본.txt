@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // studentPhoneNumbers 컬렉션에 대한 읽기/쓰기 허용
+    match /studentPhoneNumbers/{document} {
+      allow read, write: if true;
+    }
+    
+    // 기존 컬렉션
+    match /homeworkProgress/{document} {
+      allow read, write: if true;
+    }
+    
+    // 영어 과제 관리 대시보드
+    match /englishHomeworkProgress/{document} {
+      allow read, write: if true;
+    }
+    
+    // 수학 과제 관리 대시보드
+    match /mathHomeworkProgress/{document} {
+      allow read, write: if true;
+    }
+    
+    // 기타 컬렉션들
+    match /pocketbook/{document} {
+      allow read, write: if true;
+    }
+    
+    match /blank/{document} {
+      allow read, write: if true;
+    }
+    
+    match /sources/{document} {
+      allow read, write: if true;
+    }
+    
+    // 주간시간표 데이터 (누구나 읽기/쓰기 가능)
+    match /weeklySchedules/{document=**} {
+      allow read, write: if true;
+    }
+
+    // 주간시간표 휴강 정보 (누구나 읽기/쓰기 가능)
+    match /weeklyScheduleCancellations/{document=**} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 기록 (주차별, 과목별) - 영어
+    match /clinicLogRecords_english/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 기록 (주차별, 과목별) - 수학
+    match /clinicLogRecords_math/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 수동 등록 학생 (주차별, 과목별) - 영어
+    match /clinicLogCustoms_english/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 수동 등록 학생 (주차별, 과목별) - 수학
+    match /clinicLogCustoms_math/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 카카오톡 전송 내역 (주차별, 과목별) - 영어
+    match /clinicKakaoHistory_english/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 카카오톡 전송 내역 (주차별, 과목별) - 수학
+    match /clinicKakaoHistory_math/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 윈터스쿨 관리 (날짜별)
+    match /winterSchoolPlanners/{date} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -48,3 +48,10 @@ export function validateBase64Image(imageData) {
 }
 
 
+
+
+
+
+
+
+

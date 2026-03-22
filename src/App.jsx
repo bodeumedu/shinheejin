@@ -4,12 +4,26 @@ import TextOrganizer from './features/pocketbook/components/TextOrganizer'
 import ApiKeyInput from './components/ApiKeyInput'
 import PasswordProtection from './components/PasswordProtection'
 import MainMenu from './components/MainMenu'
+import StudentDataModal from './components/StudentDataModal'
 import BlankMaker from './features/blank/components/BlankMaker'
 import BlankGenerator from './features/blank/components/BlankGenerator'
 import PreprocessorInput from './features/preprocessor/components/PreprocessorInput'
 import ComplexDescriptionInput from './features/complex-description/components/ComplexDescriptionInput'
+import KoreanOriginInput from './features/korean-origin/components/KoreanOriginInput'
 import ParaphrasingInput from './features/paraphrasing/components/ParaphrasingInput'
+import EnglishEnglishWordInput from './features/english-english-word/components/EnglishEnglishWordInput'
+import EnglishEnglishWordTable from './features/english-english-word/components/EnglishEnglishWordTable'
+import EnglishEnglishWordTestSheet from './features/english-english-word/components/EnglishEnglishWordTestSheet'
+import { vocabularyTableToTsv } from './features/english-english-word/utils/englishEnglishWordAnalyzer'
+import { countTestItems } from './features/english-english-word/utils/englishEnglishWordTestUtils'
+import { exportVocabularyTablePdf } from './features/english-english-word/utils/englishEnglishWordPdfExport'
 import Sum15Input from './features/sum15/components/Sum15Input'
+import Sum15OriginalInput from './features/sum15/components/Sum15OriginalInput'
+import Title10OriginalInput from './features/sum15/components/Title10OriginalInput'
+import Topic13OriginalInput from './features/sum15/components/Topic13OriginalInput'
+import Topic13TransformedInput from './features/sum15/components/Topic13TransformedInput'
+import Response20OriginalInput from './features/sum15/components/Response20OriginalInput'
+import Interview25TransformedInput from './features/sum15/components/Interview25TransformedInput'
 import Sum15Viewer from './features/sum15/components/Sum15Viewer'
 import Sum30Input from './features/sum30/components/Sum30Input'
 import Sum30Viewer from './features/sum30/components/Sum30Viewer'
@@ -25,6 +39,7 @@ import ReferenceDescriptionViewer from './features/reference-description/compone
 import { exportReferenceDescriptionToPdf } from './features/reference-description/utils/referenceDescriptionPdfExporter'
 import GrammarAnalysisInput from './features/grammar-analysis/components/GrammarAnalysisInput'
 import GrammarAnalysisViewer from './features/grammar-analysis/components/GrammarAnalysisViewer'
+import ContentMatchInput from './features/content-match/components/ContentMatchInput'
 import GrammarAnalysisDesignViewer from './features/grammar-analysis/components/GrammarAnalysisDesignViewer'
 import HomeworkDashboard from './features/homeworkdashboard/components/HomeworkDashboard'
 import HomeworkProgress from './features/homeworkdashboard/components/HomeworkProgress'
@@ -32,12 +47,13 @@ import ClinicLog from './features/clinic-log/components/ClinicLog'
 import WeeklyScheduleInput from './features/weekly-schedule/components/WeeklyScheduleInput'
 import WeeklyScheduleViewer from './features/weekly-schedule/components/WeeklyScheduleViewer'
 import Notes from './features/notes/components/Notes'
-import StudentPhoneManager from './features/student-phone/components/StudentPhoneManager'
 import HomeworkCompletion from './features/homework-completion/components/HomeworkCompletion'
+import WinterSchoolManager from './features/winter-school/components/WinterSchoolManager'
 import WordShuffler from './features/word-shuffler/components/WordShuffler'
 import SentenceInsertionProblemMaker from './features/sentence-insertion/components/SentenceInsertionProblemMaker'
 import GwacheonAnalysisInput from './features/gwacheon-analysis/components/GwacheonAnalysisInput'
 import GwacheonAnalysisViewer from './features/gwacheon-analysis/components/GwacheonAnalysisViewer'
+import ToInfinitiveInput from './features/grammar-problem/components/ToInfinitiveInput'
 import { exportToPdf } from './features/pocketbook/utils/pdfExporter'
 import { exportBlankToPdf } from './features/blank/utils/blankPdfExporter'
 import { exportSum15ToPdf } from './features/sum15/utils/sum15PdfExporter'
@@ -128,7 +144,7 @@ function ProcessedTextEditor({ value, onChange }) {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [mode, setMode] = useState('main') // 'main', 'pocketbook', 'blank', 'preprocessor', 'complex-description', 'paraphrasing', 'sum15', 'clinic-log'
+  const [mode, setMode] = useState('main') // 'main', 'pocketbook', 'blank', 'preprocessor', 'complex-description', 'paraphrasing', 'sum15', 'clinic-log', 'winter-school'
   const [text, setText] = useState('')
   const [organizedData, setOrganizedData] = useState(null) // 배열로 관리: [{title,korean,english,analyzed}]
   const [parsedTexts, setParsedTexts] = useState(null) // 지문 나누기 결과 [{title,english,korean}]
@@ -148,9 +164,25 @@ function App() {
   const [showBlankSourceLoader, setShowBlankSourceLoader] = useState(false) // 빈칸 저장된 출처 불러오기 팝업
   const [preprocessorData, setPreprocessorData] = useState(null) // 전처리 결과
   const [complexDescriptionData, setComplexDescriptionData] = useState(null) // 복합서술형 결과
+  const [koreanOriginProcessedText, setKoreanOriginProcessedText] = useState('') // 한글원문생성 결과 (출처/영어원문/한글해석//)
   const [paraphrasingData, setParaphrasingData] = useState(null) // Paraphrasing 결과
+  const [englishEnglishWordData, setEnglishEnglishWordData] = useState(null) // 영영 단어 결과
+  const [englishWordTestOpen, setEnglishWordTestOpen] = useState(false)
+  const [eeVocabPdfLoading, setEeVocabPdfLoading] = useState(false)
   const [sum15Data, setSum15Data] = useState(null) // SUM15 결과
   const [showSum15Design, setShowSum15Design] = useState(false) // SUM15 디자인 페이지 표시 여부
+  const [sum15OriginalData, setSum15OriginalData] = useState(null) // SUM15 원형 결과
+  const [showSum15OriginalDesign, setShowSum15OriginalDesign] = useState(false) // SUM15 원형 디자인 페이지 표시 여부
+  const [title10OriginalData, setTitle10OriginalData] = useState(null) // 시선 title 10 (원형) 결과
+  const [showTitle10OriginalDesign, setShowTitle10OriginalDesign] = useState(false) // 시선 title 10 디자인 페이지 표시 여부
+  const [topic13OriginalData, setTopic13OriginalData] = useState(null) // 시선 topic (원형) 결과
+  const [showTopic13OriginalDesign, setShowTopic13OriginalDesign] = useState(false) // 시선 topic 디자인 페이지 표시 여부
+  const [topic13TransformedData, setTopic13TransformedData] = useState(null) // 시선 topic (변형) 결과
+  const [showTopic13TransformedDesign, setShowTopic13TransformedDesign] = useState(false)
+  const [response20OriginalData, setResponse20OriginalData] = useState(null) // 시선 response 20 (원형) 결과
+  const [showResponse20OriginalDesign, setShowResponse20OriginalDesign] = useState(false)
+  const [interview25TransformedData, setInterview25TransformedData] = useState(null) // 시선 interview 25 (변형) 결과
+  const [showInterview25TransformedDesign, setShowInterview25TransformedDesign] = useState(false)
   const [sum30Data, setSum30Data] = useState(null) // SUM30 결과
   const [sum30ProcessedText, setSum30ProcessedText] = useState('') // SUM30 처리된 텍스트 (수정 가능)
   const [showSum30Design, setShowSum30Design] = useState(false) // SUM30 디자인 페이지 표시 여부
@@ -168,12 +200,18 @@ function App() {
   const [grammarAnalysisData, setGrammarAnalysisData] = useState(null) // 문법 분석 결과
   const [grammarAnalysisText, setGrammarAnalysisText] = useState('') // 문법 분석 입력 텍스트
   const [showGrammarAnalysisDesign, setShowGrammarAnalysisDesign] = useState(false) // 분석지 디자인 페이지 표시 여부
+  const [contentMatchData, setContentMatchData] = useState(null) // 일치불일치(객불) 결과 { results, fullText }
   const [weeklyScheduleData, setWeeklyScheduleData] = useState(null) // 주간시간표 데이터 (배열)
   const [weeklyScheduleWeek, setWeeklyScheduleWeek] = useState(null) // 주간시간표 주차 정보
   const [homeworkProgressData, setHomeworkProgressData] = useState(null) // 과제 진행 데이터
   const [gwacheonAnalysisData, setGwacheonAnalysisData] = useState(null) // 과천중앙고 내신 분석 결과
   const [apiKey, setApiKey] = useState('')
   const [isSavingPdf, setIsSavingPdf] = useState(false)
+  const [showStudentDataModal, setShowStudentDataModal] = useState(false)
+
+  useEffect(() => {
+    if (!englishEnglishWordData) setEnglishWordTestOpen(false)
+  }, [englishEnglishWordData])
 
   const handleAnalyze = (data) => {
     // data: 분석 결과 배열 [{title,korean,english,analyzed}]
@@ -415,6 +453,7 @@ function App() {
     setPreprocessorData(null)
     setComplexDescriptionData(null)
     setParaphrasingData(null)
+    setEnglishEnglishWordData(null)
     setSum15Data(null)
     setShowSum15Design(false)
     setSum30Data(null)
@@ -450,6 +489,7 @@ function App() {
     setPreprocessorData(null)
     setComplexDescriptionData(null)
     setParaphrasingData(null)
+    setEnglishEnglishWordData(null)
     setSum15Data(null)
     setShowSum15Design(false)
     setSum30Data(null)
@@ -465,6 +505,20 @@ function App() {
     setOcrData(null)
     setWeeklyScheduleData(null)
     setHomeworkProgressData(null)
+    setKoreanOriginProcessedText('')
+    setSum15OriginalData(null)
+    setShowSum15OriginalDesign(false)
+    setTitle10OriginalData(null)
+    setShowTitle10OriginalDesign(false)
+    setTopic13OriginalData(null)
+    setShowTopic13OriginalDesign(false)
+    setTopic13TransformedData(null)
+    setShowTopic13TransformedDesign(false)
+    setResponse20OriginalData(null)
+    setShowResponse20OriginalDesign(false)
+    setInterview25TransformedData(null)
+    setShowInterview25TransformedDesign(false)
+    setContentMatchData(null)
     setMode('main')
   }
   
@@ -681,11 +735,97 @@ function App() {
   const handleSelectComplexDescription = () => {
     setMode('complex-description')
   }
+
+  const handleSelectKoreanOrigin = () => {
+    setText('')
+    setKoreanOriginProcessedText('')
+    setMode('korean-origin')
+  }
+
+  const handleKoreanOriginProcess = (resultString) => {
+    setKoreanOriginProcessedText(resultString)
+  }
   
   const handleSelectParaphrasing = () => {
     setMode('paraphrasing')
   }
+
+  const handleSelectEnglishEnglishWord = () => {
+    setText('')
+    setEnglishEnglishWordData(null)
+    setMode('english-english-word')
+  }
+
+  const handleEnglishEnglishWordProcess = (data) => {
+    setEnglishEnglishWordData(data)
+  }
   
+  const handleSelectSum15Original = () => {
+    setText('')
+    setSum15OriginalData(null)
+    setShowSum15OriginalDesign(false)
+    setMode('sum15-original')
+  }
+
+  const handleSum15OriginalProcess = (data) => {
+    setSum15OriginalData(data)
+  }
+
+  const handleSelectTitle10Original = () => {
+    setText('')
+    setTitle10OriginalData(null)
+    setShowTitle10OriginalDesign(false)
+    setMode('title10-original')
+  }
+
+  const handleTitle10OriginalProcess = (data) => {
+    setTitle10OriginalData(data)
+  }
+
+  const handleSelectTopic13Original = () => {
+    setText('')
+    setTopic13OriginalData(null)
+    setShowTopic13OriginalDesign(false)
+    setMode('topic13-original')
+  }
+
+  const handleTopic13OriginalProcess = (data) => {
+    setTopic13OriginalData(data)
+  }
+
+  const handleSelectTopic13Transformed = () => {
+    setText('')
+    setTopic13TransformedData(null)
+    setShowTopic13TransformedDesign(false)
+    setMode('topic13-transformed')
+  }
+
+  const handleTopic13TransformedProcess = (data) => {
+    setTopic13TransformedData(data)
+  }
+
+  const handleSelectResponse20Original = () => {
+    setText('')
+    setResponse20OriginalData(null)
+    setShowResponse20OriginalDesign(false)
+    setMode('response20-original')
+  }
+
+  const handleResponse20OriginalProcess = (data) => {
+    setResponse20OriginalData(data)
+  }
+
+  const handleSelectInterview25Transformed = () => {
+    setText('')
+    setInterview25TransformedData(null)
+    setShowInterview25TransformedDesign(false)
+    setMode('interview25-transformed')
+  }
+
+  const handleInterview25TransformedProcess = (data) => {
+    setInterview25TransformedData(data)
+  }
+
   const handleSelectSum15 = () => {
     setMode('sum15')
   }
@@ -731,6 +871,20 @@ function App() {
     setGrammarAnalysisData(null)
   }
 
+  const handleSelectGrammarToInfinitive = () => {
+    setMode('grammar-to-infinitive')
+  }
+
+  const handleSelectContentMatch = () => {
+    setText('')
+    setContentMatchData(null)
+    setMode('content-match')
+  }
+
+  const handleContentMatchProcess = (data) => {
+    setContentMatchData(data)
+  }
+
   const handleGrammarAnalysisProcess = (result) => {
     setGrammarAnalysisData(result)
   }
@@ -751,12 +905,12 @@ function App() {
     setMode('clinic-log')
   }
 
-  const handleSelectStudentPhoneManager = () => {
-    setMode('student-phone-manager')
-  }
-
   const handleSelectHomeworkCompletion = () => {
     setMode('homework-completion')
+  }
+
+  const handleSelectWinterSchool = () => {
+    setMode('winter-school')
   }
 
   const handleSelectWeeklySchedule = () => {
@@ -852,7 +1006,7 @@ function App() {
       if (mode === 'blank' && blankData && selectedBlankTexts.size > 0) {
         // 선택된 빈칸만 PDF 저장
         await exportBlankToPdf(Array.from(selectedBlankTexts))
-      } else if (mode === 'sum15' && sum15Data) {
+      } else if ((mode === 'sum15' && sum15Data) || (mode === 'sum15-original' && sum15OriginalData) || (mode === 'title10-original' && title10OriginalData) || (mode === 'topic13-original' && topic13OriginalData) || (mode === 'topic13-transformed' && topic13TransformedData) || (mode === 'response20-original' && response20OriginalData) || (mode === 'interview25-transformed' && interview25TransformedData)) {
         await exportSum15ToPdf()
       } else if (mode === 'pocketbook' && organizedData && selectedTexts.size > 0) {
         // 포켓북 모드: 선택한 지문만 PDF 저장
@@ -876,12 +1030,23 @@ function App() {
   if (mode === 'main') {
     return (
       <div className="app">
+        {showStudentDataModal && (
+          <StudentDataModal onClose={() => setShowStudentDataModal(false)} />
+        )}
         <MainMenu 
           onSelectPocketbook={handleSelectPocketbook}
           onSelectBlank={handleSelectBlank}
           onSelectPreprocessor={handleSelectPreprocessor}
           onSelectComplexDescription={handleSelectComplexDescription}
+          onSelectKoreanOrigin={handleSelectKoreanOrigin}
           onSelectParaphrasing={handleSelectParaphrasing}
+          onSelectEnglishEnglishWord={handleSelectEnglishEnglishWord}
+          onSelectSum15Original={handleSelectSum15Original}
+          onSelectTitle10Original={handleSelectTitle10Original}
+          onSelectTopic13Original={handleSelectTopic13Original}
+          onSelectTopic13Transformed={handleSelectTopic13Transformed}
+          onSelectResponse20Original={handleSelectResponse20Original}
+          onSelectInterview25Transformed={handleSelectInterview25Transformed}
           onSelectSum15={handleSelectSum15}
           onSelectSum30={handleSelectSum30}
           onSelectSum40={handleSelectSum40}
@@ -891,26 +1056,20 @@ function App() {
           onSelectThirdWord={handleSelectThirdWord}
           onSelectReferenceDescription={handleSelectReferenceDescription}
           onSelectGrammarAnalysis={handleSelectGrammarAnalysis}
+          onSelectContentMatch={handleSelectContentMatch}
+          onSelectGrammarToInfinitive={handleSelectGrammarToInfinitive}
           onSelectOcr={handleSelectOcr}
           onSelectEnglishHomeworkDashboard={handleSelectEnglishHomeworkDashboard}
           onSelectMathHomeworkDashboard={handleSelectMathHomeworkDashboard}
           onSelectClinicLog={handleSelectClinicLog}
-          onSelectStudentPhoneManager={handleSelectStudentPhoneManager}
           onSelectHomeworkCompletion={handleSelectHomeworkCompletion}
+          onSelectWinterSchool={handleSelectWinterSchool}
           onSelectWeeklySchedule={handleSelectWeeklySchedule}
           onSelectNotes={handleSelectNotes}
           onSelectWordShuffler={handleSelectWordShuffler}
           onSelectGwacheonCentralHigh1={handleSelectGwacheonCentralHigh1}
+          onSelectStudentData={() => setShowStudentDataModal(true)}
         />
-      </div>
-    )
-  }
-
-  // 전화번호 관리 모드
-  if (mode === 'student-phone-manager') {
-    return (
-      <div className="app">
-        <StudentPhoneManager onClose={handleBackToMain} />
       </div>
     )
   }
@@ -919,7 +1078,16 @@ function App() {
   if (mode === 'homework-completion') {
     return (
       <div className="app">
-        <HomeworkCompletion onClose={handleBackToMain} />
+        <HomeworkCompletion onClose={handleBackToMain} apiKey={apiKey} onApiKeySet={handleApiKeySet} />
+      </div>
+    )
+  }
+
+  // 윈터스쿨 관리 모드
+  if (mode === 'winter-school') {
+    return (
+      <div className="app">
+        <WinterSchoolManager onClose={handleBackToMain} />
       </div>
     )
   }
@@ -929,7 +1097,7 @@ function App() {
     return (
       <div className="app">
         <header className="app-header">
-          <h1>🗂️ 클리닉 대장</h1>
+          <h1>🗂️ 영어 클리닉 대장</h1>
           <p>by 신희진</p>
           <button 
             onClick={handleBackToMain} 
@@ -941,7 +1109,7 @@ function App() {
         </header>
 
         <div className="main-content">
-          <ClinicLog />
+          <ClinicLog subject="english" />
         </div>
       </div>
     )
@@ -1107,9 +1275,9 @@ function App() {
             <div className="homework-roster-section">
               <div className="homework-roster-header">
                 <h3>
-                  {homeworkProgressData.grade || ''}
-                  {homeworkProgressData.teacher ? ` ${homeworkProgressData.teacher} 선생님` : ''}
-                  {homeworkProgressData.class ? ` ${homeworkProgressData.class}` : ''}
+                  {homeworkProgressData.docId
+                    ? homeworkProgressData.docId
+                    : `${homeworkProgressData.grade || ''}${homeworkProgressData.teacher ? ` ${homeworkProgressData.teacher} 선생님` : ''}${homeworkProgressData.class ? ` ${homeworkProgressData.class}` : ''}`}
                 </h3>
                 <button 
                   className="roster-hide-btn"
@@ -1124,6 +1292,7 @@ function App() {
                 grade={homeworkProgressData.grade}
                 class={homeworkProgressData.class}
                 teacher={homeworkProgressData.teacher}
+                docIdOverride={homeworkProgressData.docId}
                 onClose={() => setHomeworkProgressData(null)}
               />
             </div>
@@ -1137,7 +1306,7 @@ function App() {
     return (
       <div className="app">
         <header className="app-header">
-          <h1>📚 수학 과제관리 대시보드</h1>
+          <h1>📐 수학 클리닉 대장</h1>
           <p>by 신희진</p>
           <button 
             onClick={handleBackToMain} 
@@ -1148,40 +1317,8 @@ function App() {
           </button>
         </header>
 
-        <div className="main-content" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          <HomeworkDashboard 
-            subject="math"
-            onClose={handleBackToMain} 
-            onShowRoster={(data, subjectType) => {
-              setHomeworkProgressData({ ...data, subject: subjectType || 'english' });
-            }}
-          />
-
-          {homeworkProgressData && (
-            <div className="homework-roster-section">
-              <div className="homework-roster-header">
-                <h3>
-                  {homeworkProgressData.grade || ''}
-                  {homeworkProgressData.teacher ? ` ${homeworkProgressData.teacher} 선생님` : ''}
-                  {homeworkProgressData.class ? ` ${homeworkProgressData.class}` : ''}
-                </h3>
-                <button 
-                  className="roster-hide-btn"
-                  onClick={() => setHomeworkProgressData(null)}
-                >
-                  닫기
-                </button>
-              </div>
-              <HomeworkProgress
-                subject="math"
-                school={null}
-                grade={homeworkProgressData.grade}
-                class={homeworkProgressData.class}
-                teacher={homeworkProgressData.teacher}
-                onClose={() => setHomeworkProgressData(null)}
-              />
-            </div>
-          )}
+        <div className="main-content">
+          <ClinicLog subject="math" />
         </div>
       </div>
     )
@@ -1878,6 +2015,73 @@ function App() {
     )
   }
 
+  // 한글원문생성 모드
+  if (mode === 'korean-origin') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>한글원문생성</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!koreanOriginProcessedText ? (
+          <KoreanOriginInput
+            text={text}
+            setText={setText}
+            onProcess={handleKoreanOriginProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container" style={{ maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
+            <div className="result-actions" style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => { setKoreanOriginProcessedText(''); setText(''); }}
+                className="btn btn-secondary"
+              >
+                다시 입력하기
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(koreanOriginProcessedText)
+                  alert('결과가 클립보드에 복사되었습니다.')
+                }}
+                className="btn btn-primary"
+              >
+                결과 복사하기
+              </button>
+            </div>
+            <div style={{ marginBottom: '8px', fontWeight: '600', color: '#2c3e50' }}>출력 (출처/영어원문/한글해석//)</div>
+            <textarea
+              readOnly={false}
+              value={koreanOriginProcessedText}
+              onChange={(e) => setKoreanOriginProcessedText(e.target.value)}
+              style={{
+                width: '100%',
+                minHeight: '400px',
+                padding: '16px',
+                border: '2px solid #e0e0e0',
+                borderRadius: '8px',
+                fontSize: '0.95rem',
+                fontFamily: 'inherit',
+                lineHeight: '1.6',
+                whiteSpace: 'pre-wrap',
+              }}
+            />
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // Paraphrasing 모드
   if (mode === 'paraphrasing') {
     return (
@@ -1981,6 +2185,258 @@ function App() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 영영 단어 모드
+  if (mode === 'english-english-word') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>영영 단어</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!englishEnglishWordData ? (
+          <EnglishEnglishWordInput
+            onProcess={handleEnglishEnglishWordProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            <div className="result-actions">
+              <button
+                onClick={() => {
+                  setEnglishEnglishWordData(null)
+                  setText('')
+                }}
+                className="btn btn-secondary"
+              >
+                모두 삭제하고 처음부터
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={eeVocabPdfLoading || !englishEnglishWordData.vocabularyTable}
+                onClick={async () => {
+                  if (!englishEnglishWordData.vocabularyTable) {
+                    alert('저장할 표가 없습니다.')
+                    return
+                  }
+                  setEeVocabPdfLoading(true)
+                  try {
+                    await exportVocabularyTablePdf(englishEnglishWordData.vocabularyTable)
+                  } catch (e) {
+                    alert(e.message || 'PDF 저장에 실패했습니다.')
+                  } finally {
+                    setEeVocabPdfLoading(false)
+                  }
+                }}
+              >
+                {eeVocabPdfLoading ? 'PDF 만드는 중...' : '표 PDF (A4)'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  const n = englishEnglishWordData.vocabularyTable
+                    ? countTestItems(englishEnglishWordData.vocabularyTable)
+                    : 0
+                  if (!n) {
+                    alert('시험을 만들려면 표에 영영 뜻이 있는 항목을 한 개 이상 넣어 주세요.')
+                    return
+                  }
+                  setEnglishWordTestOpen(true)
+                }}
+              >
+                테스트 만들기
+              </button>
+              {englishWordTestOpen && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setEnglishWordTestOpen(false)}
+                >
+                  테스트 접기
+                </button>
+              )}
+            </div>
+            {englishEnglishWordData.gradeLevel && (
+              <p style={{ margin: '0 0 12px 0', color: '#555', fontSize: '0.9rem' }}>
+                난이도:{' '}
+                {englishEnglishWordData.gradeLevel === 'hs2'
+                  ? '고2 수준 지문 · 영영 해설은 고2~3 어휘 수준'
+                  : '고1 수준 지문 · 영영 해설은 고1~2 어휘 수준'}
+              </p>
+            )}
+            <div style={{ marginBottom: '12px', fontWeight: 600, color: '#2c3e50' }}>
+              {englishEnglishWordData.inputKind === 'words' ? '입력·인식된 단어' : '입력 원문'}
+            </div>
+            <pre
+              style={{
+                margin: '0 0 24px 0',
+                padding: '16px',
+                background: '#f8f9fa',
+                borderRadius: '8px',
+                whiteSpace: 'pre-wrap',
+                fontFamily: 'inherit',
+                fontSize: '0.95rem',
+                lineHeight: 1.6,
+                border: '1px solid #e0e0e0',
+              }}
+            >
+              {englishEnglishWordData.inputKind === 'words' &&
+              englishEnglishWordData.parsedWords?.length
+                ? `인식된 단어 (${englishEnglishWordData.parsedWords.length}개): ${englishEnglishWordData.parsedWords.join(', ')}\n\n— 원본 입력 —\n${englishEnglishWordData.original}`
+                : englishEnglishWordData.original}
+            </pre>
+            <div style={{ marginBottom: '8px', fontWeight: 600, color: '#2c3e50' }}>영영 단어장</div>
+            <p style={{ margin: '0 0 12px 0', fontSize: '0.88rem', color: '#666' }}>
+              단어·뜻·제목을 직접 수정할 수 있고, 삭제로 행을 지웁니다. (+ 행 / + 지문 추가로 추가하세요.)
+            </p>
+            {englishEnglishWordData.vocabularyTable ? (
+              <>
+                <EnglishEnglishWordTable
+                  vocabularyTable={englishEnglishWordData.vocabularyTable}
+                  onChange={(t) => {
+                    setEnglishEnglishWordData((prev) => ({
+                      ...prev,
+                      vocabularyTable: t,
+                      glossary: vocabularyTableToTsv(t),
+                    }))
+                  }}
+                />
+                {englishWordTestOpen && englishEnglishWordData.vocabularyTable && (
+                  <EnglishEnglishWordTestSheet
+                    vocabularyTable={englishEnglishWordData.vocabularyTable}
+                    onClose={() => setEnglishWordTestOpen(false)}
+                  />
+                )}
+              </>
+            ) : (
+              <pre
+                style={{
+                  margin: 0,
+                  padding: '16px',
+                  background: '#fff',
+                  borderRadius: '8px',
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: 'inherit',
+                  fontSize: '0.95rem',
+                  lineHeight: 1.7,
+                  border: '1px solid #e0e0e0',
+                  minHeight: '200px',
+                }}
+              >
+                {englishEnglishWordData.glossary}
+              </pre>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // SUM15 원형 모드 (어법 변형 조건 없음)
+  if (mode === 'sum15-original') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>SUM15 원형</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!sum15OriginalData ? (
+          <Sum15OriginalInput
+            text={text}
+            setText={setText}
+            onProcess={handleSum15OriginalProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            {showSum15OriginalDesign ? (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => setShowSum15OriginalDesign(false)} className="btn btn-secondary">텍스트 보기로 돌아가기</button>
+                  <button onClick={handleSavePdf} className="btn btn-primary" disabled={isSavingPdf}>{isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}</button>
+                  <button onClick={() => { setSum15OriginalData(null); setText(''); setShowSum15OriginalDesign(false); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                </div>
+                <Sum15Viewer data={sum15OriginalData} />
+              </>
+            ) : (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => { setSum15OriginalData(null); setText(''); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                  <button
+                    onClick={() => {
+                      let fullText = sum15OriginalData.summary || sum15OriginalData.processed || ''
+                      fullText = fullText.replace(/<b>/g, '').replace(/<\/b>/g, '')
+                      if (sum15OriginalData.answerSheet) fullText += '\n\n\n<답지>\n\n' + sum15OriginalData.answerSheet
+                      if (sum15OriginalData.summaryOnly) fullText += '\n\n\n' + sum15OriginalData.summaryOnly
+                      navigator.clipboard.writeText(fullText)
+                      alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                    }}
+                    className="btn btn-primary"
+                  >
+                    결과 복사하기
+                  </button>
+                </div>
+                <div className="multiple-results">
+                  <div style={{ marginBottom: '20px', color: '#6c757d' }}>처리가 완료되었습니다. 아래 결과를 확인하세요.</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <pre style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>{sum15OriginalData.original}</pre>
+                      </div>
+                    </div>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <div style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                          {(() => {
+                            let text = sum15OriginalData.summary || sum15OriginalData.processed || ''
+                            if (sum15OriginalData.answerSheet) text += '\n\n\n<답지>\n\n' + sum15OriginalData.answerSheet
+                            return <span dangerouslySetInnerHTML={{ __html: text.replace(/\n/g, '<br>') }} />
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                    <button
+                      onClick={() => setShowSum15OriginalDesign(true)}
+                      className="btn btn-primary"
+                      style={{ fontSize: '1.1rem', padding: '12px 30px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)' }}
+                    >
+                      디자인 보기
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -2189,6 +2645,481 @@ function App() {
                 </button>
               </div>
             </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 시선 title 10 (원형) 모드
+  if (mode === 'title10-original') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>시선 title 10 (원형)</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!title10OriginalData ? (
+          <Title10OriginalInput
+            text={text}
+            setText={setText}
+            onProcess={handleTitle10OriginalProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            {showTitle10OriginalDesign ? (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => setShowTitle10OriginalDesign(false)} className="btn btn-secondary">텍스트 보기로 돌아가기</button>
+                  <button onClick={handleSavePdf} className="btn btn-primary" disabled={isSavingPdf}>{isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}</button>
+                  <button onClick={() => { setTitle10OriginalData(null); setText(''); setShowTitle10OriginalDesign(false); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                </div>
+                <Sum15Viewer data={title10OriginalData} />
+              </>
+            ) : (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => { setTitle10OriginalData(null); setText(''); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                  <button
+                    onClick={() => {
+                      let fullText = title10OriginalData.summary || title10OriginalData.processed || ''
+                      fullText = fullText.replace(/<b>/g, '').replace(/<\/b>/g, '')
+                      if (title10OriginalData.answerSheet) fullText += '\n\n\n<답지>\n\n' + title10OriginalData.answerSheet
+                      if (title10OriginalData.summaryOnly) fullText += '\n\n\n' + title10OriginalData.summaryOnly
+                      navigator.clipboard.writeText(fullText)
+                      alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                    }}
+                    className="btn btn-primary"
+                  >
+                    결과 복사하기
+                  </button>
+                </div>
+                <div className="multiple-results">
+                  <div style={{ marginBottom: '20px', color: '#6c757d' }}>처리가 완료되었습니다. 아래 결과를 확인하세요.</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <pre style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>{title10OriginalData.original}</pre>
+                      </div>
+                    </div>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <div style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                          {(() => {
+                            let text = title10OriginalData.summary || title10OriginalData.processed || ''
+                            if (title10OriginalData.answerSheet) text += '\n\n\n<답지>\n\n' + title10OriginalData.answerSheet
+                            return <span dangerouslySetInnerHTML={{ __html: text.replace(/\n/g, '<br>') }} />
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                    <button
+                      onClick={() => setShowTitle10OriginalDesign(true)}
+                      className="btn btn-primary"
+                      style={{ fontSize: '1.1rem', padding: '12px 30px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)' }}
+                    >
+                      디자인 보기
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 시선 topic (원형) 모드
+  if (mode === 'topic13-original') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>시선 topic (원형)</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!topic13OriginalData ? (
+          <Topic13OriginalInput
+            text={text}
+            setText={setText}
+            onProcess={handleTopic13OriginalProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            {showTopic13OriginalDesign ? (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => setShowTopic13OriginalDesign(false)} className="btn btn-secondary">텍스트 보기로 돌아가기</button>
+                  <button onClick={handleSavePdf} className="btn btn-primary" disabled={isSavingPdf}>{isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}</button>
+                  <button onClick={() => { setTopic13OriginalData(null); setText(''); setShowTopic13OriginalDesign(false); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                </div>
+                <Sum15Viewer data={topic13OriginalData} />
+              </>
+            ) : (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => { setTopic13OriginalData(null); setText(''); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                  <button
+                    onClick={() => {
+                      let fullText = topic13OriginalData.summary || topic13OriginalData.processed || ''
+                      fullText = fullText.replace(/<b>/g, '').replace(/<\/b>/g, '')
+                      if (topic13OriginalData.answerSheet) fullText += '\n\n\n<답지>\n\n' + topic13OriginalData.answerSheet
+                      if (topic13OriginalData.summaryOnly) fullText += '\n\n\n' + topic13OriginalData.summaryOnly
+                      navigator.clipboard.writeText(fullText)
+                      alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                    }}
+                    className="btn btn-primary"
+                  >
+                    결과 복사하기
+                  </button>
+                </div>
+                <div className="multiple-results">
+                  <div style={{ marginBottom: '20px', color: '#6c757d' }}>처리가 완료되었습니다. 아래 결과를 확인하세요.</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <pre style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>{topic13OriginalData.original}</pre>
+                      </div>
+                    </div>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <div style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                          {(() => {
+                            let text = topic13OriginalData.summary || topic13OriginalData.processed || ''
+                            if (topic13OriginalData.answerSheet) text += '\n\n\n<답지>\n\n' + topic13OriginalData.answerSheet
+                            return <span dangerouslySetInnerHTML={{ __html: text.replace(/\n/g, '<br>') }} />
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                    <button
+                      onClick={() => setShowTopic13OriginalDesign(true)}
+                      className="btn btn-primary"
+                      style={{ fontSize: '1.1rem', padding: '12px 30px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)' }}
+                    >
+                      디자인 보기
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 시선 topic (변형) 모드
+  if (mode === 'topic13-transformed') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>시선 topic (변형)</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!topic13TransformedData ? (
+          <Topic13TransformedInput
+            text={text}
+            setText={setText}
+            onProcess={handleTopic13TransformedProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            {showTopic13TransformedDesign ? (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => setShowTopic13TransformedDesign(false)} className="btn btn-secondary">텍스트 보기로 돌아가기</button>
+                  <button onClick={handleSavePdf} className="btn btn-primary" disabled={isSavingPdf}>{isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}</button>
+                  <button onClick={() => { setTopic13TransformedData(null); setText(''); setShowTopic13TransformedDesign(false); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                </div>
+                <Sum15Viewer data={topic13TransformedData} />
+              </>
+            ) : (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => { setTopic13TransformedData(null); setText(''); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                  <button
+                    onClick={() => {
+                      let fullText = topic13TransformedData.summary || topic13TransformedData.processed || ''
+                      fullText = fullText.replace(/<b>/g, '').replace(/<\/b>/g, '')
+                      if (topic13TransformedData.answerSheet) fullText += '\n\n\n<답지>\n\n' + topic13TransformedData.answerSheet
+                      if (topic13TransformedData.summaryOnly) fullText += '\n\n\n' + topic13TransformedData.summaryOnly
+                      navigator.clipboard.writeText(fullText)
+                      alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                    }}
+                    className="btn btn-primary"
+                  >
+                    결과 복사하기
+                  </button>
+                </div>
+                <div className="multiple-results">
+                  <div style={{ marginBottom: '20px', color: '#6c757d' }}>처리가 완료되었습니다. 아래 결과를 확인하세요.</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <pre style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>{topic13TransformedData.original}</pre>
+                      </div>
+                    </div>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <div style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                          {(() => {
+                            let text = topic13TransformedData.summary || topic13TransformedData.processed || ''
+                            if (topic13TransformedData.answerSheet) text += '\n\n\n<답지>\n\n' + topic13TransformedData.answerSheet
+                            return <span dangerouslySetInnerHTML={{ __html: text.replace(/\n/g, '<br>') }} />
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                    <button
+                      onClick={() => setShowTopic13TransformedDesign(true)}
+                      className="btn btn-primary"
+                      style={{ fontSize: '1.1rem', padding: '12px 30px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)' }}
+                    >
+                      디자인 보기
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 시선 response 20 (원형) 모드
+  if (mode === 'response20-original') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>시선 response 20 (원형)</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!response20OriginalData ? (
+          <Response20OriginalInput
+            text={text}
+            setText={setText}
+            onProcess={handleResponse20OriginalProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            {showResponse20OriginalDesign ? (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => setShowResponse20OriginalDesign(false)} className="btn btn-secondary">텍스트 보기로 돌아가기</button>
+                  <button onClick={handleSavePdf} className="btn btn-primary" disabled={isSavingPdf}>{isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}</button>
+                  <button onClick={() => { setResponse20OriginalData(null); setText(''); setShowResponse20OriginalDesign(false); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                </div>
+                <Sum15Viewer data={response20OriginalData} />
+              </>
+            ) : (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => { setResponse20OriginalData(null); setText(''); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                  <button
+                    onClick={() => {
+                      let fullText = response20OriginalData.summary || response20OriginalData.processed || ''
+                      fullText = fullText.replace(/<b>/g, '').replace(/<\/b>/g, '')
+                      if (response20OriginalData.answerSheet) fullText += '\n\n\n<답지>\n\n' + response20OriginalData.answerSheet
+                      if (response20OriginalData.summaryOnly) fullText += '\n\n\n' + response20OriginalData.summaryOnly
+                      navigator.clipboard.writeText(fullText)
+                      alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                    }}
+                    className="btn btn-primary"
+                  >
+                    결과 복사하기
+                  </button>
+                </div>
+                <div className="multiple-results">
+                  <div style={{ marginBottom: '20px', color: '#6c757d' }}>처리가 완료되었습니다. 아래 결과를 확인하세요.</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <pre style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>{response20OriginalData.original}</pre>
+                      </div>
+                    </div>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <div style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                          {(() => {
+                            let text = response20OriginalData.summary || response20OriginalData.processed || ''
+                            if (response20OriginalData.answerSheet) text += '\n\n\n<답지>\n\n' + response20OriginalData.answerSheet
+                            return <span dangerouslySetInnerHTML={{ __html: text.replace(/\n/g, '<br>') }} />
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                    <button
+                      onClick={() => setShowResponse20OriginalDesign(true)}
+                      className="btn btn-primary"
+                      style={{ fontSize: '1.1rem', padding: '12px 30px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)' }}
+                    >
+                      디자인 보기
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 시선 interview 25 (변형) 모드
+  if (mode === 'interview25-transformed') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>시선 interview 25 (변형)</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!interview25TransformedData ? (
+          <Interview25TransformedInput
+            text={text}
+            setText={setText}
+            onProcess={handleInterview25TransformedProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container">
+            {showInterview25TransformedDesign ? (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => setShowInterview25TransformedDesign(false)} className="btn btn-secondary">텍스트 보기로 돌아가기</button>
+                  <button onClick={handleSavePdf} className="btn btn-primary" disabled={isSavingPdf}>{isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}</button>
+                  <button onClick={() => { setInterview25TransformedData(null); setText(''); setShowInterview25TransformedDesign(false); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                </div>
+                <Sum15Viewer
+                  data={interview25TransformedData}
+                  answerKey="answerSentence"
+                  showSummaryBeforeBlank
+                  hideBlankLine
+                />
+              </>
+            ) : (
+              <>
+                <div className="result-actions">
+                  <button onClick={() => { setInterview25TransformedData(null); setText(''); }} className="btn btn-secondary">모두 삭제하고 처음부터</button>
+                  <button
+                    onClick={() => {
+                      let fullText = interview25TransformedData.summary || interview25TransformedData.processed || ''
+                      fullText = fullText.replace(/<b>/g, '').replace(/<\/b>/g, '')
+                      if (interview25TransformedData.answerSheet) fullText += '\n\n\n<답지>\n\n' + interview25TransformedData.answerSheet
+                      if (interview25TransformedData.summaryOnly) fullText += '\n\n\n' + interview25TransformedData.summaryOnly
+                      navigator.clipboard.writeText(fullText)
+                      alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                    }}
+                    className="btn btn-primary"
+                  >
+                    결과 복사하기
+                  </button>
+                </div>
+                <div className="multiple-results">
+                  <div style={{ marginBottom: '20px', color: '#6c757d' }}>처리가 완료되었습니다. 아래 결과를 확인하세요.</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <pre style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>{interview25TransformedData.original}</pre>
+                      </div>
+                    </div>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
+                      <div style={{ padding: '12px', background: 'white', borderRadius: '4px', border: '1px solid #e0e0e0', maxHeight: '500px', overflowY: 'auto' }}>
+                        <div style={{ margin: 0, color: '#2c3e50', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                          {(() => {
+                            let text = interview25TransformedData.summary || interview25TransformedData.processed || ''
+                            if (interview25TransformedData.answerSheet) text += '\n\n\n<답지>\n\n' + interview25TransformedData.answerSheet
+                            return <span dangerouslySetInnerHTML={{ __html: text.replace(/\n/g, '<br>') }} />
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                    <button
+                      onClick={() => setShowInterview25TransformedDesign(true)}
+                      className="btn btn-primary"
+                      style={{ fontSize: '1.1rem', padding: '12px 30px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)' }}
+                    >
+                      디자인 보기
+                    </button>
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -2790,7 +3721,7 @@ function App() {
     return (
       <div className="app">
         <header className="app-header">
-          <h1>지칭서술형(지문 안에서,어형변화무)</h1>
+          <h1>지칭 서술형 · 가리키는 표식</h1>
           <p>by 신희진</p>
           <button 
             onClick={handleBackToMain} 
@@ -2892,7 +3823,7 @@ function App() {
               </div>
               
               {/* 문제가 있는 항목이 있는 경우 경고 표시 */}
-              {referenceDescriptionData && Array.isArray(referenceDescriptionData) && referenceDescriptionData.some(r => (r.needsManualCheck || (!r.hasUnderline || !r.hasAnswer))) && (
+              {referenceDescriptionData && Array.isArray(referenceDescriptionData) && referenceDescriptionData.some(r => (r.needsManualCheck || (!r.hasUnderline || !r.hasAnalysis))) && (
                 <div style={{
                   marginBottom: '20px',
                   padding: '15px',
@@ -2903,11 +3834,11 @@ function App() {
                   fontSize: '14px',
                   lineHeight: '1.6'
                 }}>
-                  <strong>⚠️ 주의:</strong> 밑줄이 없거나 답이 없는 항목이 있습니다. 처리된 텍스트에서 <strong>[⚠️ 수동 확인 필요]</strong>로 표시된 부분을 찾아 수정해주세요.
+                  <strong>⚠️ 주의:</strong> 밑줄이 없거나 해설 블록이 없는 항목이 있습니다. 처리된 텍스트에서 <strong>[⚠️ 수동 확인 필요]</strong>로 표시된 부분을 찾아 수정해주세요.
                   <ul style={{ marginTop: '10px', marginLeft: '20px', paddingLeft: '0' }}>
-                    {referenceDescriptionData.filter(r => (r.needsManualCheck || (!r.hasUnderline || !r.hasAnswer))).map((r, idx) => (
+                    {referenceDescriptionData.filter(r => (r.needsManualCheck || (!r.hasUnderline || !r.hasAnalysis))).map((r, idx) => (
                       <li key={idx} style={{ marginBottom: '5px' }}>
-                        지문 {r.index + 1}: {!r.hasUnderline && '밑줄 없음'} {!r.hasUnderline && !r.hasAnswer && ', '} {!r.hasAnswer && '답 없음'}
+                        지문 {r.index + 1}: {!r.hasUnderline && '밑줄 없음'} {!r.hasUnderline && !r.hasAnalysis && ', '} {!r.hasAnalysis && '해설 없음'}
                       </li>
                     ))}
                   </ul>
@@ -2936,12 +3867,12 @@ function App() {
                           <div key={idx} style={{
                             marginBottom: '20px',
                             padding: '10px',
-                            backgroundColor: (result.needsManualCheck || (!result.hasUnderline || !result.hasAnswer)) ? '#fff3cd' : 'transparent',
-                            border: (result.needsManualCheck || (!result.hasUnderline || !result.hasAnswer)) ? '2px solid #ffc107' : 'none',
+                            backgroundColor: (result.needsManualCheck || (!result.hasUnderline || !result.hasAnalysis)) ? '#fff3cd' : 'transparent',
+                            border: (result.needsManualCheck || (!result.hasUnderline || !result.hasAnalysis)) ? '2px solid #ffc107' : 'none',
                             borderRadius: '6px'
                           }}>
                             <div style={{ marginBottom: '5px', fontWeight: 'bold', color: '#856404' }}>
-                              {result.needsManualCheck || (!result.hasUnderline || !result.hasAnswer) ? '⚠️ ' : ''}지문 {result.index + 1}
+                              {result.needsManualCheck || (!result.hasUnderline || !result.hasAnalysis) ? '⚠️ ' : ''}지문 {result.index + 1}
                             </div>
                             <pre style={{ 
                               margin: 0, 
@@ -3122,6 +4053,95 @@ function App() {
             )}
           </div>
         )}
+      </div>
+    )
+  }
+
+  // 일치불일치 (객불) 모드
+  if (mode === 'content-match') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>일치불일치 (객불)</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
+        {!contentMatchData ? (
+          <ContentMatchInput
+            text={text}
+            setText={setText}
+            onProcess={handleContentMatchProcess}
+            apiKey={apiKey}
+          />
+        ) : (
+          <div className="result-container" style={{ maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
+            <div className="result-actions" style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => { setContentMatchData(null); setText(''); }}
+                className="btn btn-secondary"
+              >
+                다시 입력하기
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(contentMatchData.fullText || '')
+                  alert('결과가 클립보드에 복사되었습니다.')
+                }}
+                className="btn btn-primary"
+              >
+                결과 복사하기
+              </button>
+            </div>
+            <div style={{ fontWeight: '600', color: '#2c3e50', marginBottom: '8px' }}>출력</div>
+            <textarea
+              readOnly
+              value={contentMatchData.fullText || ''}
+              style={{
+                width: '100%',
+                minHeight: '480px',
+                padding: '16px',
+                border: '2px solid #e0e0e0',
+                borderRadius: '8px',
+                fontSize: '0.95rem',
+                fontFamily: 'inherit',
+                lineHeight: '1.7',
+                whiteSpace: 'pre-wrap',
+              }}
+            />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // 문법 문제 만들기 - to부정사
+
+  if (mode === 'grammar-to-infinitive') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>문법 문제 만들기</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+        <div className="main-content">
+          <ToInfinitiveInput onClose={handleBackToMain} />
+        </div>
       </div>
     )
   }

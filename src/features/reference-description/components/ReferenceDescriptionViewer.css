@@ -76,6 +76,69 @@
   margin-bottom: 6px;
 }
 
+/* 밑줄 지문 본문 (HTML <u> 포함) */
+.reference-description-passage-wrap {
+  margin-bottom: 12px;
+}
+
+.reference-description-passage-text {
+  font-size: 12px;
+  line-height: 1.75;
+  color: #2c3e50;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: 'Noto Sans KR', 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+}
+
+.reference-description-passage-text u {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: #ff6b35;
+  font-weight: 700;
+}
+
+.reference-description-passage-missing {
+  font-size: 12px;
+  color: #888;
+  padding: 8px 0;
+}
+
+.reference-description-analysis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reference-description-analysis-block {
+  padding: 10px 12px;
+  background: #fafafa;
+  border-radius: 6px;
+  border: 1px solid #e8e8e8;
+}
+
+.reference-description-analysis-header {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.reference-description-analysis-equals {
+  font-size: 12px;
+  margin: 6px 0 4px;
+  font-weight: 600;
+}
+
+.reference-description-analysis-arrow {
+  font-size: 11px;
+  line-height: 1.65;
+  margin-top: 2px;
+  padding-left: 2px;
+}
+
+.reference-description-analysis-arrow-en {
+  opacity: 0.92;
+}
+
 /* 질문 - Q.에 붙여서 표시 (박스 없이) */
 .reference-description-question-wrapper {
   display: flex;

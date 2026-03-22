@@ -77,3 +77,10 @@ const ExamScopePopup = ({ isOpen, onClose, onConfirm }) => {
 export default ExamScopePopup;
 
 
+
+
+
+
+
+
+

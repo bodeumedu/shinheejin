@@ -146,6 +146,15 @@ export default async function handler(req, res) {
     // 알림톡 발송 (SDK 사용)
     // SDK가 자동으로 전화번호 형식 변환 및 인증 처리
     let result;
+    
+    // 디버깅: 전송할 변수 확인
+    console.log('📤 [API] 전송할 변수:', {
+      templateCode,
+      variables,
+      variablesKeys: variables ? Object.keys(variables) : [],
+      variablesValues: variables ? Object.values(variables) : [],
+    });
+    
     try {
       result = await messageService.send({
         to: cleanPhoneNumber,
@@ -158,6 +167,25 @@ export default async function handler(req, res) {
           disableSms: false, // SMS 대체 발송 허용
         },
       });
+      
+      // 솔라피 응답 확인
+      console.log('📥 [API] 솔라피 응답:', JSON.stringify(result, null, 2));
+      
+      // 실패한 메시지가 있는지 확인
+      if (result.failedMessageList && result.failedMessageList.length > 0) {
+        const failedMessages = result.failedMessageList;
+        const errorDetails = failedMessages.map(msg => {
+          return `코드: ${msg.errorCode}, 메시지: ${msg.errorMessage || msg.errorMsg || '알 수 없는 오류'}`;
+        }).join('\n');
+        
+        throw new Error(`${failedMessages.length}개의 메시지가 접수되지 못했습니다. 자세한 에러 메시지는 해당 에러 내 failedMessageList를 확인해주세요.\n\n${errorDetails}`);
+      }
+      
+      // 성공한 메시지가 없는 경우
+      if (result.successfulMessageList && result.successfulMessageList.length === 0) {
+        throw new Error('메시지가 발송되지 않았습니다. 템플릿 코드와 변수를 확인해주세요.');
+      }
+      
     } catch (sdkError) {
       console.error('❌ 솔라피 SDK 오류:', {
         error: sdkError.message,

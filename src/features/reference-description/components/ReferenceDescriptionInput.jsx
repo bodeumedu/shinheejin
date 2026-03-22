@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import './ReferenceDescriptionInput.css'
-import { generateReferenceDescription } from '../utils/referenceDescriptionAnalyzer'
+import { generateReferenceDescription, formatReferenceDescriptionAsText } from '../utils/referenceDescriptionAnalyzer'
 
 function ReferenceDescriptionInput({ text, setText, onProcess, apiKey }) {
   const [isLoading, setIsLoading] = useState(false)
@@ -70,23 +70,22 @@ function ReferenceDescriptionInput({ text, setText, onProcess, apiKey }) {
         // 지칭서술형 문제 생성
         const result = await generateReferenceDescription(englishText, apiKey)
         
-        // 검증: 밑줄이 있는지, 답이 있는지 확인
-        const hasUnderline = result.question && result.question.includes('<u>')
-        const hasAnswer = result.answer && result.answer.trim().length > 0
-        
+        const passage = result.passageWithUnderlines || ''
+        const hasUnderline = passage.includes('<u>')
+        const blockCount = Array.isArray(result.blocks) ? result.blocks.length : 0
+        const hasAnalysis = blockCount > 0
+
         results.push({
           index: i,
           source: source.trim(),
           original: englishText.trim(),
           koreanTranslation: koreanTranslation.trim(),
-          question: result.question,
-          answer: result.answer,
-          wordLimit: result.wordLimit,
-          condition: result.condition,
-          referenceWord: result.referenceWord || 'this',
-          hasUnderline: hasUnderline,
-          hasAnswer: hasAnswer,
-          needsManualCheck: !hasUnderline || !hasAnswer // 수동 확인이 필요한지
+          passageWithUnderlines: passage,
+          blocks: result.blocks || [],
+          answerSummary: result.answerSummary || '',
+          hasUnderline,
+          hasAnalysis,
+          needsManualCheck: !hasUnderline || !hasAnalysis
         })
       } catch (error) {
         console.error(`지문 ${i + 1} 처리 오류:`, error)
@@ -129,52 +128,23 @@ function ReferenceDescriptionInput({ text, setText, onProcess, apiKey }) {
           continue
         }
 
-        // 검증: 밑줄이 있는지, 답이 있는지 확인
-        const hasUnderline = result.question && result.question.includes('<u>')
-        const hasAnswer = result.answer && result.answer.trim().length > 0
-        const needsCheck = !hasUnderline || !hasAnswer
+        const hasUnderline = result.passageWithUnderlines && result.passageWithUnderlines.includes('<u>')
+        const hasAnalysis = Array.isArray(result.blocks) && result.blocks.length > 0
+        const needsCheck = !hasUnderline || !hasAnalysis
 
-        // 질문에서 "다음 글을 읽고 ~ 쓰시오." 부분과 지문 부분 분리
-        const questionText = result.question || ''
-        const questionParts = questionText.split(/\n\s*\n/)
-        
-        // 질문 부분 (쓰시오까지)
-        let questionPart = questionParts[0] || questionText
-        const writeIndex = questionPart.indexOf('쓰시오')
-        if (writeIndex !== -1) {
-          questionPart = questionPart.substring(0, writeIndex + 3).trim()
-        }
-        
-        // 지문 부분 (질문에 포함된 지문만, 밑줄 <u> 태그 유지)
-        const passagePart = questionParts.length > 1 ? questionParts.slice(1).join('\n\n').trim() : ''
-        
-        // 문제가 있는 경우 빨간색으로 표시 (CSS 클래스 사용)
         const errorClass = needsCheck ? ' class="reference-description-error"' : ''
-        
+
         if (needsCheck) {
           const warnings = []
           if (!hasUnderline) warnings.push('밑줄 없음')
-          if (!hasAnswer) warnings.push('답 없음')
+          if (!hasAnalysis) warnings.push('해설 블록 없음')
           processedText += `<span${errorClass}>[⚠️ 수동 확인 필요: ${warnings.join(', ')}]</span>\n\n`
         }
 
-        // 출처 제거하고 질문만 표시
-        processedText += `${questionPart}\n\n`
-        
-        // 지문 부분 표시 (밑줄 <u> 태그 유지)
-        if (passagePart) {
-          processedText += `${passagePart}\n\n`
-        }
-        
-        processedText += `${result.condition}\n\n`
-        
-        if (hasAnswer) {
-          processedText += `정답: ${result.answer} (${result.wordLimit}단어)\n\n`
-        } else {
-          processedText += `<span${errorClass}>정답: [답 없음 - 수동 작성 필요]</span>\n\n`
-        }
-        
-        processedText += '━━━━━━━━━━━━━━━━━━━━\n\n'
+        processedText += formatReferenceDescriptionAsText({
+          passageWithUnderlines: result.passageWithUnderlines,
+          blocks: result.blocks
+        })
       }
 
       if (onProcess) {
@@ -193,7 +163,7 @@ function ReferenceDescriptionInput({ text, setText, onProcess, apiKey }) {
       <div className="input-header">
         <h2>지칭서술형(지문 안에서,어형변화무)</h2>
         <p className="input-description">
-          지문에서 밑줄 친 "this"가 가리키는 것을 본문에서 찾아 조건에 맞게 답변하는 문제를 생성합니다.
+          지문 전체에 독해 시 꼭 체크해야 할 가리키는 표현(대명사, 지시어, such+명사, the+추상명사 등)을 &lt;u&gt;로 표시하고, 각 표현마다 한·영 해설 블록을 생성합니다. (첫 소개용 <strong>a/an + 명사</strong>는 밑줄 대상에서 제외)
         </p>
       </div>
 
@@ -231,7 +201,7 @@ function ReferenceDescriptionInput({ text, setText, onProcess, apiKey }) {
       {isLoading && (
         <div className="loading-indicator">
           <div className="spinner"></div>
-          <p>AI가 문제를 생성하고 있습니다...</p>
+          <p>AI가 가리키는 표식(&lt;u&gt;)과 해설을 만들고 있습니다...</p>
         </div>
       )}
     </div>

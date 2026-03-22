@@ -70,14 +70,15 @@ vercel whoami
 
 ### 4단계: 프로젝트 디렉토리로 이동
 
+**Vite 앱·`vercel.json`·`api/`가 있는 폴더로 이동해야 합니다.**
+
 ```bash
-cd C:\Users\jin12\Downloads\pocketbook
+cd pocketbook-dev
 ```
 
-현재 위치 확인:
-```bash
-pwd  # 또는 Windows에서는: cd
-```
+(저장소 루트가 `pocketbook`이면: `cd pocketbook/pocketbook-dev`)
+
+Windows PowerShell에서 현재 위치 확인: `Get-Location` 또는 `cd`
 
 ### 5단계: 배포 실행
 

@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // studentPhoneNumbers 컬렉션에 대한 읽기/쓰기 허용
+    match /studentPhoneNumbers/{document} {
+      allow read, write: if true;
+    }
+    
+    // 기존 컬렉션
+    match /homeworkProgress/{document} {
+      allow read, write: if true;
+    }
+    
+    // 영어 과제 관리 대시보드
+    match /englishHomeworkProgress/{document} {
+      allow read, write: if true;
+    }
+    
+    // 수학 과제 관리 대시보드
+    match /mathHomeworkProgress/{document} {
+      allow read, write: if true;
+    }
+    
+    // 기타 컬렉션들
+    match /pocketbook/{document} {
+      allow read, write: if true;
+    }
+    
+    match /blank/{document} {
+      allow read, write: if true;
+    }
+    
+    match /sources/{document} {
+      allow read, write: if true;
+    }
+    
+    // 주간시간표 데이터 (누구나 읽기/쓰기 가능)
+    match /weeklySchedules/{document=**} {
+      allow read, write: if true;
+    }
+
+    // 주간시간표 휴강 정보 (누구나 읽기/쓰기 가능)
+    match /weeklyScheduleCancellations/{document=**} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 기록 (주차별, 과목별) - 영어
+    match /clinicLogRecords_english/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 기록 (주차별, 과목별) - 수학
+    match /clinicLogRecords_math/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 수동 등록 학생 (주차별, 과목별) - 영어
+    match /clinicLogCustoms_english/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 수동 등록 학생 (주차별, 과목별) - 수학
+    match /clinicLogCustoms_math/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 카카오톡 전송 내역 (주차별, 과목별) - 영어
+    match /clinicKakaoHistory_english/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 클리닉 대장 카카오톡 전송 내역 (주차별, 과목별) - 수학
+    match /clinicKakaoHistory_math/{weekKey} {
+      allow read, write: if true;
+    }
+    
+    // 윈터스쿨 관리 (날짜별)
+    match /winterSchoolPlanners/{date} {
+      allow read, write: if true;
+    }
+    
+    // 숙제 완료도 전송 횟수
+    match /homeworkCompletionSentCounts/{document} {
+      allow read, write: if true;
+    }
+    
+    // 숙제 완료도 전송 이력
+    match /homeworkCompletionSendHistory/{document} {
+      allow read, write: if true;
+    }
+    
+    // 숙제 완료도 날짜별 데이터 (완료도 입력 및 과제 목록)
+    match /homeworkCompletionDateData/{document} {
+      allow read, write: if true;
+    }
+    
+    // 숙제 과제 완료도 전용 학생/전화번호 (다른 메뉴와 분리)
+    match /homeworkCompletionPhoneNumbers/{document} {
+      allow read, write: if true;
+    }
+    
+    // 학생 데이터 모달에서 보낸 카톡 발송 이력 (이름 클릭 시 날짜별 조회)
+    match /studentDataKakaoHistory/{document} {
+      allow read, write: if true;
+    }
+  }
+}
+
+

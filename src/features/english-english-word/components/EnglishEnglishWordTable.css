@@ -1,0 +1,183 @@
+.ee-word-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 24px;
+}
+
+.ee-word-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  background: #fff;
+  border: 1px solid #111;
+}
+
+.ee-word-table th,
+.ee-word-table td {
+  border: 1px solid #111;
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+.ee-word-table thead th {
+  background: #f0f0f0;
+  font-weight: 600;
+  text-align: center;
+  color: #2c3e50;
+}
+
+.ee-word-table--3col .ee-word-table__col-title {
+  width: 14%;
+}
+
+.ee-word-table--3col .ee-word-table__col-word {
+  width: 22%;
+}
+
+.ee-word-table__word-cell {
+  text-align: center;
+  font-weight: 500;
+}
+
+.ee-word-table__def-cell {
+  text-align: left;
+  line-height: 1.55;
+}
+
+.ee-word-table__title-cell {
+  text-align: center;
+  background: #fafafa;
+}
+
+.ee-word-table__title-text {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.06em;
+  max-height: 280px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+/* 세로 제목이 너무 길 때는 가로로 */
+@media (max-width: 640px) {
+  .ee-word-table__title-text {
+    writing-mode: horizontal-tb;
+    max-height: none;
+  }
+}
+
+.ee-word-table--editable .ee-word-table__col-action {
+  width: 72px;
+  text-align: center;
+}
+
+.ee-word-table__action-cell {
+  vertical-align: middle;
+  text-align: center;
+  background: #fafafa;
+}
+
+.ee-word-table__cell-input {
+  width: 100%;
+  min-width: 120px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.ee-word-table__cell-input--word {
+  text-align: center;
+}
+
+.ee-word-table__cell-input:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+.ee-word-table__title-input {
+  width: 100%;
+  max-width: 100%;
+  min-height: 72px;
+  box-sizing: border-box;
+  padding: 10px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  resize: vertical;
+}
+
+@media (max-width: 640px) {
+  .ee-word-table__title-input {
+    writing-mode: horizontal-tb;
+    min-height: 44px;
+  }
+}
+
+.ee-word-table__title-input:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+.ee-word-table__actions-bar {
+  margin-bottom: 10px;
+}
+
+.ee-word-table__mini-btn {
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  border: 1px solid #3498db;
+  background: #ebf5fb;
+  color: #2980b9;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.ee-word-table__mini-btn:hover {
+  background: #d6eaf8;
+}
+
+.ee-word-table__mini-btn--block {
+  display: block;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.ee-word-table__del-btn {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  border: 1px solid #c0392b;
+  background: #fdedec;
+  color: #922b21;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.ee-word-table__del-btn:hover {
+  background: #f5b7b1;
+}
+
+.ee-word-table__add-row-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  border: 1px solid #27ae60;
+  background: #e9f7ef;
+  color: #1e8449;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+}

@@ -41,32 +41,43 @@ const isFirebaseConfigured = () => {
   return configured;
 };
 
-// Firebase 초기화
-let app = null;
-let db = null;
+// Firebase 앱/DB 인스턴스 (HMR·모듈 재실행 시 기존 인스턴스 재사용)
+const GLOBAL_KEY_APP = '__FIREBASE_APP__';
+const GLOBAL_KEY_DB = '__FIREBASE_DB__';
+const isBrowser = typeof window !== 'undefined';
+
+let app = isBrowser && window[GLOBAL_KEY_APP] ? window[GLOBAL_KEY_APP] : null;
+let db = isBrowser && window[GLOBAL_KEY_DB] ? window[GLOBAL_KEY_DB] : null;
 
 try {
   if (isFirebaseConfigured()) {
-    console.log('🚀 Firebase 초기화 시도 중...');
-    app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
-    
-    // 오프라인 지속성 활성화 (오프라인에서도 저장 가능)
-    enableIndexedDbPersistence(db).catch((err) => {
-      if (err.code === 'failed-precondition') {
-        console.warn('⚠️ Firebase 오프라인 지속성: 여러 탭이 열려있습니다. 한 탭에서만 사용 가능합니다.');
-      } else if (err.code === 'unimplemented') {
-        console.warn('⚠️ Firebase 오프라인 지속성: 브라우저가 지원하지 않습니다.');
-      } else {
-        console.warn('⚠️ Firebase 오프라인 지속성 활성화 실패:', err);
+    if (!app || !db) {
+      // 최초 1회만 초기화 (모듈 재실행·HMR 시 window에 저장된 인스턴스 재사용)
+      console.log('🚀 Firebase 초기화 시도 중...');
+      app = initializeApp(firebaseConfig);
+      db = getFirestore(app);
+      if (isBrowser) {
+        window[GLOBAL_KEY_APP] = app;
+        window[GLOBAL_KEY_DB] = db;
       }
-    });
-    
-    console.log('✅ Firebase 초기화 성공!', {
-      projectId: firebaseConfig.projectId,
-      authDomain: firebaseConfig.authDomain,
-      db: db ? '생성됨' : '생성 실패'
-    });
+
+      // 오프라인 지속성 활성화 (오프라인에서도 저장 가능)
+      enableIndexedDbPersistence(db).catch((err) => {
+        if (err.code === 'failed-precondition') {
+          console.warn('⚠️ Firebase 오프라인 지속성: 여러 탭이 열려있습니다. 한 탭에서만 사용 가능합니다.');
+        } else if (err.code === 'unimplemented') {
+          console.warn('⚠️ Firebase 오프라인 지속성: 브라우저가 지원하지 않습니다.');
+        } else {
+          console.warn('⚠️ Firebase 오프라인 지속성 활성화 실패:', err);
+        }
+      });
+
+      console.log('✅ Firebase 초기화 성공!', {
+        projectId: firebaseConfig.projectId,
+        authDomain: firebaseConfig.authDomain,
+        db: db ? '생성됨' : '생성 실패'
+      });
+    }
   } else {
     console.error('❌ Firebase 환경 변수가 설정되지 않았습니다.');
     console.error('필요한 환경 변수:');

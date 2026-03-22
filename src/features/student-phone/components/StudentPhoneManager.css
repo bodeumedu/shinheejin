@@ -129,11 +129,12 @@
 }
 
 .school-cell {
-  min-width: 200px;
+  min-width: 140px; /* 200px의 70% (30% 감소) */
 }
 
 .grade-cell {
-  min-width: 100px;
+  min-width: 18px; /* 60px의 30% (70% 감소) */
+  max-width: 24px; /* 80px의 30% (70% 감소) */
 }
 
 .class-cell {

@@ -1,106 +1,122 @@
 /**
- * 지칭서술형 문제 생성 유틸리티
- * 지문에서 밑줄 친 "this"가 가리키는 것을 찾아 조건에 맞게 답변 생성
+ * 지칭서술형(지칭 서술형) — 독해 시 꼭 체크할 가리키는 표현 분석
  */
 
 /**
- * 지문에서 밑줄 친 "this"가 가리키는 것을 찾아 답변 생성
  * @param {string} englishText - 영어 원문
  * @param {string} apiKey - OpenAI API 키
- * @returns {Promise<{question: string, answer: string, condition: string}>}
+ * @returns {Promise<{passageWithUnderlines: string, blocks: Array, answerSummary: string}>}
  */
 export async function generateReferenceDescription(englishText, apiKey) {
   if (!apiKey) {
     throw new Error('API 키가 설정되지 않았습니다.')
   }
 
-  const prompt = `You are an expert Korean English teacher creating a reference description question (지칭서술형 문제). Analyze the following English text and create a question where students must identify what a reference word or phrase refers to in the text.
+  const prompt = `You are an expert Korean English teacher. The student will READ the passage and learn to mark EVERY important referential expression (가리키는 표현) that they must NOT skip while reading.
 
-SUPPORTED REFERENCE WORDS/PHRASES:
-- "this", "this matter", "this issue", "this problem", etc.
-- "such", "such a thing", "such behavior", etc.
-- "it", "that", "these", "those"
-- "do so", "doing so", "did so", "does so" (meaning "그렇게 하다" - refers to an action mentioned earlier)
-- Other reference expressions that point to something mentioned earlier
+INPUT: The English passage only (no Korean exam instructions).
 
-CRITICAL REQUIREMENTS:
-1. Find a reference word/phrase in the text that refers to something mentioned earlier (e.g., "this", "this matter", "such", "it", "that", "do so", "doing so")
-2. The reference must point to something NOT explicitly stated in the same sentence - students must look back at previous context
-3. Answer format depends on the reference word type:
-   - For "this matter", "this issue", "this problem", "this", "that", "it", "such" etc.: Answer must be a NOUN PHRASE (명사구) from the text that the reference word points to (1-10 words)
-   - For "do so", "doing so", "did so", "does so": Answer must be a VERB PHRASE (동사구) from the text - the ACTION that "do so" refers to (1-10 words)
-4. Use EXACT words from the text - no paraphrasing, no word form changes
-5. Create the question format: "다음 글을 읽고 밑줄 친 [reference]가 가리키는 것을 본문에서 찾아 <조건>에 맞게 [N]단어 이하로 쓰시오."
+YOUR OUTPUT FORMAT (strict):
+1) First produce the FULL original passage again, but wrap EVERY referential expression that readers must check in HTML tags: <u>exact substring from the passage</u>.
+   - Use the EXACT words from the passage inside <u>...</u> (same spelling, same spacing). Do not paraphrase.
+   - Non-overlapping spans only. If needed, use a longer phrase (e.g. "its right hemisphere") so the referent is clear.
+2) Then return a JSON object. The "blocks" array must have ONE object for EACH <u>...</u> in passageWithUnderlines, in LEFT-TO-RIGHT order of first appearance in the text.
 
-Text to analyze:
+WHAT TO UNDERLINE (be exhaustive — Korean high school reading / 수능-style referential reading):
+- Pronouns: it, they, them, their, he, she, his, her, its, we, us, our, you, your, oneself, one (include cases where the referent is a whole preceding clause, situation, or implied idea — not only the nearest noun).
+- Demonstratives: this, that, these, those (as determiners or pronouns); distinguish pointing to a noun phrase vs. summarizing a whole prior sentence or stretch of text.
+- "such + noun / such a/an + noun": such problems, such behavior, such changes, such an idea — ties back to earlier specific content.
+- "the + abstract noun" when anaphoric (points back): the experience, the process, the problem, the idea, the information, the change, the result, the fact, the issue, the situation, the approach, the decision, etc.
+- Other high-frequency traps: do so / doing so / did so / does so; the former / the latter; which / who / whose clauses when the head is clearly picking up prior content; comparative "that" (so ... that ...) only when referential reading matters.
+- Do NOT skip borderline cases: if a student could mis-link the referent on a test, underline and explain it.
+
+DO NOT UNDERLINE (exclude from <u> — not "가리키는 표현" in the usual sense):
+- Phrases that are **indefinite article + noun** introducing a **first mention** / new entity: **a** / **an** + noun (e.g. "a study", "an experiment", "a cup", "a difference"). Students should NOT treat these as pointing back to earlier text like "the" or "it".
+- Do not wrap **a** or **an** by itself, and do not wrap **a/an + head noun** as a single underline target for ordinary indefinite NPs.
+- EXCEPTIONS — still underline when clearly referential:
+  - **such a / such an + noun** (and **such + noun**) as already required above.
+  - Fixed quantifier / semi-fixed chunks only if the exam-style referent is clearly backward-pointing (rare for plain "a N" first mention).
+
+STUDENT CHECK ROUTINE (embed these ideas in linesKo/linesEn when useful):
+1) Locate the expression in the sentence.
+2) Ask "what noun/idea in the previous sentence(s) does it hook to?"
+3) If multiple candidates, say which one fits logic/grammar and which is the common wrong choice.
+4) One-line Korean takeaway when helpful (e.g. "앞 문장 전체를 가리킴!!!").
+
+For EACH block, write explanations for Korean high school teachers/students:
+- "summaryKo": After "=" — short Korean label of what it refers to (e.g. "뇌의 구조", "music").
+- "linesKo": array of 2–5 strings — each line is a full sentence or clause in Korean. These will be shown with "→" prefix. Cover: (a) what it points to in the text, (b) if it is a whole idea vs one noun, (c) links to earlier phrases like "have no special training" when relevant.
+- "linesEn": array of 2–5 strings — same ideas in English, for lines after the Korean ones, each with "→" prefix.
+- "doubleHeader": if true, the rendered output will show the <u>phrase</u> line twice before "=" (like a worksheet). If false, once.
+
+Tone: clear, exam-prep style. You may end a line with "!!!" only when stressing a common exam mistake (sparingly).
+
+Passage to analyze:
+---
 ${englishText}
+---
 
-IMPORTANT EXAMPLES:
-
-Example 1 - "this matter" (noun phrase answer):
-If the text says: "Recently, we discovered that two songs might have been used without permission, thus violating the rights of others' works. We extend our deepest apologies for this matter..."
-Then:
-- Reference word: "this matter"
-- Answer: "violating the rights of others' works" (NOUN PHRASE from text, 5 words)
-- Question format: "다음 글을 읽고 밑줄 친 this matter가 가리키는 것을 본문에서 찾아 <조건>에 맞게 5단어 이하로 쓰시오."
-
-Example 2 - "do so" (verb phrase answer):
-If the text says: "We should take immediate action. If we do so, we can prevent further damage."
-Then:
-- Reference word: "do so"
-- Answer: "take immediate action" (VERB PHRASE from text, 3 words - the action "do so" refers to)
-- Question format: "다음 글을 읽고 밑줄 친 do so가 가리키는 것을 본문에서 찾아 <조건>에 맞게 3단어 이하로 쓰시오."
-
-CRITICAL ANSWER FORMAT RULES:
-- "this matter", "this issue", "this problem", "this", "that", "it", "such", "these", "those" → Answer MUST be a NOUN PHRASE (명사구) from the text
-- "do so", "doing so", "did so", "does so" → Answer MUST be a VERB PHRASE (동사구) from the text - the action that "do so" refers to
-
-DO NOT mix them up! If the reference is "do so", the answer must be a verb phrase (action), not a noun phrase.
-
-CRITICAL: Before returning, you MUST:
-1. Count the exact number of words in the answer phrase
-2. Set wordLimit to match the exact word count of the answer
-3. Make sure the reference word in the question matches the reference word marked with <u> in the text
-4. Verify that the answer phrase is 1-10 words long
-
-Return a JSON object with these exact keys:
+Return ONLY valid JSON with this exact shape:
 {
-  "referenceWord": "the reference word/phrase found in the text (e.g., 'this matter', 'this', 'such', 'it', 'do so', 'doing so')",
-  "question": "다음 글을 읽고 밑줄 친 <u>[reference word]</u>가 가리키는 것을 본문에서 찾아 <조건>에 맞게 [N]단어 이하로 쓰시오.\n\n[Full English text with ONLY the reference word marked as <u>reference word</u> - make sure this matches the reference word in the question]",
-  "answer": "exact phrase from the original text (1-10 words, no changes). IMPORTANT: If reference is 'this matter'/'this issue'/'this'/etc., answer must be a NOUN PHRASE. If reference is 'do so'/'doing so'/'did so'/'does so', answer must be a VERB PHRASE (the action it refers to).",
-  "wordLimit": EXACT number of words in the answer (count carefully - this must match the answer word count),
-  "condition": "<조건>\n1) 반드시 본문에 있는 단어만 사용할 것\n2) 어형을 바꾸지 말 것"
+  "passageWithUnderlines": "full passage with multiple <u>...</u> as described",
+  "blocks": [
+    {
+      "underline": "exact inner text of one <u>...</u> span (must match one span exactly)",
+      "summaryKo": "short Korean after =",
+      "linesKo": ["한국어 설명1", "한국어 설명2"],
+      "linesEn": ["English explanation 1", "English explanation 2"],
+      "doubleHeader": true
+    }
+  ]
 }
 
-IMPORTANT VALIDATION RULES:
-- The reference word in "question" must be EXACTLY the same as the word marked with <u> in the text
-- wordLimit must equal the exact word count of the answer phrase
-- Count words carefully: "a matter-of-fact account" = 3 words, not 4
+RULES:
+- passageWithUnderlines must contain the same sentences as the input (only add <u> tags).
+- blocks.length must equal the number of <u>...</u> spans in passageWithUnderlines.
+- Order of blocks = order of <u> spans from start to end of the passage.
+- Never use <u> for normal **a/an + noun** first-mention phrases (see DO NOT UNDERLINE).
+- Do NOT include the old exam format (no "다음 글을 읽고 밑줄 친", no <조건>, no word limits, no single-answer-only mode).`
 
-Return ONLY valid JSON.`
+  const timeoutMs = 180000 // 긴 지문·다수 <u> 분석 대비 3분
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert English teacher who creates precise reference description questions. Always return valid JSON only.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.7,
-      response_format: { type: 'json_object' }
+  let response
+  try {
+    response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an expert English teacher for Korean students. Always return valid JSON only. Underline many referential expressions; explain each in Korean and English.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.55,
+        response_format: { type: 'json_object' }
+      })
     })
-  })
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(
+        `AI 요청이 ${Math.round(timeoutMs / 60000)}분 안에 끝나지 않았습니다. 지문을 // 로 나누거나 짧게 해서 다시 시도해주세요.`
+      )
+    }
+    throw new Error(`네트워크 오류: ${err.message || 'OpenAI에 연결하지 못했습니다.'}`)
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
@@ -116,87 +132,41 @@ Return ONLY valid JSON.`
 
   try {
     const result = JSON.parse(content)
-    
-    // 필수 필드 검증
-    if (!result.question || !result.answer) {
-      throw new Error('AI 응답에 필수 필드가 없습니다.')
+
+    if (!result.passageWithUnderlines || !Array.isArray(result.blocks)) {
+      throw new Error('AI 응답에 passageWithUnderlines 또는 blocks가 없습니다.')
     }
 
-    // 답의 실제 단어 수 계산
-    const answerWords = result.answer.trim().split(/\s+/).filter(w => w.length > 0)
-    const actualWordCount = answerWords.length
-
-    // wordLimit 검증 및 수정
-    let wordLimit = result.wordLimit || actualWordCount
-    if (wordLimit !== actualWordCount) {
-      console.warn(`단어 수 불일치: wordLimit=${wordLimit}, 실제 답 단어 수=${actualWordCount}. wordLimit을 실제 단어 수로 조정합니다.`)
-      wordLimit = actualWordCount
-      
-      // 질문 텍스트의 단어 수도 함께 업데이트
-      // 다양한 패턴 처리: "N단어 이하", "[N]단어 이하", "N단어 이하로 쓰시오" 등
-      if (result.question) {
-        // 패턴 1: "N단어 이하로 쓰시오" (공백 유연하게 처리)
-        result.question = result.question.replace(
-          /(\d+)\s*단어\s*이하로\s*쓰시오/gi,
-          `${actualWordCount}단어 이하로 쓰시오`
-        )
-        // 패턴 2: "[N]단어 이하로 쓰시오"
-        result.question = result.question.replace(
-          /\[(\d+)\]\s*단어\s*이하로\s*쓰시오/gi,
-          `${actualWordCount}단어 이하로 쓰시오`
-        )
-        // 패턴 3: "N단어 이하" (쓰시오 없이)
-        result.question = result.question.replace(
-          /(\d+)\s*단어\s*이하/gi,
-          (match, num) => {
-            // 질문 내에서 단어 수 관련 부분만 교체 (조건 부분은 제외)
-            if (match.includes('조건') || match.includes('본문')) {
-              return match // 조건 부분은 그대로 유지
-            }
-            return `${actualWordCount}단어 이하`
-          }
-        )
-        // 패턴 4: "[N]단어 이하" (쓰시오 없이)
-        result.question = result.question.replace(
-          /\[(\d+)\]\s*단어\s*이하/gi,
-          `${actualWordCount}단어 이하`
-        )
-      }
+    const underlinePattern = /<u>([^<]+)<\/u>/gi
+    const spans = []
+    let m
+    while ((m = underlinePattern.exec(result.passageWithUnderlines)) !== null) {
+      spans.push(m[1].trim())
     }
 
-    // 답이 1-10단어 범위 내인지 확인 - 경고만 표시하고 계속 진행
-    if (actualWordCount < 1 || actualWordCount > 10) {
-      console.warn(`⚠️ 답의 단어 수가 범위를 벗어났습니다: ${actualWordCount}단어 (1-10단어 범위 권장). 계속 진행합니다.`)
-      // 오류를 던지지 않고 경고만 표시
+    if (spans.length === 0) {
+      throw new Error('밑줄(<u>)이 있는 지문이 없습니다.')
     }
 
-    // 질문의 지칭어와 텍스트의 밑줄 표시가 일치하는지 확인
-    const referenceWord = result.referenceWord || 'this'
-    const questionText = result.question || ''
-    const underlinedMatch = questionText.match(/<u>([^<]+)<\/u>/)
-    
-    if (underlinedMatch) {
-      const underlinedWord = underlinedMatch[1].trim().toLowerCase()
-      const referenceWordLower = referenceWord.toLowerCase()
-      
-      if (underlinedWord !== referenceWordLower) {
-        console.warn(`지칭어 불일치: 질문의 지칭어="${referenceWord}", 밑줄 표시="${underlinedWord}". 질문을 수정합니다.`)
-        // 질문에서 밑줄 표시를 수정
-        result.question = result.question.replace(/<u>[^<]+<\/u>/, `<u>${referenceWord}</u>`)
-        // 텍스트에서도 밑줄 표시 수정
-        const textMatch = result.question.match(/<u>[^<]+<\/u>[\s\S]*?(<u>[^<]+<\/u>)/)
-        if (textMatch && textMatch[1]) {
-          result.question = result.question.replace(new RegExp(`<u>${underlinedWord}<\/u>`, 'gi'), `<u>${referenceWord}</u>`)
-        }
-      }
+    if (result.blocks.length !== spans.length) {
+      console.warn(
+        `블록 수 불일치: <u> 개수=${spans.length}, blocks=${result.blocks.length}. 그대로 반환합니다.`
+      )
     }
+
+    const answerSummary = result.blocks
+      .map((b) => {
+        const u = (b.underline || '').trim()
+        const s = (b.summaryKo || '').trim()
+        return u && s ? `${u} → ${s}` : s || u
+      })
+      .filter(Boolean)
+      .join('\n')
 
     return {
-      question: result.question,
-      answer: result.answer,
-      wordLimit: wordLimit,
-      condition: result.condition || '<조건>\n1) 반드시 본문에 있는 단어만 사용할 것\n2) 어형을 바꾸지 말 것',
-      referenceWord: referenceWord
+      passageWithUnderlines: result.passageWithUnderlines.trim(),
+      blocks: result.blocks,
+      answerSummary
     }
   } catch (parseError) {
     console.error('JSON 파싱 오류:', parseError)
@@ -205,3 +175,43 @@ Return ONLY valid JSON.`
   }
 }
 
+/**
+ * 지칭 분석 결과를 복사/편집용 텍스트로 직렬화
+ */
+export function formatReferenceDescriptionAsText({ passageWithUnderlines, blocks }) {
+  if (!passageWithUnderlines) return ''
+
+  let out = passageWithUnderlines.trim() + '\n\n'
+
+  const list = Array.isArray(blocks) ? blocks : []
+
+  for (const b of list) {
+    const phrase = (b.underline || '').trim()
+    if (!phrase) continue
+
+    const uLine = `<u>${phrase}</u>`
+    const times = b.doubleHeader === false ? 1 : 2
+    for (let i = 0; i < times; i++) {
+      out += uLine + '\n'
+    }
+
+    const eq = (b.summaryKo || '').trim()
+    if (eq) out += `= ${eq}\n`
+
+    const ko = Array.isArray(b.linesKo) ? b.linesKo : []
+    for (const line of ko) {
+      const t = String(line).trim()
+      if (t) out += `→ ${t}\n`
+    }
+
+    const en = Array.isArray(b.linesEn) ? b.linesEn : []
+    for (const line of en) {
+      const t = String(line).trim()
+      if (t) out += `→ ${t}\n`
+    }
+
+    out += '\n'
+  }
+
+  return out.trimEnd() + '\n\n━━━━━━━━━━━━━━━━━━━━\n\n'
+}

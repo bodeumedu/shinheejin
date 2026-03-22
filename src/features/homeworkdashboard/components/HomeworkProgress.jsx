@@ -1,11 +1,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../../../utils/firebase';
-import { loadCentralPhoneNumbers } from '../../../utils/firestoreUtils';
+import * as XLSX from 'xlsx';
 import './HomeworkProgress.css';
 
-// 과제 진행 상황 컴포넌트
-export default function HomeworkProgress({ subject = 'english', school, grade, class: selectedClass, teacher, onClose }) {
+// Firestore 문서 ID에는 / 사용 불가. 슬래시를 언더스코어로 치환
+function sanitizeDocId(id) {
+  if (id == null || typeof id !== 'string') return '';
+  return id.replace(/\//g, '_').trim() || '';
+}
+
+// 과제 진행 상황 컴포넌트 (docIdOverride: 숙제 완료도에서 이전한 반을 열 때 문서 ID 직접 지정)
+export default function HomeworkProgress({ subject = 'english', school, grade, class: selectedClass, teacher, docIdOverride, onClose }) {
   const [activeTab, setActiveTab] = useState('progress'); // 'progress', 'all'
   const [loading, setLoading] = useState(true);
   
@@ -17,8 +23,9 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   // 기존 컬렉션명 (하위 호환성)
   const oldCollectionName = 'homeworkProgress';
   
-  // Firestore 문서 ID 생성 (useMemo로 최적화)
+  // Firestore 문서 ID 생성 (useMemo로 최적화). docIdOverride 있으면 그대로 사용 (숙제 완료도에서 이전한 반)
   const docId = useMemo(() => {
+    if (docIdOverride && String(docIdOverride).trim()) return String(docIdOverride).trim();
     if (subject === 'math') {
       // 수학 과제 관리: 학년_선생님_반
       if (grade && teacher && selectedClass) {
@@ -35,23 +42,26 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       return `homework_progress_${school}_${grade}_${selectedClass}`;
     }
     return `homework_progress_${school}`;
-  }, [subject, school, grade, selectedClass, teacher]);
+  }, [subject, school, grade, selectedClass, teacher, docIdOverride]);
+  
+  // 문서 ID 정규화 (반명에 / 가 들어간 경우 Firestore 경로 오류 방지)
+  const safeDocId = useMemo(() => sanitizeDocId(docId), [docId]);
   
   // 새 컬렉션 문서 참조
   const docRef = useMemo(() => {
-    if (isFirebaseConfigured() && db) {
-      return doc(db, collectionName, docId);
+    if (isFirebaseConfigured() && db && safeDocId) {
+      return doc(db, collectionName, safeDocId);
     }
     return null;
-  }, [collectionName, docId]);
+  }, [collectionName, safeDocId]);
   
   // 기존 컬렉션 문서 참조 (하위 호환성)
   const oldDocRef = useMemo(() => {
-    if (isFirebaseConfigured() && db && subject === 'english') {
-      return doc(db, oldCollectionName, docId);
+    if (isFirebaseConfigured() && db && subject === 'english' && safeDocId) {
+      return doc(db, oldCollectionName, safeDocId);
     }
     return null;
-  }, [docId, subject]);
+  }, [safeDocId, subject]);
   
   // 기본 데이터 생성 - 학교/학년별 강의 목록
   const chapterConfig = useMemo(() => {
@@ -109,7 +119,12 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   
   // 학생 목록 (동적 관리)
   const [students, setStudents] = useState([]);
-  
+  // 표시용 가나다순 정렬 (ㄱ~ㅎ)
+  const sortedStudents = useMemo(
+    () => [...students].sort((a, b) => (a || '').localeCompare(b || '', 'ko-KR')),
+    [students]
+  );
+
   // 과제 진행 상태 관리
   const [progressData, setProgressData] = useState({});
   
@@ -410,6 +425,19 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
           const firestoreCount = filteredStudents.length;
           const localCount = localStudents.length;
           
+          // 필터링된 progress/scores는 아래 '기본 학생 제거 후 저장'에서도 사용하므로 바깥에서 선언
+          const filteredProgressData = {};
+          const filteredScores = {};
+          const filteredPhoneNumbers = {};
+          filteredStudents.forEach(student => {
+            if (data.progressData && data.progressData[student]) {
+              filteredProgressData[student] = data.progressData[student];
+            }
+            if (data.scores && data.scores[student]) {
+              filteredScores[student] = data.scores[student];
+            }
+          });
+          
           console.log('📥 Firestore에서 데이터 불러옴:', { 
             firestoreCount,
             localCount,
@@ -420,26 +448,13 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
           // 로컬에 더 많은 학생이 있으면 (방금 추가한 학생이 있으면) 로컬 상태 유지
           if (!isInitialLoad && localCount > firestoreCount) {
             console.log('⏸️ 로컬 변경사항 보존 (로컬 학생 수가 더 많음)', { localCount, firestoreCount });
-            // 로컬 상태 유지 - 아무것도 하지 않음
+            setLoading(false);
             return;
           }
           
           // 초기 로드이거나, 최근 저장 후 2초 이내가 아닐 때만 Firestore 데이터로 업데이트
           if (isInitialLoad || (now - lastSaveTimeRef.current > 2000)) {
             console.log('✅ Firestore 데이터로 상태 업데이트', { isInitialLoad, timeSinceLastSave: now - lastSaveTimeRef.current });
-            
-            // 필터링된 학생 목록에 맞춰 progressData, scores, phoneNumbers도 정리
-            const filteredProgressData = {};
-            const filteredScores = {};
-            const filteredPhoneNumbers = {};
-            filteredStudents.forEach(student => {
-              if (data.progressData && data.progressData[student]) {
-                filteredProgressData[student] = data.progressData[student];
-              }
-              if (data.scores && data.scores[student]) {
-                filteredScores[student] = data.scores[student];
-              }
-            });
             
             setStudents(filteredStudents);
             setProgressData(filteredProgressData);
@@ -471,8 +486,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                   return;
                 }
                 
-                // 로컬에 없을 때만 Firestore 데이터 사용 (중앙 저장소는 이미 위에서 불러옴)
-                // Firestore 문서의 phoneNumbers는 하위 호환성을 위해 유지하되, 중앙 저장소가 우선
+                // 로컬에 없을 때만 Firestore 문서의 phoneNumbers 사용 (영어 과제 관리 전용)
                 if (data.phoneNumbers && data.phoneNumbers[student] && !prev[student]) {
                   const phoneData = data.phoneNumbers[student];
                   
@@ -855,7 +869,131 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   
   // 새 학생 이름 입력 상태
   const [newStudentName, setNewStudentName] = useState('');
-  
+  const [phoneUploading, setPhoneUploading] = useState(false);
+  const handlePhoneExcelUpload = useCallback(async (e) => {
+    const file = e?.target?.files?.[0];
+    if (!file) return;
+    const findCol = (headers, keywords) => {
+      const idx = headers.findIndex(h => {
+        const v = String(h || '').trim().replace(/\s+/g, '');
+        return keywords.some(k => v.includes(k));
+      });
+      return idx >= 0 ? idx : -1;
+    };
+    const findHeaderRow = (jsonData) => {
+      const maxSearch = Math.min(10, jsonData.length);
+      for (let r = 0; r < maxSearch; r++) {
+        const row = (jsonData[r] || []).map(h => String(h || '').trim());
+        if (row.filter(c => c !== '').length < 2) continue;
+        if (findCol(row, ['학생명', '이름', '성명', '학생', 'name']) >= 0 || findCol(row, ['핸드폰', '전화번호']) >= 0) {
+          return r;
+        }
+      }
+      return 0;
+    };
+    setPhoneUploading(true);
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (jsonData.length < 2) {
+        alert('엑셀에 헤더와 데이터 행이 필요합니다.');
+        setPhoneUploading(false);
+        return;
+      }
+      const headerRowIndex = findHeaderRow(jsonData);
+      const headers = (jsonData[headerRowIndex] || []).map(h => String(h || '').trim());
+      const nameIdx = findCol(headers, ['학생명', '이름', '성명', '학생', 'name']);
+      if (nameIdx === -1) {
+        alert('엑셀에서 이름 컬럼을 찾을 수 없습니다. 컬럼명이 "학생명", "이름", "성명", "학생" 중 하나인지 확인해주세요.');
+        setPhoneUploading(false);
+        return;
+      }
+      const dataStartRow = headerRowIndex + 1;
+      const numCols = Math.max(headers.length, ...jsonData.slice(dataStartRow).map(r => (r || []).length), 1);
+      const extract010Phones = (val) => {
+        if (val == null || val === '') return [];
+        let s = typeof val === 'number' ? String(Math.floor(val)) : String(val);
+        if (typeof val === 'number' && s.length === 10 && s.startsWith('10')) s = '0' + s;
+        s = s.replace(/\D/g, '');
+        const matches = s.match(/010\d{8}/g) || [];
+        return [...new Set(matches)];
+      };
+      let studentPhoneIdx = findCol(headers, ['핸드폰', '휴대폰', '전화번호', '연락처', '학생핸드폰', '학생전화', '번호', 'student phone', 'student']);
+      let parentPhoneIdx = findCol(headers, ['부모핸드폰', '학부모핸드폰', '학부모전화', '학부모', '부모전화', '부모', 'parent']);
+      const countDigitsInCol = (colIdx) => {
+        let count = 0;
+        for (let i = dataStartRow; i < jsonData.length; i++) {
+          if (extract010Phones((jsonData[i] || [])[colIdx]).length >= 1) count++;
+        }
+        return count;
+      };
+      if (studentPhoneIdx === -1) {
+        let best = 0;
+        for (let c = 0; c < numCols; c++) {
+          if (c === nameIdx) continue;
+          const cnt = countDigitsInCol(c);
+          if (cnt > best) { best = cnt; studentPhoneIdx = c; }
+        }
+      }
+      if (parentPhoneIdx === -1 && studentPhoneIdx >= 0) {
+        let best = 0;
+        for (let c = 0; c < numCols; c++) {
+          if (c === nameIdx || c === studentPhoneIdx) continue;
+          const cnt = countDigitsInCol(c);
+          if (cnt > best) { best = cnt; parentPhoneIdx = c; }
+        }
+      }
+      if (studentPhoneIdx === -1) {
+        studentPhoneIdx = 6;
+        parentPhoneIdx = 8;
+      }
+      const buildPhones = (sIdx, pIdx) => {
+        const st = [];
+        const out = {};
+        for (let i = dataStartRow; i < jsonData.length; i++) {
+          const row = jsonData[i] || [];
+          const name = String(row[nameIdx] ?? '').trim();
+          if (!name) continue;
+          if (!st.includes(name)) st.push(name);
+          const studentCol = sIdx >= 0 ? extract010Phones(row[sIdx]) : [];
+          const parentCol = pIdx >= 0 ? extract010Phones(row[pIdx]) : [];
+          const student = studentCol[0] ?? parentCol[0] ?? null;
+          const parent = parentCol[0] ?? studentCol[1] ?? null;
+          if (student || parent) {
+            out[name] = {
+              student: student || (phoneNumbers[name]?.student || null),
+              parent: parent || (phoneNumbers[name]?.parent || null),
+            };
+          }
+        }
+        return { newStudents: st, newPhones: out };
+      };
+      let result = buildPhones(studentPhoneIdx, parentPhoneIdx);
+      let newStudents = result.newStudents;
+      let newPhones = result.newPhones;
+      if (Object.keys(newPhones).length === 0) {
+        result = buildPhones(6, 8);
+        newStudents = result.newStudents;
+        newPhones = result.newPhones;
+      }
+      const mergedStudents = [...new Set([...students, ...newStudents])];
+      const mergedPhones = { ...phoneNumbers };
+      Object.keys(newPhones).forEach(n => { mergedPhones[n] = newPhones[n]; });
+      setStudents(mergedStudents);
+      setPhoneNumbers(mergedPhones);
+      await saveData(mergedStudents, progressData, scores, headerTexts, mergedPhones);
+      alert(`✅ 업로드 완료 (${Object.keys(newPhones).length}명 전화번호 반영). 영어 과제 관리에서만 사용됩니다.`);
+    } catch (err) {
+      console.error(err);
+      alert('엑셀 처리 중 오류가 났습니다.');
+    } finally {
+      setPhoneUploading(false);
+      e.target.value = '';
+    }
+  }, [students, progressData, scores, headerTexts, phoneNumbers, saveData]);
+
   const handleCheckboxChange = (student, assignment) => {
     setProgressData(prev => ({
       ...prev,
@@ -988,7 +1126,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     
     setNewStudentName('');
   };
-  
+
   // 학생 제거 (퇴원)
   const handleRemoveStudent = (student) => {
     if (window.confirm(`${student} 학생을 퇴원 처리하시겠습니까?`)) {
@@ -1416,8 +1554,11 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     console.log('카카오톡 발송 완료. 사용된 템플릿 코드:', templateCode);
   };
   
-  // 제목 생성
+  // 제목 생성 (학교명 없이 반/학년만 표시)
   const getTitle = () => {
+    if (docIdOverride) {
+      return `${docIdOverride} 과제 진행상황`;
+    }
     if (school === '중학교 1학년') {
       if (teacher) {
         return `${school} ${teacher} 선생님 과제 진행상황`;
@@ -1425,9 +1566,11 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       return `${school} 과제 진행상황`;
     }
     if (grade && selectedClass) {
-      return `${school} ${grade} ${selectedClass} 과제 진행상황`;
+      return `${grade} ${selectedClass} 과제 진행상황`;
     }
-    return `${school} 과제 진행상황`;
+    if (grade) return `${grade} 과제 진행상황`;
+    if (selectedClass) return `${selectedClass} 과제 진행상황`;
+    return '과제 진행상황';
   };
   
   return (
@@ -1480,6 +1623,15 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                       </a>
                     </div>
                   )}
+                  {/* 영어 과제 관리 전용: 전화번호 엑셀 업로드 */}
+                  <div style={{ padding: '10px 14px', backgroundColor: '#e0f2fe', borderRadius: '8px', border: '2px solid #0ea5e9' }}>
+                    <span style={{ fontWeight: '600', marginRight: '10px', color: '#0c4a6e' }}>📤 전화번호 엑셀 업로드</span>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: phoneUploading ? 'not-allowed' : 'pointer', opacity: phoneUploading ? 0.7 : 1 }}>
+                      <input type="file" accept=".xlsx,.xls" onChange={handlePhoneExcelUpload} disabled={phoneUploading} style={{ fontSize: '0.85rem' }} />
+                      <span style={{ padding: '6px 12px', background: '#0ea5e9', color: '#fff', borderRadius: '6px', fontWeight: '600', fontSize: '0.9rem' }}>{phoneUploading ? '처리 중...' : '엑셀 선택'}</span>
+                    </label>
+                    <span style={{ marginLeft: '8px', fontSize: '0.85rem', color: '#0369a1' }}>(이 메뉴에서만 사용, 윈터스쿨·클리닉 미반영)</span>
+                  </div>
                   <button className="kakao-btn" onClick={handleKakaoSend}>
                     <span className="kakao-icon">💬</span>
                     카카오톡 전송 미리보기
@@ -1610,8 +1762,8 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                     </tr>
                   </thead>
                   <tbody>
-                    {students.map((student) => (
-                      <tr key={student}>
+                    {sortedStudents.map((student) => (
+                        <tr key={student}>
                         <td className="student-name">{student}</td>
                         {chapterConfig.chapters.map((chapter) => (
                           <td key={`${chapterConfig.fieldPrefix}-${student}-${chapter}`}>

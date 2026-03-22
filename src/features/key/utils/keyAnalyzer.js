@@ -68,15 +68,29 @@ Return ONLY the explanation text in Korean, no additional formatting.`
     const data = await response.json()
     let explanation = data.choices[0]?.message?.content?.trim() || ''
     
-    // 해설이 너무 길면 250자 정도로 제한
+    // 해설이 너무 길면 문장이 끝나는 지점에서만 자르기 (하던 말까지 마무리)
     if (explanation.length > 250) {
-      // 정답 부분은 유지하고 나머지 부분을 간결하게
       const answerPart = explanation.match(/정답은\s*[①②③④⑤]번입니다?[.\s]*/)?.[0] || ''
       const restPart = explanation.replace(/정답은\s*[①②③④⑤]번입니다?[.\s]*/, '').trim()
-      
-      if (restPart.length > 200) {
-        // 나머지 부분을 200자로 제한
-        explanation = answerPart + restPart.substring(0, 200) + '...'
+      if (restPart.length > 220) {
+        const slice = restPart.substring(0, 280)
+        const lastPeriod = Math.max(
+          slice.lastIndexOf('.'),
+          slice.lastIndexOf('。'),
+          slice.lastIndexOf('!'),
+          slice.lastIndexOf('?')
+        )
+        const lastSentenceEnd = lastPeriod > 80 ? lastPeriod + 1 : -1
+        if (lastSentenceEnd > 0) {
+          explanation = answerPart + restPart.substring(0, lastSentenceEnd).trim()
+        } else {
+          const lastSpace = slice.lastIndexOf(' ')
+          if (lastSpace > 80) {
+            explanation = answerPart + restPart.substring(0, lastSpace + 1).trim()
+          } else {
+            explanation = answerPart + restPart.substring(0, 220).trim() + '...'
+          }
+        }
       } else {
         explanation = answerPart + restPart
       }

@@ -197,10 +197,19 @@ export default function StudentPhoneManager({ onClose }) {
         },
       };
       
+      // 필드명 매핑: 'student' -> '핸드폰', 'parent' -> '부모핸드폰'
+      const fieldName = type === 'student' ? '핸드폰' : (type === 'parent' ? '부모핸드폰' : type);
+      
       // 빈 전화번호는 객체에서 제거
       if (cleanedPhone === '' || cleanedPhone === null) {
         if (updated[student] && typeof updated[student] === 'object') {
-          delete updated[student][type];
+          delete updated[student][fieldName];
+          // 하위 호환성: 기존 'student', 'parent' 필드도 제거
+          if (type === 'student') {
+            delete updated[student].student;
+          } else if (type === 'parent') {
+            delete updated[student].parent;
+          }
           
           // 모든 전화번호가 비어있으면 해당 학생 객체 삭제
           if (Object.keys(updated[student]).length === 0) {
@@ -214,7 +223,13 @@ export default function StudentPhoneManager({ onClose }) {
         if (!updated[student] || typeof updated[student] !== 'object') {
           updated[student] = {};
         }
-        updated[student][type] = cleanedPhone;
+        updated[student][fieldName] = cleanedPhone;
+        // 하위 호환성: 기존 필드명도 유지
+        if (type === 'student') {
+          updated[student].student = cleanedPhone;
+        } else if (type === 'parent') {
+          updated[student].parent = cleanedPhone;
+        }
       }
       
       return updated;
@@ -370,13 +385,25 @@ export default function StudentPhoneManager({ onClose }) {
           
           const nameColIndex = findColumnIndex(['학생명', '학생 이름', '이름', 'name']);
           // 학교 컬럼 찾기 (더 많은 키워드 추가)
-          const schoolColIndex = findColumnIndex(['학교', 'school', '소속학교', '학교명']);
+          let schoolColIndex = findColumnIndex(['학교', 'school', '소속학교', '학교명']);
           const gradeColIndex = findColumnIndex(['학년', 'grade']);
           const classNameColIndex = findColumnIndex(['반명', '반', 'class', 'class name']);
           // 반리스트는 SMS 컬럼에서 찾기 (26_김지수_미적분1 특강_월금_14:30 형식)
           const classListColIndex = findColumnIndex(['반리스트', 'SMS', 'sms', '반 목록']);
-          // 학생 전화번호: "학생핸드폰" 또는 "핸드폰" 컬럼
-          const studentPhoneColIndex = findColumnIndex(['학생핸드폰', '학생 전화', '학생전화', '핸드폰', 'student phone', '학생 핸드폰']);
+          // 학생 전화번호: I열(인덱스 8)의 '핸드폰' 컬럼 우선 확인
+          let studentPhoneColIndex = -1;
+          if (headers.length > 8) {
+            const iColHeader = String(headers[8] || '').trim().replace(/\s+/g, '');
+            if (iColHeader.includes('핸드폰') && !iColHeader.includes('부모') && !iColHeader.includes('학부모')) {
+              studentPhoneColIndex = 8;
+              console.log(`✅ I열(인덱스 8)에서 학생 핸드폰 컬럼 발견: "${headers[8]}"`);
+            }
+          }
+          // I열에서 찾지 못한 경우 다른 키워드로 검색
+          if (studentPhoneColIndex === -1) {
+            studentPhoneColIndex = findColumnIndex(['학생핸드폰', '학생 전화', '학생전화', '핸드폰', 'student phone', '학생 핸드폰']);
+          }
+          
           // 학부모 전화번호: "부모핸드폰" 또는 "학부모핸드폰" 컬럼
           const parentPhoneColIndex = findColumnIndex(['부모핸드폰', '학부모핸드폰', '부모 전화', '부모전화', '학부모 전화', 'parent phone', '부모 핸드폰']);
           
@@ -531,15 +558,17 @@ export default function StudentPhoneManager({ onClose }) {
             // 전화번호 정보
             const phoneData = {};
             
-            // 학생 전화번호 (인덱스 7)
+            // 학생 전화번호: '핸드폰' 필드로 저장
             if (row[studentPhoneColIndex]) {
               const phone = String(row[studentPhoneColIndex]).trim().replace(/[^0-9]/g, '');
               if (phone && phone.length >= 10) {
+                phoneData.핸드폰 = phone;
+                // 하위 호환성: student 필드도 유지
                 phoneData.student = phone;
               }
             }
             
-            // 부모 전화번호 (인덱스 6, 부/모가 함께 있을 수 있음: "010-9041-1324부 010-9700-4314모")
+            // 부모 전화번호: '부모핸드폰' 필드로 저장
             if (row[parentPhoneColIndex]) {
               const parentPhoneStr = String(row[parentPhoneColIndex]).trim();
               if (parentPhoneStr) {
@@ -561,6 +590,8 @@ export default function StudentPhoneManager({ onClose }) {
                 }
                 
                 if (parentPhone) {
+                  phoneData.부모핸드폰 = parentPhone;
+                  // 하위 호환성: parent 필드도 유지
                   phoneData.parent = parentPhone;
                 }
               }
@@ -664,21 +695,29 @@ export default function StudentPhoneManager({ onClose }) {
         
         if (studentPhone === undefined || studentPhone === null) return;
         
-        // 객체 형태인 경우 (student, parent)
+        // 객체 형태인 경우 ('핸드폰', '부모핸드폰' 필드 사용)
         if (typeof studentPhone === 'object' && !Array.isArray(studentPhone)) {
           const cleaned = {};
           
-          if (studentPhone.student !== undefined && studentPhone.student !== null && studentPhone.student !== '') {
-            const studentValue = String(studentPhone.student).trim();
-            if (studentValue !== '') {
-              cleaned.student = studentValue;
+          // 학생 전화번호: '핸드폰' 필드 우선, 없으면 'student' 필드 (하위 호환성)
+          const studentValue = studentPhone.핸드폰 || studentPhone.학생핸드폰 || studentPhone.student || studentPhone.학생;
+          if (studentValue !== undefined && studentValue !== null && String(studentValue).trim() !== '') {
+            const cleanedValue = String(studentValue).trim();
+            if (cleanedValue !== '') {
+              cleaned.핸드폰 = cleanedValue;
+              // 하위 호환성: student 필드도 유지
+              cleaned.student = cleanedValue;
             }
           }
           
-          if (studentPhone.parent !== undefined && studentPhone.parent !== null && studentPhone.parent !== '') {
-            const parentValue = String(studentPhone.parent).trim();
-            if (parentValue !== '') {
-              cleaned.parent = parentValue;
+          // 학부모 전화번호: '부모핸드폰' 필드 우선, 없으면 'parent' 필드 (하위 호환성)
+          const parentValue = studentPhone.부모핸드폰 || studentPhone.학부모핸드폰 || studentPhone.parent || studentPhone.학부모 || studentPhone.부모;
+          if (parentValue !== undefined && parentValue !== null && String(parentValue).trim() !== '') {
+            const cleanedValue = String(parentValue).trim();
+            if (cleanedValue !== '') {
+              cleaned.부모핸드폰 = cleanedValue;
+              // 하위 호환성: parent 필드도 유지
+              cleaned.parent = cleanedValue;
             }
           }
           
@@ -917,7 +956,10 @@ export default function StudentPhoneManager({ onClose }) {
                       type="tel"
                       className="phone-input"
                       placeholder="010-1234-5678"
-                      value={phoneNumbers[student]?.student ? formatPhoneNumber(phoneNumbers[student].student) : (typeof phoneNumbers[student] === 'string' ? formatPhoneNumber(phoneNumbers[student]) : '')}
+                      value={(() => {
+                        const phone = phoneNumbers[student]?.핸드폰 || phoneNumbers[student]?.학생핸드폰 || phoneNumbers[student]?.student || (typeof phoneNumbers[student] === 'string' ? phoneNumbers[student] : '');
+                        return phone ? formatPhoneNumber(phone) : '';
+                      })()}
                       onChange={(e) => handlePhoneNumberChange(student, e.target.value, 'student')}
                       maxLength="13"
                     />
@@ -927,7 +969,10 @@ export default function StudentPhoneManager({ onClose }) {
                       type="tel"
                       className="phone-input"
                       placeholder="010-1234-5678"
-                      value={phoneNumbers[student]?.parent ? formatPhoneNumber(phoneNumbers[student].parent) : ''}
+                      value={(() => {
+                        const phone = phoneNumbers[student]?.부모핸드폰 || phoneNumbers[student]?.학부모핸드폰 || phoneNumbers[student]?.parent || '';
+                        return phone ? formatPhoneNumber(phone) : '';
+                      })()}
                       onChange={(e) => handlePhoneNumberChange(student, e.target.value, 'parent')}
                       maxLength="13"
                     />

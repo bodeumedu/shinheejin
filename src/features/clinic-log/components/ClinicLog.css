@@ -289,6 +289,7 @@
   width: 100%;
   border-collapse: collapse;
   min-width: 960px;
+  table-layout: fixed;
 }
 
 .clinic-log-table th,
@@ -317,8 +318,10 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 70px;
-  max-width: 80px;
+  width: 105px;
+  min-width: 105px;
+  max-width: 105px;
+  box-sizing: border-box;
 }
 
 .day-time-cell select,
@@ -327,25 +330,71 @@
   padding: 4px 6px;
 }
 
+/* 학년/반·이름 합친 칸 (왼쪽 고정) */
+.grade-name-col,
+.grade-name-cell {
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+  box-sizing: border-box;
+  text-align: left;
+  vertical-align: top;
+}
+
+.grade-name-cell .grade-class-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.student-name-in-cell {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #e5e7eb;
+  font-weight: 600;
+}
+
+.student-name-text {
+  font-size: 1.75rem;
+  line-height: 1.3;
+}
+
+.student-actions-in-cell {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.student-actions-in-cell button {
+  flex: 1;
+}
+
 .grade-class-cell {
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-weight: 600;
-  min-width: 50px;
-  max-width: 70px;
 }
 
 .clinic-log-table th:nth-child(2),
 .clinic-log-table td:nth-child(2) {
-  min-width: 50px;
-  max-width: 70px;
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+}
+
+.clinic-log-table th:nth-child(3),
+.clinic-log-table td:nth-child(3) {
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
 }
 
 .phone-number-cell {
-  width: 180px;
-  min-width: 180px;
-  max-width: 180px;
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
   padding: 12px 16px;
   background-color: #fef3c7; /* 노란색 배경으로 눈에 띄게 */
   box-sizing: border-box;
@@ -386,57 +435,179 @@
   max-width: 60px;
 }
 
+/* 4번째 열: 출결 (영어) / 출결·담당·등원 (수학) */
 .clinic-log-table th:nth-child(4),
 .clinic-log-table td:nth-child(4) {
-  min-width: 120px;
-  max-width: 150px;
+  min-width: 68px;
+  max-width: 78px;
+  width: 72px;
 }
 
 .clinic-log-table th:nth-child(5),
 .clinic-log-table td:nth-child(5) {
-  width: 60px;
-}
-
-.clinic-log-table th:nth-child(6),
-.clinic-log-table td:nth-child(6) {
   min-width: 80px;
   max-width: 100px;
 }
 
-.clinic-log-table th:nth-child(7),
-.clinic-log-table td:nth-child(7) {
-  min-width: 70px;
-  max-width: 90px;
-}
-
+/* 등원/하원시간 칸 (문자 완료 포함) */
 .message-status-cell {
   min-width: 50px;
   max-width: 60px;
 }
 
-.clinic-log-table th:nth-child(8),
-.clinic-log-table td:nth-child(8) {
-  min-width: 50px;
-  max-width: 60px;
+/* 등원/하원시간 칸 (문자 완료 포함) - 영어 클리닉 대장 */
+.clinic-log-table th:nth-child(6),
+.clinic-log-table td:nth-child(6) {
+  min-width: 140px;
+  max-width: 160px;
+}
+
+/* 수학 클리닉 대장: 출결/담당자/등원하원시간 칸 (4번째 열) */
+.clinic-log-table[data-subject="math"] th:nth-child(4),
+.clinic-log-table[data-subject="math"] td:nth-child(4) {
+  min-width: 47px;
+  max-width: 53px;
+  width: 50px;
+}
+
+/* 수학: 5번째 과목/교재, 6번째 시험 확인 */
+.clinic-log-table[data-subject="math"] th:nth-child(6),
+.clinic-log-table[data-subject="math"] td:nth-child(6) {
+  min-width: 200px;
+  max-width: 250px;
+  width: 225px;
+}
+
+/* 삭제 칸을 1/3로 줄이기 - 모든 클리닉 대장 */
+.clinic-log-table th:last-child,
+.clinic-log-table td:last-child {
+  min-width: 30px;
+  max-width: 50px;
+  width: 40px;
+  padding: 5px;
+}
+
+/* 시험 확인 칸 (7번째 열 - 영어) */
+.clinic-log-table th:nth-child(7),
+.clinic-log-table td:nth-child(7) {
+  min-width: 200px;
+  max-width: 250px;
+  width: 225px;
 }
 
 .exam-status-cell {
-  min-width: 250px;
-  max-width: 350px;
+  min-width: 200px;
+  max-width: 250px;
+  width: 225px;
 }
 
 .exam-status-cell textarea {
-  min-height: 80px;
+  min-height: 40px;
   resize: vertical;
   font-family: inherit;
   line-height: 1.5;
+  width: 100%;
 }
 
-.clinic-log-table th:nth-child(9),
-.clinic-log-table td:nth-child(9) {
-  min-width: 250px;
-  max-width: 350px;
+/* 비고 행: 왼쪽 3칸은 빈 패딩(클리닉/학년반이름/전화 침범 안 함), 출결~시험확인 구간만 비고 영역 */
+.notes-row-pad {
+  padding: 0 !important;
+  border-left: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
+  background: #f9fafb;
+  width: auto;
+  min-width: 0;
 }
+
+/* 출결/담당/등원하원/시험확인 4칸 합침 - 헤더 */
+.merged-four-col {
+  text-align: left;
+  padding: 8px 12px;
+}
+
+/* 출결/담당/등원하원/시험확인 4칸 합침 - 데이터 셀 (그리드로 4영역) */
+.merged-four-cell {
+  padding: 8px 10px !important;
+  vertical-align: top;
+  text-align: left;
+}
+
+.merged-four-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr 1.5fr;
+  gap: 10px 14px;
+  width: 100%;
+  align-items: start;
+}
+
+/* 출결·담당·등원하원·시험확인·비고 세로 나열 */
+.merged-four-vertical .merged-four-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* 출결 / 담당 선생님 / 등원·하원 한 줄에 1/3씩 */
+.merged-three-in-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px 14px;
+  width: 100%;
+  align-items: start;
+}
+
+.merged-three-in-row .merged-four-item {
+  border-bottom: none;
+  padding-bottom: 0;
+  min-width: 0;
+}
+
+.merged-four-vertical .merged-four-item {
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 10px;
+}
+
+.merged-four-vertical .merged-four-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.merged-four-vertical .merged-notes-item {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 2px solid #d1d5db;
+}
+
+.merged-four-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.merged-four-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+/* 비고 칸: 출결~시험확인 4칸 아래 합병 칸 */
+.notes-row-content {
+  padding: 10px 12px !important;
+  background: #f9fafb;
+  vertical-align: top;
+  text-align: left;
+  min-width: 280px;
+  box-sizing: border-box;
+}
+
+.notes-row-content textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 비고는 시험 확인 아래 확장 행으로 이동 (영어/수학 공통) */
 
 .grade-row {
   display: flex;
@@ -485,6 +656,17 @@
 .clinic-log-table td.notes-cell {
   text-align: left;
   white-space: pre-wrap;
+  min-width: 200px;
+  max-width: 250px;
+  width: 225px;
+}
+
+.clinic-log-table td.notes-cell textarea {
+  width: 100%;
+  min-height: 40px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
 }
 
 .clinic-log-table td textarea {
@@ -508,5 +690,168 @@
   .clinic-log-section {
     padding: 18px;
   }
+}
+
+/* 미리보기 모달 */
+.preview-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.preview-modal-content {
+  background: white;
+  border-radius: 12px;
+  max-width: 900px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.preview-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 30px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.preview-modal-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.5rem;
+}
+
+.preview-template-section {
+  display: flex;
+  align-items: center;
+  padding: 20px 30px;
+  background: #f8f9fa;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.preview-content-section {
+  padding: 20px 30px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.preview-content {
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 15px;
+}
+
+.preview-content strong {
+  display: block;
+  margin-bottom: 10px;
+  color: #2c3e50;
+}
+
+.preview-content p {
+  margin: 0;
+  color: #333;
+}
+
+.preview-text {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #333;
+}
+
+.preview-phones {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 15px;
+}
+
+.phone-badge {
+  padding: 4px 10px;
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.preview-list {
+  padding: 20px 30px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.preview-item {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  transition: all 0.2s;
+}
+
+.preview-item:hover {
+  border-color: #0ea5e9;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+}
+
+.preview-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.preview-student-name {
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: #2c3e50;
+}
+
+.preview-modal-actions {
+  display: flex;
+  justify-content: center;
+  padding: 20px 30px;
+  border-top: 2px solid #e0e0e0;
+  background: #f8f9fa;
+}
+
+.send-kakao-btn {
+  padding: 12px 30px;
+  background: linear-gradient(135deg, #FEE500 0%, #FDD835 100%);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.send-kakao-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(254, 229, 0, 0.3);
+}
+
+.send-kakao-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
