@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { doc, getDoc, setDoc, getDocs, collection, deleteDoc } from 'firebase/firestore';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { doc, getDoc, setDoc, getDocs, collection, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../../../utils/firebase';
 
 const HOMEWORK_COMPLETION_PHONE_DOC = 'homeworkCompletionPhoneNumbers';
@@ -15,6 +15,66 @@ function parseClassNames(classNameStr) {
 function sanitizeDocId(id) {
   if (id == null || typeof id !== 'string') return '';
   return id.replace(/\//g, '_').trim() || '';
+}
+
+function normalizeDashboardPhoneEntry(entry) {
+  if (!entry) return null;
+  if (typeof entry === 'string') {
+    const student = entry.replace(/\D/g, '');
+    return student ? { student } : null;
+  }
+  if (typeof entry !== 'object') return null;
+  const student = String(entry.student || '').replace(/\D/g, '').trim();
+  const parent = String(entry.parent || '').replace(/\D/g, '').trim();
+  const normalized = {};
+  if (student) normalized.student = student;
+  if (parent) normalized.parent = parent;
+  return Object.keys(normalized).length ? normalized : null;
+}
+
+function buildCompletionClassMap(data) {
+  const students = Array.isArray(data?.students) ? data.students : [];
+  const studentInfo = data?.studentInfo && typeof data.studentInfo === 'object' ? data.studentInfo : {};
+  const phoneNumbers = data?.phoneNumbers && typeof data.phoneNumbers === 'object' ? data.phoneNumbers : {};
+  const addedClassList = Array.isArray(data?.addedClassList) ? data.addedClassList : [];
+  const classMap = new Map();
+
+  const ensureClass = (className) => {
+    const trimmed = String(className || '').trim();
+    if (!trimmed) return null;
+    if (!classMap.has(trimmed)) {
+      classMap.set(trimmed, { students: [], phoneNumbers: {} });
+    }
+    return classMap.get(trimmed);
+  };
+
+  addedClassList.forEach((className) => {
+    ensureClass(className);
+  });
+
+  students.forEach((rawName) => {
+    const name = String(rawName || '').trim();
+    if (!name) return;
+    const info = studentInfo[name] || {};
+    const classes = parseClassNames(info.className || '');
+    classes.forEach((className) => {
+      const entry = ensureClass(className);
+      if (!entry) return;
+      if (!entry.students.includes(name)) {
+        entry.students.push(name);
+      }
+      const normalizedPhone = normalizeDashboardPhoneEntry(phoneNumbers[name]);
+      if (normalizedPhone) {
+        entry.phoneNumbers[name] = normalizedPhone;
+      }
+    });
+  });
+
+  classMap.forEach((entry) => {
+    entry.students.sort((a, b) => a.localeCompare(b, 'ko-KR'));
+  });
+
+  return classMap;
 }
 
 // 반 이름(docId)에서 학교·학년 그룹 라벨 추출 (이동된 반 목록을 학교/학년별로 묶어 표시)
@@ -189,6 +249,8 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
   // 숙제 완료도 → 영어 과제 이전: 이동된 반 목록 (doc id 목록)
   const [migratedDocIds, setMigratedDocIds] = useState([]);
   const [migrationLoading, setMigrationLoading] = useState(false);
+  const completionSyncRunningRef = useRef(false);
+  const pendingCompletionSyncDataRef = useRef(null);
 
   // 숙제 완료도에서 이전한 반만 표시 (옛날 영어 과제 관리로 만든 문서 제외)
   const loadMigratedDocIds = useCallback(async () => {
@@ -221,66 +283,142 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
     return [...order, ...rest].map((group) => ({ group, ids: map.get(group) }));
   }, [migratedDocIds]);
 
+  const syncMigratedClassesFromCompletion = useCallback(async (completionData, { showAlert = false, setLoading = false } = {}) => {
+    if (subject !== 'english' || !isFirebaseConfigured() || !db) return;
+    const classMap = buildCompletionClassMap(completionData || {});
+
+    if (setLoading) setMigrationLoading(true);
+    try {
+      const collRef = collection(db, ENGLISH_PROGRESS_COLLECTION);
+      const existingSnap = await getDocs(collRef);
+      const existingMigratedDocs = existingSnap.docs.filter((d) => d.data()?.migratedFromCompletion === true);
+      const existingMigratedMap = new Map(existingMigratedDocs.map((d) => [d.id, d.data() || {}]));
+      const desiredDocIds = new Set(Array.from(classMap.keys()).map((className) => sanitizeDocId(className)).filter(Boolean));
+
+      for (const snap of existingMigratedDocs) {
+        if (!desiredDocIds.has(snap.id)) {
+          await deleteDoc(doc(db, ENGLISH_PROGRESS_COLLECTION, snap.id));
+        }
+      }
+
+      const now = new Date().toISOString();
+      for (const [className, entry] of classMap.entries()) {
+        const safeDocId = sanitizeDocId(className);
+        if (!safeDocId) continue;
+
+        const existing = existingMigratedMap.get(safeDocId) || {};
+        const nextStudents = Array.isArray(entry.students) ? [...entry.students] : [];
+        const studentSet = new Set(nextStudents);
+        const nextProgressData = {};
+        const nextScores = {};
+        const nextPhoneNumbers = {};
+
+        Object.entries(existing.progressData || {}).forEach(([studentName, value]) => {
+          if (studentSet.has(studentName)) nextProgressData[studentName] = value;
+        });
+        Object.entries(existing.scores || {}).forEach(([studentName, value]) => {
+          if (studentSet.has(studentName)) nextScores[studentName] = value;
+        });
+
+        nextStudents.forEach((studentName) => {
+          const existingPhone = normalizeDashboardPhoneEntry(existing.phoneNumbers?.[studentName]);
+          const sourcePhone = normalizeDashboardPhoneEntry(entry.phoneNumbers?.[studentName]);
+          const mergedPhone = {
+            ...(existingPhone || {}),
+            ...(sourcePhone || {}),
+          };
+          if (Object.keys(mergedPhone).length > 0) {
+            nextPhoneNumbers[studentName] = mergedPhone;
+          }
+        });
+
+        await setDoc(doc(db, ENGLISH_PROGRESS_COLLECTION, safeDocId), {
+          ...existing,
+          students: nextStudents,
+          progressData: nextProgressData,
+          scores: nextScores,
+          phoneNumbers: nextPhoneNumbers,
+          migratedFromCompletion: true,
+          migratedClassName: className,
+          lastSyncedFromCompletion: now,
+        }, { merge: true });
+      }
+
+      await loadMigratedDocIds();
+
+      if (showAlert) {
+        alert(`✅ 숙제 과제 완료도 기준으로 동기화되었습니다.\n반 ${classMap.size}개가 현재 영어 과제 관리에 반영되었습니다.`);
+      }
+    } catch (e) {
+      console.error(e);
+      if (showAlert) {
+        alert('동기화 중 오류가 발생했습니다: ' + (e?.message || e));
+      }
+    } finally {
+      if (setLoading) setMigrationLoading(false);
+    }
+  }, [subject, loadMigratedDocIds]);
+
+  useEffect(() => {
+    if (subject !== 'english' || !isFirebaseConfigured() || !db) return undefined;
+
+    const phoneRef = doc(db, HOMEWORK_COMPLETION_PHONE_DOC, HOMEWORK_COMPLETION_PHONE_DOC_ID);
+    const unsubscribe = onSnapshot(
+      phoneRef,
+      async (snap) => {
+        if (!snap.exists()) {
+          console.warn('숙제 완료도 데이터 문서가 없어 영어 과제 자동 동기화를 건너뜁니다.');
+          return;
+        }
+        const completionData = snap.data();
+
+        if (completionSyncRunningRef.current) {
+          pendingCompletionSyncDataRef.current = completionData;
+          return;
+        }
+
+        completionSyncRunningRef.current = true;
+        try {
+          await syncMigratedClassesFromCompletion(completionData, { showAlert: false, setLoading: false });
+        } finally {
+          completionSyncRunningRef.current = false;
+          if (pendingCompletionSyncDataRef.current) {
+            const pendingData = pendingCompletionSyncDataRef.current;
+            pendingCompletionSyncDataRef.current = null;
+            completionSyncRunningRef.current = true;
+            try {
+              await syncMigratedClassesFromCompletion(pendingData, { showAlert: false, setLoading: false });
+            } finally {
+              completionSyncRunningRef.current = false;
+            }
+          }
+        }
+      },
+      (error) => {
+        console.warn('숙제 완료도 기준 영어 과제 동기화 리스너 오류:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [subject, syncMigratedClassesFromCompletion]);
+
   const runMigrationFromCompletion = useCallback(async () => {
     if (subject !== 'english' || !isFirebaseConfigured() || !db) return;
-    if (!window.confirm('영어 과제 관리의 현재 데이터를 모두 지우고, 숙제 과제 완료도에 있는 반을 전부 가져옵니다. 계속할까요?')) return;
-    setMigrationLoading(true);
+    if (!window.confirm('숙제 과제 완료도 기준으로 영어 과제 관리 반/학생 명단을 지금 바로 다시 동기화할까요?')) return;
+
     try {
       const phoneRef = doc(db, HOMEWORK_COMPLETION_PHONE_DOC, HOMEWORK_COMPLETION_PHONE_DOC_ID);
       const phoneSnap = await getDoc(phoneRef);
       if (!phoneSnap.exists()) {
         alert('숙제 과제 완료도 데이터가 없습니다.');
-        setMigrationLoading(false);
         return;
       }
-      const data = phoneSnap.data();
-      const students = data.students || [];
-      const studentInfo = data.studentInfo || {};
-      const phoneNumbers = data.phoneNumbers || {};
-      const addedClassList = Array.isArray(data.addedClassList) ? data.addedClassList : [];
-      const allClassNames = new Set(addedClassList);
-      students.forEach((name) => {
-        const className = studentInfo[name]?.className || '';
-        parseClassNames(className).forEach((c) => allClassNames.add(c));
-      });
-      const classList = Array.from(allClassNames).filter(Boolean);
-      if (classList.length === 0) {
-        alert('숙제 과제 완료도에 반이 없습니다.');
-        setMigrationLoading(false);
-        return;
-      }
-      const collRef = collection(db, ENGLISH_PROGRESS_COLLECTION);
-      const existingSnap = await getDocs(collRef);
-      for (const d of existingSnap.docs) {
-        await deleteDoc(doc(db, ENGLISH_PROGRESS_COLLECTION, d.id));
-      }
-      for (const className of classList) {
-        const studentList = students.filter((name) => parseClassNames(studentInfo[name]?.className || '').includes(className));
-        const ph = {};
-        studentList.forEach((name) => {
-          const p = phoneNumbers[name];
-          if (p && (p.student || p.parent)) ph[name] = { student: p.student || '', parent: p.parent || '' };
-        });
-        const safeDocId = sanitizeDocId(className);
-        if (!safeDocId) continue;
-        await setDoc(doc(db, ENGLISH_PROGRESS_COLLECTION, safeDocId), {
-          students: studentList,
-          phoneNumbers: ph,
-          progressData: {},
-          scores: {},
-          lastUpdated: new Date().toISOString(),
-          migratedFromCompletion: true, // 이전으로 만든 반만 "이동된 반" 목록에 표시
-        }, { merge: true });
-      }
-      await loadMigratedDocIds();
-      alert(`✅ 이전 완료. 영어 과제 데이터를 비우고, 숙제 완료도 반 ${classList.length}개를 가져왔습니다. 아래 "이동된 반"에서 반을 선택해 명단을 보세요.`);
+      await syncMigratedClassesFromCompletion(phoneSnap.data(), { showAlert: true, setLoading: true });
     } catch (e) {
       console.error(e);
-      alert('이전 중 오류가 발생했습니다: ' + (e?.message || e));
-    } finally {
-      setMigrationLoading(false);
+      alert('동기화 중 오류가 발생했습니다: ' + (e?.message || e));
     }
-  }, [subject, loadMigratedDocIds]);
+  }, [subject, syncMigratedClassesFromCompletion]);
 
   const handleDeleteMigratedClass = useCallback(async (docId) => {
     if (subject !== 'english' || !isFirebaseConfigured() || !db) return;
@@ -618,12 +756,12 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
             ) : (
               // 영어 과제 관리 UI: 이전 블록만 전체 가로 사용
               <>
-                {/* 데이터 이전: 숙제 완료도 반 → 영어 과제 */}
+                {/* 완료도 기준 반/학생 동기화 */}
                 {subject === 'english' && (
                   <div style={{ gridColumn: '1 / -1', marginBottom: '20px', padding: '16px', backgroundColor: '#fef3c7', borderRadius: '8px', border: '2px solid #f59e0b' }}>
-                    <h4 style={{ margin: '0 0 10px 0', color: '#92400e' }}>📥 데이터 이전 (숙제 과제 완료도 → 영어 과제 관리)</h4>
+                    <h4 style={{ margin: '0 0 10px 0', color: '#92400e' }}>🔄 숙제 과제 완료도 기준 자동 동기화</h4>
                     <p style={{ fontSize: '0.9rem', color: '#78350f', margin: '0 0 10px 0' }}>
-                      영어 과제 관리의 현재 데이터를 모두 지운 뒤, 숙제 과제 완료도에 있는 반·학생·전화번호를 전부 가져옵니다.
+                      숙제 과제 완료도 기준으로 영어 과제 관리의 반/학생 명단을 자동으로 맞춥니다. 사라진 반은 제거되고, 새 반과 학생은 추가되며, 기존 반의 진행 데이터는 가능한 범위에서 유지됩니다.
                     </p>
                     <button
                       type="button"
@@ -640,11 +778,11 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
                         cursor: migrationLoading ? 'not-allowed' : 'pointer',
                       }}
                     >
-                      {migrationLoading ? '이전 중…' : '영어 과제 데이터 지우고 숙제 완료도 반 전부 가져오기'}
+                      {migrationLoading ? '동기화 중…' : '지금 즉시 완료도 기준으로 다시 동기화'}
                     </button>
                     {migratedBySchoolGrade.length > 0 && (
                       <div style={{ marginTop: '14px', width: '100%' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '8px', color: '#78350f' }}>이동된 반 (클릭 시 명단 보기)</div>
+                        <div style={{ fontWeight: '600', marginBottom: '8px', color: '#78350f' }}>연동된 반 (클릭 시 명단 보기)</div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
                           {migratedBySchoolGrade.map(({ group, ids }) => (
                             <div key={group} style={{ width: '100%' }}>

@@ -5,6 +5,7 @@ import ApiKeyInput from './components/ApiKeyInput'
 import PasswordProtection from './components/PasswordProtection'
 import MainMenu from './components/MainMenu'
 import StudentDataModal from './components/StudentDataModal'
+import AdminPage from './components/AdminPage'
 import BlankMaker from './features/blank/components/BlankMaker'
 import BlankGenerator from './features/blank/components/BlankGenerator'
 import PreprocessorInput from './features/preprocessor/components/PreprocessorInput'
@@ -18,6 +19,7 @@ import { vocabularyTableToTsv } from './features/english-english-word/utils/engl
 import { countTestItems } from './features/english-english-word/utils/englishEnglishWordTestUtils'
 import { exportVocabularyTablePdf } from './features/english-english-word/utils/englishEnglishWordPdfExport'
 import Sum15Input from './features/sum15/components/Sum15Input'
+import DescriptiveProblemBuilder from './features/sum15/components/DescriptiveProblemBuilder'
 import Sum15OriginalInput from './features/sum15/components/Sum15OriginalInput'
 import Title10OriginalInput from './features/sum15/components/Title10OriginalInput'
 import Topic13OriginalInput from './features/sum15/components/Topic13OriginalInput'
@@ -28,6 +30,7 @@ import Sum15Viewer from './features/sum15/components/Sum15Viewer'
 import Sum30Input from './features/sum30/components/Sum30Input'
 import Sum30Viewer from './features/sum30/components/Sum30Viewer'
 import Sum40Input from './features/sum40/components/Sum40Input'
+import Sum40Viewer from './features/sum40/components/Sum40Viewer'
 import KoreanSummaryInput from './features/korean-summary/components/KoreanSummaryInput'
 import KoreanSummaryViewer from './features/korean-summary/components/KoreanSummaryViewer'
 import KeyInput from './features/key/components/KeyInput'
@@ -53,11 +56,13 @@ import WordShuffler from './features/word-shuffler/components/WordShuffler'
 import SentenceInsertionProblemMaker from './features/sentence-insertion/components/SentenceInsertionProblemMaker'
 import GwacheonAnalysisInput from './features/gwacheon-analysis/components/GwacheonAnalysisInput'
 import GwacheonAnalysisViewer from './features/gwacheon-analysis/components/GwacheonAnalysisViewer'
-import ToInfinitiveInput from './features/grammar-problem/components/ToInfinitiveInput'
+import GrammarWorkbookInput from './features/grammar-problem/components/GrammarWorkbookInput'
+import SchoolParallelMockExamInput from './features/school-mock-exam/components/SchoolParallelMockExamInput'
 import { exportToPdf } from './features/pocketbook/utils/pdfExporter'
 import { exportBlankToPdf } from './features/blank/utils/blankPdfExporter'
 import { exportSum15ToPdf } from './features/sum15/utils/sum15PdfExporter'
 import { exportSum30ToPdf } from './features/sum30/utils/sum30PdfExporter'
+import { exportSum40ToPdf } from './features/sum40/utils/sum40PdfExporter'
 import { exportKoreanSummaryToPdf } from './features/korean-summary/utils/koreanSummaryPdfExporter'
 import './App.css'
 import { analyzeText } from './features/pocketbook/utils/textAnalyzer'
@@ -187,6 +192,7 @@ function App() {
   const [sum30ProcessedText, setSum30ProcessedText] = useState('') // SUM30 처리된 텍스트 (수정 가능)
   const [showSum30Design, setShowSum30Design] = useState(false) // SUM30 디자인 페이지 표시 여부
   const [sum40Data, setSum40Data] = useState(null) // SUM40 결과
+  const [showSum40Design, setShowSum40Design] = useState(false) // SUM40 디자인 페이지 표시 여부
   const [koreanSummaryData, setKoreanSummaryData] = useState(null) // 요약문 한글 결과
   const [koreanSummaryProcessedText, setKoreanSummaryProcessedText] = useState('') // 요약문 한글 처리된 텍스트 (수정 가능)
   const [showKoreanSummaryDesign, setShowKoreanSummaryDesign] = useState(false) // 요약문 한글 디자인 페이지 표시 여부
@@ -207,7 +213,6 @@ function App() {
   const [gwacheonAnalysisData, setGwacheonAnalysisData] = useState(null) // 과천중앙고 내신 분석 결과
   const [apiKey, setApiKey] = useState('')
   const [isSavingPdf, setIsSavingPdf] = useState(false)
-  const [showStudentDataModal, setShowStudentDataModal] = useState(false)
 
   useEffect(() => {
     if (!englishEnglishWordData) setEnglishWordTestOpen(false)
@@ -771,6 +776,10 @@ function App() {
     setSum15OriginalData(data)
   }
 
+  const handleSelectDescriptiveProblemBuilder = () => {
+    setMode('descriptive-problem-builder')
+  }
+
   const handleSelectTitle10Original = () => {
     setText('')
     setTitle10OriginalData(null)
@@ -871,8 +880,12 @@ function App() {
     setGrammarAnalysisData(null)
   }
 
-  const handleSelectGrammarToInfinitive = () => {
-    setMode('grammar-to-infinitive')
+  const handleSelectGrammarWorkbook = () => {
+    setMode('grammar-workbook')
+  }
+
+  const handleSelectParallelMockExam = () => {
+    setMode('parallel-mock-exam')
   }
 
   const handleSelectContentMatch = () => {
@@ -932,6 +945,14 @@ function App() {
     setGwacheonAnalysisData(null)
   }
 
+  const handleSelectStudentData = () => {
+    setMode('student-data')
+  }
+
+  const handleSelectAdminPage = () => {
+    setMode('admin-page')
+  }
+
   const handleGwacheonAnalysisProcess = (data) => {
     setGwacheonAnalysisData(data)
   }
@@ -970,6 +991,7 @@ function App() {
   
   const handleSum40Process = (data) => {
     setSum40Data(data)
+    setShowSum40Design(false)
   }
   
   const handleKoreanSummaryProcess = (data) => {
@@ -1030,9 +1052,6 @@ function App() {
   if (mode === 'main') {
     return (
       <div className="app">
-        {showStudentDataModal && (
-          <StudentDataModal onClose={() => setShowStudentDataModal(false)} />
-        )}
         <MainMenu 
           onSelectPocketbook={handleSelectPocketbook}
           onSelectBlank={handleSelectBlank}
@@ -1041,6 +1060,7 @@ function App() {
           onSelectKoreanOrigin={handleSelectKoreanOrigin}
           onSelectParaphrasing={handleSelectParaphrasing}
           onSelectEnglishEnglishWord={handleSelectEnglishEnglishWord}
+          onSelectDescriptiveProblemBuilder={handleSelectDescriptiveProblemBuilder}
           onSelectSum15Original={handleSelectSum15Original}
           onSelectTitle10Original={handleSelectTitle10Original}
           onSelectTopic13Original={handleSelectTopic13Original}
@@ -1057,7 +1077,8 @@ function App() {
           onSelectReferenceDescription={handleSelectReferenceDescription}
           onSelectGrammarAnalysis={handleSelectGrammarAnalysis}
           onSelectContentMatch={handleSelectContentMatch}
-          onSelectGrammarToInfinitive={handleSelectGrammarToInfinitive}
+          onSelectGrammarWorkbook={handleSelectGrammarWorkbook}
+          onSelectParallelMockExam={handleSelectParallelMockExam}
           onSelectOcr={handleSelectOcr}
           onSelectEnglishHomeworkDashboard={handleSelectEnglishHomeworkDashboard}
           onSelectMathHomeworkDashboard={handleSelectMathHomeworkDashboard}
@@ -1068,8 +1089,25 @@ function App() {
           onSelectNotes={handleSelectNotes}
           onSelectWordShuffler={handleSelectWordShuffler}
           onSelectGwacheonCentralHigh1={handleSelectGwacheonCentralHigh1}
-          onSelectStudentData={() => setShowStudentDataModal(true)}
+          onSelectStudentData={handleSelectStudentData}
+          onSelectAdminPage={handleSelectAdminPage}
         />
+      </div>
+    )
+  }
+
+  if (mode === 'student-data') {
+    return (
+      <div className="app">
+        <StudentDataModal onClose={handleBackToMain} fullScreen />
+      </div>
+    )
+  }
+
+  if (mode === 'admin-page') {
+    return (
+      <div className="app">
+        <AdminPage onClose={handleBackToMain} />
       </div>
     )
   }
@@ -2187,6 +2225,27 @@ function App() {
             </div>
           </div>
         )}
+      </div>
+    )
+  }
+
+  if (mode === 'descriptive-problem-builder') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>서술형 문제 만들기</h1>
+          <p>by 신희진</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+        <DescriptiveProblemBuilder apiKey={apiKey} />
       </div>
     )
   }
@@ -3342,87 +3401,139 @@ function App() {
           />
         ) : (
           <div className="result-container">
-            <div className="result-actions">
-              <button 
-                onClick={() => { 
-                  setSum40Data(null)
-    setKoreanSummaryData(null); 
-                  setText(''); 
-                }} 
-                className="btn btn-secondary"
-              >
-                모두 삭제하고 처음부터
-              </button>
-              <button 
-                onClick={() => {
-                  let fullText = sum40Data.summary || sum40Data.processed
-                  navigator.clipboard.writeText(fullText)
-                  alert('처리된 텍스트가 클립보드에 복사되었습니다.')
-                }} 
-                className="btn btn-primary"
-              >
-                결과 복사하기
-              </button>
-            </div>
-            <div className="multiple-results">
-              <div style={{ marginBottom: '20px', color: '#6c757d' }}>
-                처리가 완료되었습니다. 아래 결과를 확인하세요.
-              </div>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '20px',
-                marginBottom: '20px'
-              }}>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
-                  <div style={{ 
-                    padding: '12px', 
-                    background: 'white', 
-                    borderRadius: '4px',
-                    border: '1px solid #e0e0e0',
-                    maxHeight: '500px',
-                    overflowY: 'auto'
+            {showSum40Design ? (
+              <>
+                <div className="result-actions">
+                  <button
+                    onClick={() => setShowSum40Design(false)}
+                    className="btn btn-secondary"
+                  >
+                    텍스트 보기로 돌아가기
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setIsSavingPdf(true)
+                      try {
+                        await exportSum40ToPdf()
+                      } catch (error) {
+                        alert(error.message || 'PDF 저장 중 오류가 발생했습니다.')
+                      } finally {
+                        setIsSavingPdf(false)
+                      }
+                    }}
+                    className="btn btn-primary"
+                    disabled={isSavingPdf}
+                  >
+                    {isSavingPdf ? 'PDF 저장 중...' : 'PDF 저장'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSum40Data(null)
+                      setShowSum40Design(false)
+                      setText('')
+                    }}
+                    className="btn btn-secondary"
+                  >
+                    모두 삭제하고 처음부터
+                  </button>
+                </div>
+                <Sum40Viewer data={sum40Data} />
+              </>
+            ) : (
+              <>
+                <div className="result-actions">
+                  <button 
+                    onClick={() => { 
+                      setSum40Data(null)
+                      setShowSum40Design(false)
+                      setText('') 
+                    }} 
+                    className="btn btn-secondary"
+                  >
+                    모두 삭제하고 처음부터
+                  </button>
+                  <button 
+                    onClick={() => {
+                      let fullText = sum40Data.summary || sum40Data.processed || ''
+                      if (sum40Data.answerSheet) fullText += '\n\n\n<답지>\n\n' + sum40Data.answerSheet
+                      navigator.clipboard.writeText(fullText)
+                      alert('처리된 텍스트가 클립보드에 복사되었습니다.')
+                    }} 
+                    className="btn btn-primary"
+                  >
+                    결과 복사하기
+                  </button>
+                </div>
+                <div className="multiple-results">
+                  <div style={{ marginBottom: '20px', color: '#6c757d' }}>
+                    처리가 완료되었습니다. 아래 결과를 확인하세요.
+                  </div>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '20px',
+                    marginBottom: '20px'
                   }}>
-                    <pre style={{ 
-                      margin: 0, 
-                      color: '#2c3e50', 
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.6'
-                    }}>
-                      {sum40Data.original}
-                    </pre>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
+                      <div style={{ 
+                        padding: '12px', 
+                        background: 'white', 
+                        borderRadius: '4px',
+                        border: '1px solid #e0e0e0',
+                        maxHeight: '500px',
+                        overflowY: 'auto'
+                      }}>
+                        <pre style={{ 
+                          margin: 0, 
+                          color: '#2c3e50', 
+                          whiteSpace: 'pre-wrap',
+                          fontFamily: 'inherit',
+                          fontSize: '0.95rem',
+                          lineHeight: '1.6'
+                        }}>
+                          {sum40Data.original}
+                        </pre>
+                      </div>
+                    </div>
+                    <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', textAlign: 'right' }}>
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
+                      <div style={{ 
+                        padding: '12px', 
+                        background: 'white', 
+                        borderRadius: '4px',
+                        border: '1px solid #e0e0e0',
+                        maxHeight: '500px',
+                        overflowY: 'auto',
+                        textAlign: 'left'
+                      }}>
+                        <div style={{ 
+                          margin: 0, 
+                          color: '#2c3e50', 
+                          whiteSpace: 'pre-wrap',
+                          fontFamily: 'inherit',
+                          fontSize: '0.95rem',
+                          lineHeight: '1.6'
+                        }}
+                        dangerouslySetInnerHTML={{ 
+                          __html: `${(sum40Data.summary || sum40Data.processed || '').replace(/\n/g, '<br>')}${sum40Data.answerSheet ? `<br><br><br>&lt;답지&gt;<br><br>${sum40Data.answerSheet.replace(/\n/g, '<br>')}` : ''}`
+                        }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
+                    <button
+                      onClick={() => setShowSum40Design(true)}
+                      className="btn btn-primary"
+                      style={{ fontSize: '1.1rem', padding: '12px 30px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)' }}
+                    >
+                      PDF 형식 미리보기
+                    </button>
                   </div>
                 </div>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', textAlign: 'right' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
-                  <div style={{ 
-                    padding: '12px', 
-                    background: 'white', 
-                    borderRadius: '4px',
-                    border: '1px solid #e0e0e0',
-                    maxHeight: '500px',
-                    overflowY: 'auto',
-                    textAlign: 'left'
-                  }}>
-                    <div style={{ 
-                      margin: 0, 
-                      color: '#2c3e50', 
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.6'
-                    }}
-                    dangerouslySetInnerHTML={{ 
-                      __html: (sum40Data.summary || sum40Data.processed).replace(/\n/g, '<br>')
-                    }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -4123,13 +4234,13 @@ function App() {
     )
   }
 
-  // 문법 문제 만들기 - to부정사
+  // 문법 워크북 생성기 (to부정사·동명사·분사 등)
 
-  if (mode === 'grammar-to-infinitive') {
+  if (mode === 'grammar-workbook') {
     return (
       <div className="app">
         <header className="app-header">
-          <h1>문법 문제 만들기</h1>
+          <h1>문법 워크북 생성기</h1>
           <p>by 신희진</p>
           <button
             onClick={handleBackToMain}
@@ -4139,8 +4250,32 @@ function App() {
             메인 메뉴로 돌아가기
           </button>
         </header>
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+
         <div className="main-content">
-          <ToInfinitiveInput onClose={handleBackToMain} />
+          <GrammarWorkbookInput onClose={handleBackToMain} apiKey={apiKey} />
+        </div>
+      </div>
+    )
+  }
+
+  if (mode === 'parallel-mock-exam') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>동형 모의고사 만들기</h1>
+          <p>by 신희진 · 학교별 기출 누적 · 내신형 변형</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+        <div className="main-content">
+          <SchoolParallelMockExamInput onClose={handleBackToMain} apiKey={apiKey} />
         </div>
       </div>
     )

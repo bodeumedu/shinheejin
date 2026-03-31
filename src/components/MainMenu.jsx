@@ -8,6 +8,7 @@ function MainMenu({
   onSelectKoreanOrigin,
   onSelectParaphrasing,
   onSelectEnglishEnglishWord,
+  onSelectDescriptiveProblemBuilder,
   onSelectSum15Original,
   onSelectTitle10Original,
   onSelectTopic13Original,
@@ -35,7 +36,9 @@ function MainMenu({
   onSelectWordShuffler,
   onSelectGwacheonCentralHigh1,
   onSelectStudentData,
-  onSelectGrammarToInfinitive,
+  onSelectAdminPage,
+  onSelectGrammarWorkbook,
+  onSelectParallelMockExam,
 }) {
   return (
     <div className="main-menu">
@@ -74,32 +77,8 @@ function MainMenu({
           <div className="main-menu-center">
             <h2 className="section-title">문제 만들기</h2>
             <div className="main-menu-buttons">
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectSum15Original}>
-                📄 SUM15 원형
-              </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectTitle10Original}>
-                📄 시선 title 10 (원형)
-              </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectTopic13Original}>
-                📄 시선 topic (원형)
-              </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectTopic13Transformed}>
-                📄 시선 topic (변형)
-              </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectResponse20Original}>
-                📄 시선 response 20 (원형)
-              </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectInterview25Transformed}>
-                📄 시선 interview 25 (변형)
-              </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectSum15}>
-                📄 SUM15
-              </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectSum30}>
-                📄 SUM30
-              </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectSum40}>
-                📄 SUM40
+              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectDescriptiveProblemBuilder}>
+                🧩 서술형 문제 만들기
               </button>
               <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectKoreanSummary}>
                 📝 요약문 한글
@@ -124,10 +103,13 @@ function MainMenu({
               </button>
             </div>
 
-            <h2 className="section-title">문법 문제 만들기</h2>
+            <h2 className="section-title">문법 워크북</h2>
             <div className="main-menu-buttons">
-              <button className="main-menu-btn main-menu-btn-grammar" onClick={onSelectGrammarToInfinitive}>
-                📌 to부정사
+              <button className="main-menu-btn main-menu-btn-grammar" onClick={onSelectGrammarWorkbook}>
+                📘 문법 워크북 생성기
+              </button>
+              <button className="main-menu-btn main-menu-btn-grammar" onClick={onSelectParallelMockExam}>
+                📋 동형모의고사 만들기
               </button>
             </div>
           </div>
@@ -174,6 +156,13 @@ function MainMenu({
           onClick={onSelectStudentData}
         >
           👥 학생 데이터
+        </button>
+        <button
+          type="button"
+          className="main-menu-admin-btn"
+          onClick={onSelectAdminPage}
+        >
+          🟣 관리자 페이지
         </button>
       </div>
     </div>

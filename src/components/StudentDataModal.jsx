@@ -7,11 +7,54 @@ const CLINIC_RECORDS_PREFIX = 'clinicRecordValues_english_';
 const CLINIC_CUSTOMS_PREFIX = 'clinicCustomEntries_english_';
 const HOMEWORK_PHONE_DOC = 'homeworkCompletionPhoneNumbers';
 const HOMEWORK_PHONE_DOC_ID = 'all';
+const BACKUP_PHONE_DOC = 'studentPhoneNumbers';
+const BACKUP_PHONE_DOC_ID = 'all';
 const WITHDRAWN_STORAGE_KEY = 'studentDataWithdrawnNames';
 const KAKAO_HISTORY_COLLECTION = 'studentDataKakaoHistory';
 const KAKAO_HISTORY_DOC_ID = 'all';
+const STUDENT_SCORE_COLLECTION = 'studentDataScores';
+const STUDENT_SCORE_DOC_ID = 'all';
 // 학생 데이터 개별 카톡 발송용 템플릿 (솔라피 검수 후 코드 교체) — 변수: 학생명, 학년, 반명, 공지
 const STUDENT_DATA_KAKAO_TEMPLATE = 'KA01TP_STUDENT_DATA_INDIVIDUAL';
+const SCHOOL_SCORE_SUBJECTS = ['국어', '영어', '수학', '과학', '사회', '역사'];
+const MOCK_SCORE_SUBJECTS = ['국어', '영어', '수학', '한국사', '탐구1', '탐구2'];
+
+const SCHOOL_GRADES = ['중1', '중2', '중3', '고1', '고2', '고3'];
+const SCHOOL_EXAM_LABELS = [
+  { key: '1_mid', label: '1학기 중간' },
+  { key: '1_final', label: '1학기 기말' },
+  { key: '2_mid', label: '2학기 중간' },
+  { key: '2_final', label: '2학기 기말' },
+];
+const MOCK_YEARS = Array.from({ length: 2026 - 2018 + 1 }, (_, i) => String(2018 + i));
+const MOCK_GRADES = ['고1', '고2', '고3'];
+const MOCK_MONTHS = ['3월', '6월', '9월', '10월'];
+
+function buildSchoolScoreSlots() {
+  return SCHOOL_GRADES.flatMap((grade) =>
+    SCHOOL_EXAM_LABELS.map((exam) => ({
+      key: `${grade}_${exam.key}`,
+      grade,
+      label: exam.label,
+    }))
+  );
+}
+
+function buildMockScoreSlots() {
+  return MOCK_YEARS.flatMap((year) =>
+    MOCK_GRADES.flatMap((grade) =>
+      MOCK_MONTHS.map((month) => ({
+        key: `${year}_${grade}_${month}`,
+        year,
+        grade,
+        month,
+      }))
+    )
+  );
+}
+
+const SCHOOL_SCORE_SLOTS = buildSchoolScoreSlots();
+const MOCK_SCORE_SLOTS = buildMockScoreSlots();
 
 function loadWithdrawnNames() {
   try {
@@ -74,7 +117,61 @@ function formatHomeworkClassDisplay(className) {
   return String(className);
 }
 
-export default function StudentDataModal({ onClose }) {
+function normalizePhoneValue(value) {
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function normalizePhoneEntry(entry) {
+  const source = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {};
+  const student = normalizePhoneValue(
+    source.핸드폰 || source.학생핸드폰 || source.student || source.학생 || source.phoneNumber
+  );
+  const parent = normalizePhoneValue(
+    source.부모핸드폰 || source.학부모핸드폰 || source.parent || source.학부모 || source.부모 || source.parentPhoneNumber
+  );
+  return {
+    ...source,
+    student,
+    parent,
+    핸드폰: student || null,
+    부모핸드폰: parent || null,
+  };
+}
+
+function normalizePhoneMap(phoneMap) {
+  if (!phoneMap || typeof phoneMap !== 'object' || Array.isArray(phoneMap)) return {};
+  const out = {};
+  Object.keys(phoneMap).forEach((name) => {
+    out[name] = normalizePhoneEntry(phoneMap[name]);
+  });
+  return out;
+}
+
+function repairPhoneEntryFromBackup(currentEntry, backupEntry) {
+  const current = normalizePhoneEntry(currentEntry);
+  const backup = normalizePhoneEntry(backupEntry);
+  const currentStudent = normalizePhoneValue(current.student);
+  const currentParent = normalizePhoneValue(current.parent);
+  const backupStudent = normalizePhoneValue(backup.student);
+  const backupParent = normalizePhoneValue(backup.parent);
+
+  if (
+    currentStudent &&
+    currentParent &&
+    currentStudent === currentParent &&
+    backupStudent &&
+    backupParent &&
+    backupStudent !== backupParent &&
+    (backupStudent !== currentStudent || backupParent !== currentParent)
+  ) {
+    return backup;
+  }
+
+  return current;
+}
+
+export default function StudentDataModal({ onClose, fullScreen = false }) {
   const [list, setList] = useState([]);
   const [withdrawnSet, setWithdrawnSet] = useState(() => new Set(loadWithdrawnNames()));
   const [studentDataTab, setStudentDataTab] = useState('list'); // 'list' | 'withdrawnByYear'
@@ -84,6 +181,11 @@ export default function StudentDataModal({ onClose }) {
   const [sendingKakaoFor, setSendingKakaoFor] = useState(null); // 카톡 발송 중인 학생명
   const [kakaoHistory, setKakaoHistory] = useState([]); // { studentName, date, message, timestamp }[]
   const [historyStudent, setHistoryStudent] = useState(null); // 이름 클릭 시 해당 학생 발송 이력 모달
+  const [scoreRecords, setScoreRecords] = useState({});
+  const [savingScoresFor, setSavingScoresFor] = useState(null);
+  const [scoreGradeFilter, setScoreGradeFilter] = useState('all');
+  const [mockYearFilter, setMockYearFilter] = useState(String(new Date().getFullYear()));
+  const [mockGradeFilter, setMockGradeFilter] = useState('고1');
   /** 숙제 완료도에서 반 삭제 시 누적된 이력 { [이름]: [{ className, removedAt }] } */
   const [studentClassHistoryMap, setStudentClassHistoryMap] = useState({});
 
@@ -103,20 +205,31 @@ export default function StudentDataModal({ onClose }) {
     setSavingPhones(true);
     try {
       const docRef = doc(db, HOMEWORK_PHONE_DOC, HOMEWORK_PHONE_DOC_ID);
-      const snap = await getDoc(docRef);
+      const backupRef = doc(db, BACKUP_PHONE_DOC, BACKUP_PHONE_DOC_ID);
+      const [snap, backupSnap] = await Promise.all([getDoc(docRef), getDoc(backupRef)]);
       const existing = snap.exists() ? snap.data() : {};
-      const existingPhoneNumbers = existing.phoneNumbers || {};
+      const existingPhoneNumbers = normalizePhoneMap(existing.phoneNumbers || {});
+      const backupPhoneNumbers = normalizePhoneMap(
+        backupSnap.exists() && backupSnap.data()?.phoneNumbers ? backupSnap.data().phoneNumbers : {}
+      );
       const merged = { ...existingPhoneNumbers };
       list.forEach((row) => {
         if (!row.name) return;
-        merged[row.name] = {
+        merged[row.name] = normalizePhoneEntry({
           ...(merged[row.name] || {}),
           student: row.studentPhone != null ? String(row.studentPhone).trim() : (merged[row.name]?.student ?? ''),
           parent: row.parentPhone != null ? String(row.parentPhone).trim() : (merged[row.name]?.parent ?? ''),
-        };
+          핸드폰: row.studentPhone != null ? String(row.studentPhone).trim() : (merged[row.name]?.핸드폰 ?? ''),
+          부모핸드폰: row.parentPhone != null ? String(row.parentPhone).trim() : (merged[row.name]?.부모핸드폰 ?? ''),
+        });
+        merged[row.name] = repairPhoneEntryFromBackup(merged[row.name], backupPhoneNumbers[row.name]);
       });
       await setDoc(docRef, {
         ...existing,
+        phoneNumbers: merged,
+        lastUpdated: new Date().toISOString(),
+      }, { merge: true });
+      await setDoc(backupRef, {
         phoneNumbers: merged,
         lastUpdated: new Date().toISOString(),
       }, { merge: true });
@@ -201,7 +314,8 @@ export default function StudentDataModal({ onClose }) {
     if (isFirebaseConfigured() && db) {
       try {
         const docRef = doc(db, HOMEWORK_PHONE_DOC, HOMEWORK_PHONE_DOC_ID);
-        const snap = await getDoc(docRef);
+        const backupRef = doc(db, BACKUP_PHONE_DOC, BACKUP_PHONE_DOC_ID);
+        const [snap, backupSnap] = await Promise.all([getDoc(docRef), getDoc(backupRef)]);
         if (snap.exists()) {
           const data = snap.data();
           const hist = data.studentClassHistory;
@@ -210,7 +324,10 @@ export default function StudentDataModal({ onClose }) {
           );
           const students = data.students || [];
           const studentInfo = data.studentInfo || {};
-          const phoneNumbers = data.phoneNumbers || {};
+          const phoneNumbers = normalizePhoneMap(data.phoneNumbers || {});
+          const backupPhoneNumbers = normalizePhoneMap(
+            backupSnap.exists() && backupSnap.data()?.phoneNumbers ? backupSnap.data().phoneNumbers : {}
+          );
 
           const extractStudentName = (item) => {
             if (item == null) return '';
@@ -235,7 +352,7 @@ export default function StudentDataModal({ onClose }) {
 
           homeworkNames.forEach((n) => {
             const info = studentInfo[n] || {};
-            const phones = phoneNumbers[n] || {};
+            const phones = repairPhoneEntryFromBackup(phoneNumbers[n] || {}, backupPhoneNumbers[n] || {});
             const cur = byName.get(n) || { name: n, school: '', grade: '', className: '', studentPhone: '', parentPhone: '', parentPhone2: '' };
             cur.name = n;
             if (info.school != null && String(info.school).trim() !== '') cur.school = info.school;
@@ -295,6 +412,22 @@ export default function StudentDataModal({ onClose }) {
   useEffect(() => {
     if (!loading) loadKakaoHistory();
   }, [loading, loadKakaoHistory]);
+
+  const loadScoreRecords = useCallback(async () => {
+    if (!isFirebaseConfigured() || !db) return;
+    try {
+      const ref = doc(db, STUDENT_SCORE_COLLECTION, STUDENT_SCORE_DOC_ID);
+      const snap = await getDoc(ref);
+      const records = snap.exists() ? snap.data()?.records : {};
+      setScoreRecords(records && typeof records === 'object' ? records : {});
+    } catch (e) {
+      console.warn('학생 성적 데이터 로드 실패:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!loading) loadScoreRecords();
+  }, [loading, loadScoreRecords]);
 
   const apiUrl = typeof window !== 'undefined' && window.location
     ? `${window.location.origin}/api/send-kakao`
@@ -424,6 +557,95 @@ export default function StudentDataModal({ onClose }) {
     [list, withdrawnSet]
   );
 
+  const selectedScoreRecord = useMemo(() => {
+    if (!historyStudent) return { schoolExamScores: {}, mockExamScores: {}, trendNote: '' };
+    return scoreRecords[historyStudent] || { schoolExamScores: {}, mockExamScores: {}, trendNote: '' };
+  }, [historyStudent, scoreRecords]);
+
+  const visibleSchoolScoreSlots = useMemo(() => {
+    if (scoreGradeFilter === 'all') return SCHOOL_SCORE_SLOTS;
+    return SCHOOL_SCORE_SLOTS.filter((slot) => slot.grade === scoreGradeFilter);
+  }, [scoreGradeFilter]);
+
+  const visibleMockScoreSlots = useMemo(() => {
+    return MOCK_SCORE_SLOTS.filter((slot) => {
+      if (mockYearFilter !== 'all' && slot.year !== mockYearFilter) return false;
+      if (mockGradeFilter !== 'all' && slot.grade !== mockGradeFilter) return false;
+      return true;
+    });
+  }, [mockYearFilter, mockGradeFilter]);
+
+  const updateStudentTrendNote = useCallback((studentName, value) => {
+    setScoreRecords((prev) => ({
+      ...prev,
+      [studentName]: {
+        ...(prev[studentName] || {}),
+        schoolExamScores: prev[studentName]?.schoolExamScores || {},
+        mockExamScores: prev[studentName]?.mockExamScores || {},
+        trendNote: value,
+      },
+    }));
+  }, []);
+
+  const updateStudentScoreValue = useCallback((studentName, section, slotKey, subject, value) => {
+    setScoreRecords((prev) => {
+      const prevStudent = prev[studentName] || {};
+      const targetKey = section === 'school' ? 'schoolExamScores' : 'mockExamScores';
+      const targetSection = prevStudent[targetKey] || {};
+      return {
+        ...prev,
+        [studentName]: {
+          ...prevStudent,
+          schoolExamScores: prevStudent.schoolExamScores || {},
+          mockExamScores: prevStudent.mockExamScores || {},
+          [targetKey]: {
+            ...targetSection,
+            [slotKey]: {
+              ...(targetSection[slotKey] || {}),
+              [subject]: value,
+            },
+          },
+        },
+      };
+    });
+  }, []);
+
+  const saveStudentScores = useCallback(async (studentName) => {
+    if (!studentName) return;
+    if (!isFirebaseConfigured() || !db) {
+      alert('Firebase가 설정되지 않았습니다.');
+      return;
+    }
+    setSavingScoresFor(studentName);
+    try {
+      await setDoc(
+        doc(db, STUDENT_SCORE_COLLECTION, STUDENT_SCORE_DOC_ID),
+        {
+          records: {
+            ...scoreRecords,
+            [studentName]: {
+              ...(scoreRecords[studentName] || {}),
+              lastUpdated: new Date().toISOString(),
+            },
+          },
+          lastUpdated: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      alert(`✅ ${studentName} 성적이 저장되었습니다.`);
+    } catch (e) {
+      console.error('학생 성적 저장 실패:', e);
+      const isPermission = e?.code === 'permission-denied' || String(e?.message || '').includes('permission');
+      alert(
+        isPermission
+          ? '학생 성적 저장 권한이 아직 적용되지 않았습니다. Firestore 규칙 배포가 필요합니다.'
+          : `학생 성적 저장에 실패했습니다. ${e?.message || ''}`.trim()
+      );
+    } finally {
+      setSavingScoresFor(null);
+    }
+  }, [scoreRecords]);
+
   const historyStudentPastClasses = useMemo(() => {
     if (!historyStudent) return [];
     const raw = studentClassHistoryMap[historyStudent];
@@ -432,12 +654,32 @@ export default function StudentDataModal({ onClose }) {
     return arr;
   }, [historyStudent, studentClassHistoryMap]);
 
+  useEffect(() => {
+    if (!historyStudent) return;
+    const row = list.find((item) => item.name === historyStudent);
+    const rawGrade = String(row?.grade || '').replace(/\s+/g, '');
+    if (SCHOOL_GRADES.includes(rawGrade)) {
+      setScoreGradeFilter(rawGrade);
+    }
+    if (MOCK_GRADES.includes(rawGrade)) {
+      setMockGradeFilter(rawGrade);
+    }
+  }, [historyStudent, list]);
+
   return (
-    <div className="student-data-modal-overlay" onClick={onClose}>
-      <div className="student-data-modal" onClick={(e) => e.stopPropagation()}>
+    <div
+      className={fullScreen ? 'student-data-page-shell' : 'student-data-modal-overlay'}
+      onClick={fullScreen ? undefined : onClose}
+    >
+      <div
+        className={fullScreen ? 'student-data-modal student-data-modal-fullscreen' : 'student-data-modal'}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="student-data-modal-header">
           <h2>👥 학생 데이터</h2>
-          <button type="button" className="student-data-modal-close" onClick={onClose}>닫기</button>
+          <button type="button" className="student-data-modal-close" onClick={onClose}>
+            {fullScreen ? '메인 메뉴로' : '닫기'}
+          </button>
         </div>
         {loading ? (
           <p className="student-data-loading">불러오는 중...</p>
@@ -654,9 +896,9 @@ export default function StudentDataModal({ onClose }) {
                     background: '#fff',
                     borderRadius: '12px',
                     padding: '24px',
-                    maxWidth: '480px',
-                    width: '90%',
-                    maxHeight: '80vh',
+                    maxWidth: '1200px',
+                    width: '94%',
+                    maxHeight: '88vh',
                     overflow: 'auto',
                     boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
                   }}
@@ -680,67 +922,199 @@ export default function StudentDataModal({ onClose }) {
                       닫기
                     </button>
                   </div>
-                  <div style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
-                    <div style={{ fontWeight: '700', color: '#1e40af', marginBottom: '10px', fontSize: '0.95rem' }}>
-                      📚 이전 수강 반 (삭제된 반)
-                    </div>
-                    <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0 0 10px 0', lineHeight: 1.5 }}>
-                      숙제 과제 완료도에서 「반 삭제」 후 <strong>저장</strong>하면 여기에 기록됩니다. 현재 수강 반은 표의 「반」 열을 보세요.
-                    </p>
-                    {historyStudentPastClasses.length === 0 ? (
-                      <p style={{ color: '#9ca3af', margin: 0, fontSize: '0.9rem' }}>기록된 삭제 반 내역이 없습니다.</p>
-                    ) : (
-                      <ul style={{ margin: 0, paddingLeft: '18px' }}>
-                        {historyStudentPastClasses.map((entry, i) => (
-                          <li key={`${entry.className}-${entry.removedAt}-${i}`} style={{ marginBottom: '10px', fontSize: '0.88rem' }}>
-                            <div style={{ fontWeight: '600', color: '#374151' }}>
-                              {formatHomeworkClassDisplay(entry.className)}
-                            </div>
-                            <div style={{ color: '#6b7280', fontSize: '0.82rem', marginTop: '2px' }}>
-                              원문: <code style={{ fontSize: '0.78rem', wordBreak: 'break-all' }}>{entry.className}</code>
-                            </div>
-                            {entry.removedAt ? (
-                              <div style={{ color: '#9ca3af', fontSize: '0.78rem', marginTop: '4px' }}>
-                                삭제 기록 시각: {entry.removedAt.slice(0, 19).replace('T', ' ')}
-                              </div>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div style={{ fontWeight: '700', color: '#374151', marginBottom: '10px', fontSize: '0.95rem' }}>📩 카톡 발송 이력</div>
-                  {(() => {
-                    const byStudent = kakaoHistory.filter((e) => e.studentName === historyStudent);
-                    const byDate = {};
-                    byStudent.forEach((e) => {
-                      const d = e.date || e.timestamp?.slice(0, 10) || '';
-                      if (!byDate[d]) byDate[d] = [];
-                      byDate[d].push(e);
-                    });
-                    const dates = Object.keys(byDate).sort().reverse();
-                    if (dates.length === 0) {
-                      return <p style={{ color: '#6b7280', margin: 0 }}>아직 발송된 카톡이 없습니다.</p>;
-                    }
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        {dates.map((date) => (
-                          <div key={date}>
-                            <div style={{ fontWeight: '700', color: '#374151', marginBottom: '8px', fontSize: '0.95rem' }}>
-                              {date}
-                            </div>
-                            <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                              {(byDate[date] || []).map((entry, i) => (
-                                <li key={i} style={{ marginBottom: '8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                  {entry.message || '(내용 없음)'}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
+                  <div className="student-score-modal-grid">
+                    <div className="student-score-side-card">
+                      <div style={{ fontWeight: '700', color: '#1e40af', marginBottom: '10px', fontSize: '0.95rem' }}>
+                        📚 이전 수강 반 (삭제된 반)
                       </div>
-                    );
-                  })()}
+                      <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0 0 10px 0', lineHeight: 1.5 }}>
+                        숙제 과제 완료도에서 「반 삭제」 후 <strong>저장</strong>하면 여기에 기록됩니다. 현재 수강 반은 표의 「반」 열을 보세요.
+                      </p>
+                      {historyStudentPastClasses.length === 0 ? (
+                        <p style={{ color: '#9ca3af', margin: 0, fontSize: '0.9rem' }}>기록된 삭제 반 내역이 없습니다.</p>
+                      ) : (
+                        <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                          {historyStudentPastClasses.map((entry, i) => (
+                            <li key={`${entry.className}-${entry.removedAt}-${i}`} style={{ marginBottom: '10px', fontSize: '0.88rem' }}>
+                              <div style={{ fontWeight: '600', color: '#374151' }}>
+                                {formatHomeworkClassDisplay(entry.className)}
+                              </div>
+                              <div style={{ color: '#6b7280', fontSize: '0.82rem', marginTop: '2px' }}>
+                                원문: <code style={{ fontSize: '0.78rem', wordBreak: 'break-all' }}>{entry.className}</code>
+                              </div>
+                              {entry.removedAt ? (
+                                <div style={{ color: '#9ca3af', fontSize: '0.78rem', marginTop: '4px' }}>
+                                  삭제 기록 시각: {entry.removedAt.slice(0, 19).replace('T', ' ')}
+                                </div>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="student-score-main-card">
+                      <div className="student-score-section-header">
+                        <div>
+                          <div className="student-score-title">성적 입력</div>
+                          <p className="student-score-subtitle">
+                            내신은 중1~고3 4회 시험, 모의고사는 2018~2026년 고1~고3 3월/6월/9월/10월까지 과목별로 입력할 수 있습니다.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="student-score-save-btn"
+                          disabled={savingScoresFor === historyStudent}
+                          onClick={() => saveStudentScores(historyStudent)}
+                        >
+                          {savingScoresFor === historyStudent ? '저장 중…' : '성적 저장'}
+                        </button>
+                      </div>
+
+                      <div className="student-score-section">
+                        <div className="student-score-filter-row">
+                          <label className="student-score-filter-label">
+                            내신 학년
+                            <select value={scoreGradeFilter} onChange={(e) => setScoreGradeFilter(e.target.value)}>
+                              <option value="all">전체</option>
+                              {SCHOOL_GRADES.map((grade) => (
+                                <option key={grade} value={grade}>{grade}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="student-score-table-wrap">
+                          <table className="student-score-table">
+                            <thead>
+                              <tr>
+                                <th>구분</th>
+                                {SCHOOL_SCORE_SUBJECTS.map((subject) => (
+                                  <th key={subject}>{subject}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {visibleSchoolScoreSlots.map((slot) => (
+                                <tr key={slot.key}>
+                                  <td>{slot.grade} · {slot.label}</td>
+                                  {SCHOOL_SCORE_SUBJECTS.map((subject) => (
+                                    <td key={`${slot.key}-${subject}`}>
+                                      <input
+                                        type="text"
+                                        className="student-score-input"
+                                        value={selectedScoreRecord.schoolExamScores?.[slot.key]?.[subject] || ''}
+                                        onChange={(e) => updateStudentScoreValue(historyStudent, 'school', slot.key, subject, e.target.value)}
+                                        placeholder="-"
+                                      />
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="student-score-section">
+                        <div className="student-score-filter-row">
+                          <label className="student-score-filter-label">
+                            모의고사 연도
+                            <select value={mockYearFilter} onChange={(e) => setMockYearFilter(e.target.value)}>
+                              <option value="all">전체</option>
+                              {MOCK_YEARS.map((year) => (
+                                <option key={year} value={year}>{year}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="student-score-filter-label">
+                            학년
+                            <select value={mockGradeFilter} onChange={(e) => setMockGradeFilter(e.target.value)}>
+                              <option value="all">전체</option>
+                              {MOCK_GRADES.map((grade) => (
+                                <option key={grade} value={grade}>{grade}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="student-score-table-wrap">
+                          <table className="student-score-table">
+                            <thead>
+                              <tr>
+                                <th>구분</th>
+                                {MOCK_SCORE_SUBJECTS.map((subject) => (
+                                  <th key={subject}>{subject}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {visibleMockScoreSlots.map((slot) => (
+                                <tr key={slot.key}>
+                                  <td>{slot.year} · {slot.grade} · {slot.month}</td>
+                                  {MOCK_SCORE_SUBJECTS.map((subject) => (
+                                    <td key={`${slot.key}-${subject}`}>
+                                      <input
+                                        type="text"
+                                        className="student-score-input"
+                                        value={selectedScoreRecord.mockExamScores?.[slot.key]?.[subject] || ''}
+                                        onChange={(e) => updateStudentScoreValue(historyStudent, 'mock', slot.key, subject, e.target.value)}
+                                        placeholder="-"
+                                      />
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="student-score-section">
+                        <div className="student-score-title" style={{ fontSize: '1rem' }}>성적 추이 메모</div>
+                        <textarea
+                          className="student-score-trend-input"
+                          rows={5}
+                          placeholder="예: 중3 2학기부터 영어 상승, 2025 9월 모의고사 이후 수학 약세..."
+                          value={selectedScoreRecord.trendNote || ''}
+                          onChange={(e) => updateStudentTrendNote(historyStudent, e.target.value)}
+                        />
+                      </div>
+
+                      <div className="student-score-section">
+                        <div style={{ fontWeight: '700', color: '#374151', marginBottom: '10px', fontSize: '0.95rem' }}>📩 카톡 발송 이력</div>
+                        {(() => {
+                          const byStudent = kakaoHistory.filter((e) => e.studentName === historyStudent);
+                          const byDate = {};
+                          byStudent.forEach((e) => {
+                            const d = e.date || e.timestamp?.slice(0, 10) || '';
+                            if (!byDate[d]) byDate[d] = [];
+                            byDate[d].push(e);
+                          });
+                          const dates = Object.keys(byDate).sort().reverse();
+                          if (dates.length === 0) {
+                            return <p style={{ color: '#6b7280', margin: 0 }}>아직 발송된 카톡이 없습니다.</p>;
+                          }
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                              {dates.map((date) => (
+                                <div key={date}>
+                                  <div style={{ fontWeight: '700', color: '#374151', marginBottom: '8px', fontSize: '0.95rem' }}>
+                                    {date}
+                                  </div>
+                                  <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                                    {(byDate[date] || []).map((entry, i) => (
+                                      <li key={i} style={{ marginBottom: '8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                        {entry.message || '(내용 없음)'}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

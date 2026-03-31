@@ -1,4 +1,21 @@
 .sum15-viewer {
+  --sum15-page-bg: #ffffff;
+  --sum15-ink: #2c3e50;
+  --sum15-muted: #757575;
+  --sum15-source-accent: #e67e22;
+  --sum15-passage-accent: #3498db;
+  --sum15-interview-accent: #9b59b6;
+  --sum15-panel-bg-start: #f8f9fa;
+  --sum15-panel-bg-end: #e9ecef;
+  --sum15-choice-bg-start: #f5f5f5;
+  --sum15-choice-bg-end: #fafafa;
+  --sum15-panel-border: #bdbdbd;
+  --sum15-answer-bg: #fffef5;
+  --sum15-answer-title: #e74c3c;
+  --sum15-answer-accent: #3498db;
+  --sum15-page-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  --sum15-panel-shadow: 0 2px 6px rgba(52, 152, 219, 0.15);
+  --sum15-answer-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   margin: 20px 0;
   display: flex;
   flex-direction: column;
@@ -8,10 +25,10 @@
 .sum15-page {
   width: 210mm;
   min-height: 297mm;
-  background: white;
+  background: var(--sum15-page-bg);
   margin: 20px auto;
   padding: 25mm 20mm;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--sum15-page-shadow);
   page-break-after: always;
   box-sizing: border-box;
   display: flex;
@@ -43,7 +60,7 @@
   content: '';
   width: 6px;
   height: 28px;
-  background-color: #e67e22;
+  background-color: var(--sum15-source-accent);
   display: block;
   flex-shrink: 0;
   margin-top: 2px;
@@ -52,7 +69,7 @@
 .sum15-source-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #2c3e50;
+  color: var(--sum15-ink);
   letter-spacing: 0.3px;
   font-family: 'Arial', 'Helvetica', sans-serif;
   margin: 0 0 16px 0;
@@ -62,7 +79,7 @@
 .sum15-source-subtitle {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #757575;
+  color: var(--sum15-muted);
   letter-spacing: 0.2px;
   font-family: 'Arial', 'Helvetica', sans-serif;
   margin: 0;
@@ -72,16 +89,16 @@
 .sum15-original {
   margin: 0 0 10px 0;
   padding: 20px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-left: 5px solid #3498db;
+  background: linear-gradient(135deg, var(--sum15-panel-bg-start) 0%, var(--sum15-panel-bg-end) 100%);
+  border-left: 5px solid var(--sum15-passage-accent);
   border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(52, 152, 219, 0.15);
+  box-shadow: var(--sum15-panel-shadow);
 }
 
 .sum15-original-text {
   margin: 0;
   padding: 0;
-  color: #2c3e50;
+  color: var(--sum15-ink);
   font-size: 0.95rem;
   line-height: 1.8;
   white-space: pre-wrap;
@@ -101,17 +118,17 @@
 }
 
 .sum15-interview-text {
-  border-left-color: #9b59b6;
+  border-left-color: var(--sum15-interview-accent);
 }
 
 .sum15-question {
   font-size: 1rem;
   font-weight: 600;
-  color: #2c3e50;
+  color: var(--sum15-ink);
   margin: 6px 0 0 0;
   padding: 16px;
   background: transparent;
-  border: 1px solid #2c3e50;
+  border: 1px solid var(--sum15-ink);
   border-radius: 4px;
   text-align: left;
   box-shadow: none;
@@ -122,7 +139,7 @@
 
 .sum15-blank-line {
   flex: 1;
-  border-bottom: 2px solid #2c3e50;
+  border-bottom: 2px solid var(--sum15-ink);
   min-width: 200px;
   display: inline-block;
   height: 1.2em;
@@ -139,8 +156,8 @@
 .sum15-choices {
   margin: 0;
   padding: 16px;
-  background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
-  border: 2px solid #bdbdbd;
+  background: linear-gradient(135deg, var(--sum15-choice-bg-start) 0%, var(--sum15-choice-bg-end) 100%);
+  border: 2px solid var(--sum15-panel-border);
   border-radius: 4px;
   box-shadow: none;
 }
@@ -148,26 +165,31 @@
 .sum15-choices-title {
   font-size: 0.95rem;
   font-weight: 400;
-  color: #2c3e50;
+  color: var(--sum15-ink);
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #2c3e50;
+  border-bottom: 1px solid var(--sum15-ink);
 }
 
 .sum15-choices-content {
   font-size: 0.9rem;
-  color: #2c3e50;
+  color: var(--sum15-ink);
   line-height: 1.5;
   word-spacing: 4px;
   letter-spacing: 0.2px;
   font-weight: 400;
 }
 
+.sum15-choices-content b {
+  font-weight: 800;
+  color: var(--sum15-ink);
+}
+
 .sum15-condition {
   margin: 0;
   padding: 16px;
-  background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
-  border: 2px solid #bdbdbd;
+  background: linear-gradient(135deg, var(--sum15-choice-bg-start) 0%, var(--sum15-choice-bg-end) 100%);
+  border: 2px solid var(--sum15-panel-border);
   border-radius: 4px;
   box-shadow: none;
 }
@@ -175,15 +197,15 @@
 .sum15-condition-title {
   font-size: 0.95rem;
   font-weight: 400;
-  color: #2c3e50;
+  color: var(--sum15-ink);
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #2c3e50;
+  border-bottom: 1px solid var(--sum15-ink);
 }
 
 .sum15-condition-content {
   font-size: 0.9rem;
-  color: #2c3e50;
+  color: var(--sum15-ink);
   line-height: 1.5;
   word-spacing: 4px;
   letter-spacing: 0.2px;
@@ -199,28 +221,28 @@
   top: 0.4em;
   width: 6px;
   height: 6px;
-  background-color: #2c3e50;
+  background-color: var(--sum15-ink);
   border-radius: 50%;
 }
 
 .sum15-condition-content b {
   font-weight: 700;
-  color: #2c3e50;
+  color: var(--sum15-ink);
 }
 
 /* 답지 페이지 */
 .sum15-answer-page {
-  background: #fffef5;
+  background: var(--sum15-answer-bg);
 }
 
 .sum15-answer-title {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #e74c3c;
+  color: var(--sum15-answer-title);
   text-align: center;
   margin-bottom: 32px;
   padding-bottom: 16px;
-  border-bottom: 3px solid #e74c3c;
+  border-bottom: 3px solid var(--sum15-answer-title);
 }
 
 .sum15-answer-content {
@@ -231,22 +253,22 @@
 
 .sum15-answer-item {
   padding: 16px;
-  background: white;
-  border-left: 4px solid #3498db;
+  background: var(--sum15-page-bg);
+  border-left: 4px solid var(--sum15-answer-accent);
   border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--sum15-answer-shadow);
 }
 
 .sum15-answer-source {
   font-size: 1rem;
   font-weight: 700;
-  color: #2c3e50;
+  color: var(--sum15-ink);
   margin-bottom: 8px;
 }
 
 .sum15-answer-summary {
   font-size: 1rem;
-  color: #2c3e50;
+  color: var(--sum15-ink);
   line-height: 1.8;
   padding: 8px 0;
 }
@@ -266,7 +288,7 @@
 
 @media screen {
   .sum15-page {
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--sum15-page-shadow);
   }
 }
 

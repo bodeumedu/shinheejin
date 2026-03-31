@@ -103,6 +103,10 @@ service cloud.firestore {
     match /studentDataKakaoHistory/{document} {
       allow read, write: if true;
     }
+
+    match /studentDataScores/{document} {
+      allow read, write: if true;
+    }
   }
 }
 

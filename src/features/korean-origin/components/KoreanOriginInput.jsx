@@ -82,7 +82,7 @@ function KoreanOriginInput({ text, setText, onProcess, apiKey }) {
             required
             disabled={isLoading}
           />
-          <small>형식: 출처/영어원문 후 줄바꿈 두고 // 넣고 줄바꿈 두고 다음 지문 (슬래시 한·두 개 앞뒤 줄바꿈)</small>
+          <small>형식: 출처/영어원문 후 줄바꿈 두고 // 넣고 줄바꿈 두고 다음 지문 (슬래시 한·두 개 앞뒤 줄바꿈). 영어가 한 문장이면 한글도 한 문장으로, 쉼표·마침표 등 구두점 개수·순서를 영어와 맞춥니다.</small>
         </div>
 
         {error && (

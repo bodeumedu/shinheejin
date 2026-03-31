@@ -2,6 +2,46 @@ import { useState } from 'react'
 import { summarizeText, findWordMatches } from '../utils/sum40Analyzer'
 import './Sum40Input.css'
 
+const BLANK_SUFFIX = '______________'
+
+function normalizeMatchedWords(words) {
+  const seen = new Set()
+  const result = []
+
+  for (const word of words || []) {
+    const trimmed = String(word || '').trim()
+    const cleanedKey = trimmed.replace(/[^\w]/g, '').toLowerCase()
+    if (!cleanedKey || seen.has(cleanedKey)) continue
+    seen.add(cleanedKey)
+    result.push(trimmed)
+  }
+
+  return result
+}
+
+function chooseBlankTargets(words, count = 6) {
+  return normalizeMatchedWords(words)
+    .filter((word) => word.replace(/[^\w]/g, '').length >= 4)
+    .sort((a, b) => b.replace(/[^\w]/g, '').length - a.replace(/[^\w]/g, '').length)
+    .slice(0, count)
+}
+
+function buildBlankToken(word) {
+  const token = String(word || '')
+  const match = token.match(/^([^A-Za-z0-9]*)([A-Za-z0-9])([A-Za-z0-9'-]*)([^A-Za-z0-9]*)$/)
+  if (!match) return token
+
+  const [, prefix, firstChar, , suffix] = match
+  return `${prefix}${firstChar}${BLANK_SUFFIX}${suffix}`
+}
+
+function replaceFirstToken(text, target, replacement) {
+  if (!target) return text
+  const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`\\b${escaped}\\b`)
+  return text.replace(regex, replacement)
+}
+
 function Sum40Input({ text, setText, onProcess, apiKey }) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState(null)
@@ -66,48 +106,30 @@ function Sum40Input({ text, setText, onProcess, apiKey }) {
 
       try {
         const summary = await summarizeText(englishText, apiKey)
-        
-        // 원문 단어와 요약문 단어 매칭 (볼드 처리용)
-        let boldedSummary = summary
+
+        let matchedWords = []
         try {
-          const matchedWords = await findWordMatches(englishText, summary, apiKey)
-          console.log('매칭된 단어들:', matchedWords) // 디버깅용
-          
-          if (matchedWords && matchedWords.length > 0) {
-            // 매칭된 단어들을 볼드 처리 (긴 단어부터 처리하여 부분 매칭 방지)
-            const sortedWords = matchedWords.sort((a, b) => b.length - a.length)
-            
-            sortedWords.forEach(word => {
-              // 단어 경계를 고려하여 정확히 일치하는 경우만 볼드 처리
-              // 이미 볼드 처리된 부분은 건너뛰기
-              const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-              const wordRegex = new RegExp(`(?<!<b>\\s*)\\b(${escapedWord})\\b(?![^<]*</b>)`, 'gi')
-              
-              boldedSummary = boldedSummary.replace(wordRegex, (match, p1) => {
-                // 이미 HTML 태그 안에 있는지 확인
-                const beforeMatch = boldedSummary.substring(0, boldedSummary.indexOf(match))
-                const openTags = (beforeMatch.match(/<b>/g) || []).length
-                const closeTags = (beforeMatch.match(/<\/b>/g) || []).length
-                
-                // 태그가 열려있지 않은 경우만 볼드 처리
-                if (openTags === closeTags) {
-                  return `<b>${p1}</b>`
-                }
-                return match
-              })
-            })
-          }
+          matchedWords = await findWordMatches(englishText, summary, apiKey)
         } catch (matchError) {
           console.error('단어 매칭 중 오류:', matchError)
-          // 매칭 오류 시 원본 요약문 사용
-          boldedSummary = summary
+          matchedWords = []
         }
-        
+
+        const blankTargets = chooseBlankTargets(matchedWords, 6)
+        let blankedSummary = summary
+
+        blankTargets.forEach((word) => {
+          blankedSummary = replaceFirstToken(blankedSummary, word, buildBlankToken(word))
+        })
+
         results.push({
           source: source.trim(),
           original: englishText.trim(),
-          summary: summary,
-          boldedSummary: boldedSummary
+          summary,
+          matchedWords,
+          blankTargets,
+          blankedSummary,
+          answerLine: blankTargets.map((word, idx) => `${idx + 1}. ${word}`).join(' / '),
         })
       } catch (error) {
         console.error(`지문 ${i + 1} 처리 중 오류:`, error)
@@ -130,27 +152,34 @@ function Sum40Input({ text, setText, onProcess, apiKey }) {
       }
       
       let formatted = r.source || `지문 ${index + 1}`
-      formatted += '\n\n' // 출처 다음 줄바꿈 2번
-      formatted += r.original + '\n\n' // 영어원문 + 줄바꿈 2번
-      formatted += '▶\n' // 화살표 기호 + 줄바꿈
-      // 볼드 처리된 요약문 사용
-      const summaryText = r.boldedSummary || r.summary
-      formatted += summaryText + '\n\n\n' // 요약문 + 줄바꿈 3번
+      formatted += '\n\n'
+      formatted += r.original + '\n\n'
+      formatted += '▶ 다음 요약문의 빈칸을 완성하시오.\n'
+      formatted += `${r.blankedSummary}\n\n`
+      formatted += '<조건>\n빈칸은 제시된 첫 글자를 참고하여 알맞은 단어를 쓰시오.\n\n\n'
       
       return {
         text: formatted,
-        summary: summaryText, // HTML 포함된 요약문
+        summary: r.summary,
         source: r.source || `지문 ${index + 1}`
       }
     })
 
     const allText = formattedResults.map(r => r.text).join('')
+    const answerSheet = results
+      .filter(r => !r.error)
+      .map((r, index) => {
+        const sourceLabel = r.source || `지문 ${index + 1}`
+        return `${sourceLabel}\n정답: ${r.answerLine || '-'}\n완성 요약문: ${r.summary}`
+      })
+      .join('\n\n')
 
     return {
       original: inputText,
       processed: allText,
       summary: allText,
-      results: results
+      answerSheet,
+      results
     }
   }
 

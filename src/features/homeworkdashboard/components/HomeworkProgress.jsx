@@ -102,6 +102,14 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     };
   }, [school, grade]);
 
+  const getDefaultChapterLabel = useCallback((chapter) => {
+    return chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`;
+  }, [chapterConfig.fieldPrefix]);
+
+  const getDefaultVisibleChapters = useCallback(() => {
+    return chapterConfig.chapters.length > 0 ? [chapterConfig.chapters[0]] : [];
+  }, [chapterConfig.chapters]);
+
   const getDefaultData = () => {
     // 기본 학생 목록 제거 - 0명에서 시작
     const defaultStudents = [];
@@ -157,18 +165,25 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   const [headerTexts, setHeaderTexts] = useState(() => {
     // 기본값 설정
     const defaultHeaders = {
-      mainTitle: chapterConfig.title,
+      mainTitle: '',
       bodeumTitle: '보듬내신모의고사',
       visionTitle: '보듬교육의 시선',
+      visibleChapters: chapterConfig.chapters.length > 0 ? [chapterConfig.chapters[0]] : [],
       chapters: {},
       bodeum: { 1: '1회', 2: '2회', 3: '3회', 4: '4회', 5: '5회', 6: '6회', 7: '7회', 8: '8회', 9: '9회', 10: '10회' },
       vision: { 1: '1회', 2: '2회', 3: '3회', 4: '4회' },
     };
     chapterConfig.chapters.forEach(chapter => {
-      defaultHeaders.chapters[chapter] = chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`;
+      defaultHeaders.chapters[chapter] = getDefaultChapterLabel(chapter);
     });
     return defaultHeaders;
   });
+
+  const visibleChapters = useMemo(() => {
+    const raw = Array.isArray(headerTexts.visibleChapters) ? headerTexts.visibleChapters : [];
+    const filtered = raw.filter((chapter) => chapterConfig.chapters.includes(chapter));
+    return filtered.length > 0 ? filtered : getDefaultVisibleChapters();
+  }, [chapterConfig.chapters, getDefaultVisibleChapters, headerTexts.visibleChapters]);
   
   // 진도와 과제 입력 중인 날짜 추적 (다른 사용자의 업데이트가 덮어쓰지 않도록)
   const dirtyDetailDatesRef = useRef(new Set());
@@ -189,7 +204,64 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   // 저장 상태 관리
   const [savingDetail, setSavingDetail] = useState(false);
   const [saveDetailMessage, setSaveDetailMessage] = useState('');
-  
+  const [savingProgress, setSavingProgress] = useState(false);
+  const [saveProgressMessage, setSaveProgressMessage] = useState('');
+  const [hasUnsavedProgress, setHasUnsavedProgress] = useState(false);
+  const [hasUnsavedDetail, setHasUnsavedDetail] = useState(false);
+  const hasUnsavedProgressRef = useRef(false);
+
+  const markProgressPageDirty = useCallback(() => {
+    hasUnsavedProgressRef.current = true;
+    setHasUnsavedProgress(true);
+  }, []);
+
+  const clearProgressPageDirty = useCallback(() => {
+    hasUnsavedProgressRef.current = false;
+    setHasUnsavedProgress(false);
+  }, []);
+
+  const markDetailPageDirty = useCallback(() => {
+    setHasUnsavedDetail(true);
+  }, []);
+
+  const clearDetailPageDirty = useCallback(() => {
+    dirtyDetailDatesRef.current.clear();
+    setHasUnsavedDetail(false);
+  }, []);
+
+  const buildSanitizedPhoneNumbers = useCallback((phoneNumbersToSave) => {
+    const cleanedPhoneNumbers = {};
+
+    if (phoneNumbersToSave && typeof phoneNumbersToSave === 'object') {
+      Object.keys(phoneNumbersToSave).forEach(student => {
+        const studentPhone = phoneNumbersToSave[student];
+        if (studentPhone === undefined || studentPhone === null) return;
+
+        if (typeof studentPhone === 'object' && !Array.isArray(studentPhone)) {
+          const cleaned = {};
+
+          if (studentPhone.student !== undefined && studentPhone.student !== null && studentPhone.student !== '') {
+            const studentValue = String(studentPhone.student).trim();
+            if (studentValue !== '') cleaned.student = studentValue;
+          }
+
+          if (studentPhone.parent !== undefined && studentPhone.parent !== null && studentPhone.parent !== '') {
+            const parentValue = String(studentPhone.parent).trim();
+            if (parentValue !== '') cleaned.parent = parentValue;
+          }
+
+          if (Object.keys(cleaned).length > 0) {
+            cleanedPhoneNumbers[student] = cleaned;
+          }
+        } else if (typeof studentPhone === 'string' && studentPhone.trim() !== '') {
+          cleanedPhoneNumbers[student] = studentPhone.trim();
+        }
+      });
+    }
+
+    return JSON.parse(JSON.stringify(cleanedPhoneNumbers));
+  }, []);
+
   // 진도와 과제 데이터 즉시 저장
   const handleSaveProgressDetail = useCallback(async () => {
     if (!isFirebaseConfigured() || !db || !docRef) {
@@ -203,15 +275,13 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     
     try {
       await setDoc(docRef, {
-        students,
-        progressData,
-        scores,
         progressDetailData,
+        detailPageUpdatedAt: new Date().toISOString(),
         lastUpdated: new Date().toISOString(),
       }, { merge: true });
       
       // 저장 완료 후 입력 중 표시 초기화
-      dirtyDetailDatesRef.current.clear();
+      clearDetailPageDirty();
       
       setSaveDetailMessage('✅ 저장 완료!');
       setTimeout(() => setSaveDetailMessage(''), 2000);
@@ -222,7 +292,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     } finally {
       setSavingDetail(false);
     }
-  }, [students, progressData, scores, progressDetailData, docRef]);
+  }, [clearDetailPageDirty, docRef, progressDetailData]);
   
   // 11월과 12월의 화요일과 목요일 날짜 계산
   const getTuesdayThursdayDates = useMemo(() => {
@@ -303,18 +373,23 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       isInitialLoadRef.current = true;
       lastSaveTimeRef.current = 0;
       headerTextsLoadedFromFirestoreRef.current = false; // docId 변경 시 플래그 리셋
+      clearProgressPageDirty();
+      clearDetailPageDirty();
+      setSaveProgressMessage('');
+      setSaveDetailMessage('');
       
       // docId 변경 시 headerTexts를 기본값으로 초기화 (Firestore에서 불러올 때까지)
       const defaultHeaders = {
-        mainTitle: chapterConfig.title,
+        mainTitle: '',
         bodeumTitle: '보듬내신모의고사',
         visionTitle: '보듬교육의 시선',
+        visibleChapters: chapterConfig.chapters.length > 0 ? [chapterConfig.chapters[0]] : [],
         chapters: {},
         bodeum: { 1: '1회', 2: '2회', 3: '3회', 4: '4회', 5: '5회', 6: '6회', 7: '7회', 8: '8회', 9: '9회', 10: '10회' },
         vision: { 1: '1회', 2: '2회', 3: '3회', 4: '4회' },
       };
       chapterConfig.chapters.forEach(chapter => {
-        defaultHeaders.chapters[chapter] = chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`;
+        defaultHeaders.chapters[chapter] = getDefaultChapterLabel(chapter);
       });
       setHeaderTexts(defaultHeaders);
     }
@@ -452,8 +527,12 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
             return;
           }
           
+          const shouldPreserveUnsavedProgress = !isInitialLoad && hasUnsavedProgressRef.current;
+
           // 초기 로드이거나, 최근 저장 후 2초 이내가 아닐 때만 Firestore 데이터로 업데이트
-          if (isInitialLoad || (now - lastSaveTimeRef.current > 2000)) {
+          if (shouldPreserveUnsavedProgress) {
+            console.log('⏸️ 저장 전 progress 페이지 로컬 변경사항 보존');
+          } else if (isInitialLoad || (now - lastSaveTimeRef.current > 2000)) {
             console.log('✅ Firestore 데이터로 상태 업데이트', { isInitialLoad, timeSinceLastSave: now - lastSaveTimeRef.current });
             
             setStudents(filteredStudents);
@@ -553,13 +632,14 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
               }
               chapterConfig.chapters.forEach(chapter => {
                 if (!loadedHeaders.chapters[chapter]) {
-                  loadedHeaders.chapters[chapter] = chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`;
+                  loadedHeaders.chapters[chapter] = getDefaultChapterLabel(chapter);
                 }
               });
-              // mainTitle이 없으면 기본값 설정
-              if (!loadedHeaders.mainTitle) {
-                loadedHeaders.mainTitle = chapterConfig.title;
-              }
+              loadedHeaders.mainTitle = typeof loadedHeaders.mainTitle === 'string' ? loadedHeaders.mainTitle : '';
+              const loadedVisible = Array.isArray(loadedHeaders.visibleChapters)
+                ? loadedHeaders.visibleChapters.filter((chapter) => chapterConfig.chapters.includes(chapter))
+                : [];
+              loadedHeaders.visibleChapters = loadedVisible.length > 0 ? loadedVisible : getDefaultVisibleChapters();
               setHeaderTexts(loadedHeaders);
               headerTextsLoadedFromFirestoreRef.current = true;
             } else {
@@ -662,7 +742,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       clearTimeout(timeoutId);
       unsubscribe();
     };
-  }, [docRef, docId, chapterConfig]);
+  }, [chapterConfig, clearDetailPageDirty, clearProgressPageDirty, docId, docRef]);
   
   // Firestore에 데이터 저장하기
   const saveData = useCallback(async (studentsData, progressData, scoresData, headerTextsData = null, phoneNumbersData = null) => {
@@ -670,55 +750,13 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     if (!isFirebaseConfigured() || !db || !docRef) {
       console.error('Firebase가 설정되지 않아 데이터를 저장할 수 없습니다.');
       setFirebaseError('Firebase 설정 필요 - 데이터가 저장되지 않습니다');
-      return;
+      throw new Error('Firebase가 설정되지 않아 데이터를 저장할 수 없습니다.');
     }
     
     try {
       // phoneNumbers에서 undefined 값 완전히 제거 및 정리
       const phoneNumbersToSave = phoneNumbersData !== null ? phoneNumbersData : phoneNumbers;
-      const cleanedPhoneNumbers = {};
-      
-      if (phoneNumbersToSave && typeof phoneNumbersToSave === 'object') {
-        Object.keys(phoneNumbersToSave).forEach(student => {
-          const studentPhone = phoneNumbersToSave[student];
-          
-          // studentPhone이 undefined이거나 null이면 스킵
-          if (studentPhone === undefined || studentPhone === null) return;
-          
-          // 객체 형태인 경우 (student, parent)
-          if (typeof studentPhone === 'object' && !Array.isArray(studentPhone)) {
-            const cleaned = {};
-            
-            // student 필드 처리
-            if (studentPhone.student !== undefined && studentPhone.student !== null && studentPhone.student !== '') {
-              const studentValue = String(studentPhone.student).trim();
-              if (studentValue !== '') {
-                cleaned.student = studentValue;
-              }
-            }
-            
-            // parent 필드 처리
-            if (studentPhone.parent !== undefined && studentPhone.parent !== null && studentPhone.parent !== '') {
-              const parentValue = String(studentPhone.parent).trim();
-              if (parentValue !== '') {
-                cleaned.parent = parentValue;
-              }
-            }
-            
-            // student와 parent 중 하나라도 유효한 값이 있으면 포함
-            if (Object.keys(cleaned).length > 0) {
-              cleanedPhoneNumbers[student] = cleaned;
-            }
-          } 
-          // 문자열 형태인 경우 (하위 호환성)
-          else if (typeof studentPhone === 'string' && studentPhone.trim() !== '') {
-            cleanedPhoneNumbers[student] = studentPhone.trim();
-          }
-        });
-      }
-      
-      // 최종적으로 JSON 직렬화/역직렬화로 undefined 완전히 제거
-      const finalPhoneNumbers = JSON.parse(JSON.stringify(cleanedPhoneNumbers));
+      const finalPhoneNumbers = buildSanitizedPhoneNumbers(phoneNumbersToSave);
       
       const dataToSave = {
         students: studentsData,
@@ -780,67 +818,38 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       } else {
         setFirebaseError(`데이터 저장 실패: ${error.message || error.code || '알 수 없는 오류'}`);
       }
+      throw error;
     }
-  }, [docRef]);
+  }, [buildSanitizedPhoneNumbers, collectionName, docRef, phoneNumbers]);
+
+  const handleSaveProgressPage = useCallback(async () => {
+    if (!isFirebaseConfigured() || !db || !docRef) {
+      setSaveProgressMessage('⚠️ Firebase가 설정되지 않아 저장할 수 없습니다.');
+      setTimeout(() => setSaveProgressMessage(''), 3000);
+      return;
+    }
+
+    setSavingProgress(true);
+    setSaveProgressMessage('저장 중...');
+
+    try {
+      await saveData(students, progressData, scores, headerTexts, phoneNumbers);
+      clearProgressPageDirty();
+      setSaveProgressMessage('✅ 전체 과제 상황 저장 완료!');
+      setTimeout(() => setSaveProgressMessage(''), 2000);
+    } catch (error) {
+      console.error('전체 과제 상황 저장 실패:', error);
+      setSaveProgressMessage('❌ 저장 실패: ' + (error.message || '알 수 없는 오류'));
+      setTimeout(() => setSaveProgressMessage(''), 3000);
+    } finally {
+      setSavingProgress(false);
+    }
+  }, [clearProgressPageDirty, docRef, headerTexts, phoneNumbers, progressData, saveData, scores, students]);
   
   // students 상태가 변경될 때마다 studentsRef 업데이트
   useEffect(() => {
     studentsRef.current = students;
   }, [students]);
-  
-  // 데이터가 변경될 때마다 저장 (debounce 적용) - 진도와 과제 데이터는 제외 (저장 버튼으로만 저장)
-  // 전화번호는 별도로 저장하므로 여기서는 제외
-  useEffect(() => {
-    if (!loading && students.length > 0) {
-      const timeoutId = setTimeout(() => {
-        saveData(students, progressData, scores, headerTexts, phoneNumbers);
-      }, 500); // 500ms 지연 후 저장 (debounce)
-      
-      return () => clearTimeout(timeoutId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [students, progressData, scores, headerTexts, saveData, loading]);
-  // phoneNumbers는 의존성에서 제외 (별도 저장 로직 사용)
-  
-  // 전화번호 전용 저장 (더 짧은 debounce로 즉시 저장)
-  const phoneSaveTimerRef = useRef(null);
-  useEffect(() => {
-    if (!loading && Object.keys(phoneNumbers).length > 0) {
-      // 이전 타이머 취소
-      if (phoneSaveTimerRef.current) {
-        clearTimeout(phoneSaveTimerRef.current);
-      }
-      
-      // 1초 후 저장 (입력이 완료된 후)
-      phoneSaveTimerRef.current = setTimeout(() => {
-        console.log('📞 전화번호 저장 시도:', phoneNumbers);
-        saveData(students, progressData, scores, headerTexts, phoneNumbers)
-          .then(() => {
-            console.log('✅ 전화번호 저장 완료');
-          })
-          .catch(error => {
-            console.error('❌ 전화번호 저장 실패:', error);
-          });
-      }, 1000);
-      
-      return () => {
-        if (phoneSaveTimerRef.current) {
-          clearTimeout(phoneSaveTimerRef.current);
-        }
-      };
-    }
-  }, [phoneNumbers, students, progressData, scores, headerTexts, saveData, loading]);
-  
-  // 헤더 텍스트 변경 시 저장
-  useEffect(() => {
-    if (!loading) {
-      const timeoutId = setTimeout(() => {
-        saveData(students, progressData, scores, headerTexts);
-      }, 500);
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [headerTexts, loading, students, progressData, scores, saveData]);
   
   // chapterConfig 변경 시 headerTexts의 chapters 부분 업데이트
   // (Firestore에서 불러온 값이 없을 때만 기본값으로 채우기)
@@ -855,17 +864,16 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       const newChapters = {};
       chapterConfig.chapters.forEach(chapter => {
         // 기존 값이 있으면 유지, 없으면 기본값 사용
-        newChapters[chapter] = prev.chapters?.[chapter] || 
-          (chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`);
+        newChapters[chapter] = prev.chapters?.[chapter] || getDefaultChapterLabel(chapter);
       });
       updated.chapters = newChapters;
-      // mainTitle도 업데이트 (기존 값이 없으면 기본값 사용)
-      if (!prev.mainTitle) {
-        updated.mainTitle = chapterConfig.title;
-      }
+      const nextVisible = Array.isArray(prev.visibleChapters)
+        ? prev.visibleChapters.filter((chapter) => chapterConfig.chapters.includes(chapter))
+        : [];
+      updated.visibleChapters = nextVisible.length > 0 ? nextVisible : getDefaultVisibleChapters();
       return updated;
     });
-  }, [chapterConfig]);
+  }, [chapterConfig, getDefaultChapterLabel, getDefaultVisibleChapters]);
   
   // 새 학생 이름 입력 상태
   const [newStudentName, setNewStudentName] = useState('');
@@ -984,6 +992,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       setStudents(mergedStudents);
       setPhoneNumbers(mergedPhones);
       await saveData(mergedStudents, progressData, scores, headerTexts, mergedPhones);
+      clearProgressPageDirty();
       alert(`✅ 업로드 완료 (${Object.keys(newPhones).length}명 전화번호 반영). 영어 과제 관리에서만 사용됩니다.`);
     } catch (err) {
       console.error(err);
@@ -992,9 +1001,10 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       setPhoneUploading(false);
       e.target.value = '';
     }
-  }, [students, progressData, scores, headerTexts, phoneNumbers, saveData]);
+  }, [clearProgressPageDirty, students, progressData, scores, headerTexts, phoneNumbers, saveData]);
 
   const handleCheckboxChange = (student, assignment) => {
+    markProgressPageDirty();
     setProgressData(prev => ({
       ...prev,
       [student]: {
@@ -1005,6 +1015,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   };
   
   const handleScoreChange = (student, assignment, value) => {
+    markProgressPageDirty();
     setScores(prev => ({
       ...prev,
       [student]: {
@@ -1013,6 +1024,21 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       },
     }));
   };
+
+  const handleAddChapterColumn = useCallback(() => {
+    const nextChapter = chapterConfig.chapters.find((chapter) => !visibleChapters.includes(chapter));
+    if (nextChapter == null) return;
+
+    markProgressPageDirty();
+    setHeaderTexts(prev => ({
+      ...prev,
+      visibleChapters: [...visibleChapters, nextChapter],
+      chapters: {
+        ...(prev.chapters || {}),
+        [nextChapter]: prev.chapters?.[nextChapter] || getDefaultChapterLabel(nextChapter),
+      },
+    }));
+  }, [chapterConfig.chapters, getDefaultChapterLabel, markProgressPageDirty, visibleChapters]);
   
   // 로딩 중 표시
   if (loading) {
@@ -1050,6 +1076,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     }
     
     const studentName = newStudentName.trim();
+    markProgressPageDirty();
     const newStudents = [...students, studentName];
     setStudents(newStudents);
     
@@ -1130,6 +1157,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   // 학생 제거 (퇴원)
   const handleRemoveStudent = (student) => {
     if (window.confirm(`${student} 학생을 퇴원 처리하시겠습니까?`)) {
+      markProgressPageDirty();
       const newStudents = students.filter(s => s !== student);
       setStudents(newStudents);
       
@@ -1162,6 +1190,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   const handlePhoneNumberChange = (student, phoneNumber, type = 'student') => {
     const formatted = formatPhoneNumber(phoneNumber);
     const cleanedPhone = formatted.replace(/-/g, '').trim();
+    markProgressPageDirty();
     
     // 입력 중 플래그 설정
     phoneInputInProgressRef.current.add(student);
@@ -1218,6 +1247,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   
   // 헤더 텍스트 변경 핸들러
   const handleHeaderTextChange = (type, key, value) => {
+    markProgressPageDirty();
     setHeaderTexts(prev => {
       // mainTitle, bodeumTitle, visionTitle 같은 단일 값 처리
       if (type === 'mainTitle' || type === 'bodeumTitle' || type === 'visionTitle') {
@@ -1236,7 +1266,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       };
     });
   };
-  
+
   // 카카오톡 전송 미리보기 생성 (솔라피 API 사용 전 단계)
   const handleKakaoSend = async () => {
     if (students.length === 0) {
@@ -1315,12 +1345,11 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       content += `👤 ${student}\n\n`;
         
       // 강별(모의고사) 체크
-      chapterConfig.chapters.forEach(chapter => {
+      visibleChapters.forEach(chapter => {
         const field = `${chapterConfig.fieldPrefix}${chapter}`;
         const isCompleted = progressData[student]?.[field] || false;
-        const chapterText = headerTexts.chapters?.[chapter] || 
-          (chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`);
-        const mainTitle = headerTexts.mainTitle || chapterConfig.title;
+        const chapterText = headerTexts.chapters?.[chapter] || getDefaultChapterLabel(chapter);
+        const mainTitle = String(headerTexts.mainTitle || '').trim();
         
         // 반 전체 학생이 모두 미완료인지 확인
         const allStudentsIncomplete = students.every(s => !progressData[s]?.[field]);
@@ -1330,9 +1359,9 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
         // 제출기간 아님(모든 학생이 미완료)인 경우 메시지에서 제외
         if (!allStudentsIncomplete) {
           if (isCompleted) {
-            content += `${icon} ${mainTitle} ${chapterText}: 완료\n`;
+            content += `${icon} ${mainTitle ? `${mainTitle} ` : ''}${chapterText}: 완료\n`;
           } else {
-            content += `${icon} ${mainTitle} ${chapterText}: 미완료\n`;
+            content += `${icon} ${mainTitle ? `${mainTitle} ` : ''}${chapterText}: 미완료\n`;
           }
         }
       });
@@ -1602,6 +1631,18 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
               <div className="section-header">
                 <h3>전체 과제 상황</h3>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {saveProgressMessage && (
+                    <span className={`save-detail-message ${saveProgressMessage.includes('✅') ? 'success' : saveProgressMessage.includes('❌') ? 'error' : 'info'}`}>
+                      {saveProgressMessage}
+                    </span>
+                  )}
+                  <button
+                    className="save-detail-btn"
+                    onClick={handleSaveProgressPage}
+                    disabled={savingProgress}
+                  >
+                    {savingProgress ? '저장 중...' : hasUnsavedProgress ? '💾 전체 과제 상황 저장' : '저장됨'}
+                  </button>
                   {firebaseError && (
                     <div style={{ 
                       background: '#fee', 
@@ -1679,14 +1720,25 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                   <thead>
                     <tr>
                       <th rowSpan="2" style={{ width: '90px', minWidth: '90px', maxWidth: '90px', padding: '12px 16px', boxSizing: 'border-box' }}>학생</th>
-                      <th colSpan={chapterConfig.chapters.length}>
-                        <input
-                          type="text"
-                          className="header-input main-header-input"
-                          value={headerTexts.mainTitle || chapterConfig.title}
-                          onChange={(e) => handleHeaderTextChange('mainTitle', 'title', e.target.value)}
-                          placeholder={chapterConfig.title}
-                        />
+                      <th colSpan={Math.max(1, visibleChapters.length)}>
+                        <div className="header-main-group">
+                          <input
+                            type="text"
+                            className="header-input main-header-input"
+                            value={headerTexts.mainTitle || ''}
+                            onChange={(e) => handleHeaderTextChange('mainTitle', 'title', e.target.value)}
+                            placeholder="교재명"
+                          />
+                          <button
+                            type="button"
+                            className="chapter-add-btn"
+                            onClick={handleAddChapterColumn}
+                            disabled={visibleChapters.length >= chapterConfig.chapters.length}
+                            title="강 추가"
+                          >
+                            +
+                          </button>
+                        </div>
                       </th>
                       <th rowSpan="2">어휘워크북</th>
                       <th colSpan="10">
@@ -1714,8 +1766,8 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                       <th rowSpan="2">퇴원</th>
                     </tr>
                     <tr>
-                      {chapterConfig.chapters.map((chapter) => {
-                        const defaultValue = chapterConfig.fieldPrefix.startsWith('mock') ? `${chapter}월` : `${chapter}강`;
+                      {visibleChapters.map((chapter) => {
+                        const defaultValue = getDefaultChapterLabel(chapter);
                         const currentValue = headerTexts.chapters?.[chapter];
                         return (
                           <th key={`${chapterConfig.fieldPrefix}-h-${chapter}`} className="header-input-cell">
@@ -1765,7 +1817,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                     {sortedStudents.map((student) => (
                         <tr key={student}>
                         <td className="student-name">{student}</td>
-                        {chapterConfig.chapters.map((chapter) => (
+                        {visibleChapters.map((chapter) => (
                           <td key={`${chapterConfig.fieldPrefix}-${student}-${chapter}`}>
                             <input
                               type="checkbox"
@@ -1897,7 +1949,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                     onClick={handleSaveProgressDetail}
                     disabled={savingDetail}
                   >
-                    {savingDetail ? '저장 중...' : '💾 저장하기'}
+                    {savingDetail ? '저장 중...' : hasUnsavedDetail ? '💾 진도와 과제 저장' : '저장됨'}
                   </button>
                 </div>
               </div>
@@ -1932,6 +1984,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                               value={record.progress || ''}
                               onChange={(e) => {
                                 dirtyDetailDatesRef.current.add(dateKey);
+                                markDetailPageDirty();
                                 setProgressDetailData(prev => ({
                                   ...prev,
                                   [dateKey]: {
@@ -1950,6 +2003,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                               value={record.assignment || ''}
                               onChange={(e) => {
                                 dirtyDetailDatesRef.current.add(dateKey);
+                                markDetailPageDirty();
                                 setProgressDetailData(prev => ({
                                   ...prev,
                                   [dateKey]: {
@@ -1968,6 +2022,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                               value={record.attitude || ''}
                               onChange={(e) => {
                                 dirtyDetailDatesRef.current.add(dateKey);
+                                markDetailPageDirty();
                                 setProgressDetailData(prev => ({
                                   ...prev,
                                   [dateKey]: {
@@ -1986,6 +2041,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                               value={record.notes || ''}
                               onChange={(e) => {
                                 dirtyDetailDatesRef.current.add(dateKey);
+                                markDetailPageDirty();
                                 setProgressDetailData(prev => ({
                                   ...prev,
                                   [dateKey]: {

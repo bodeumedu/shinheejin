@@ -1,18 +1,19 @@
 import './Sum30Viewer.css'
+import { getSum15ThemeCssVars } from '../../sum15/utils/sum15Themes'
 
-function Sum30Viewer({ data }) {
+function Sum30Viewer({ data, hideAnswerPage = false, theme = 'classic', idPrefix = 'sum30' }) {
   if (!data || !data.results || data.results.length === 0) {
     return <div>데이터가 없습니다.</div>
   }
 
   return (
-    <div className="sum30-viewer">
+    <div className="sum30-viewer" style={getSum15ThemeCssVars(theme)}>
       {/* 문제 페이지들 */}
       {data.results.map((result, idx) => {
         if (result.error) return null
         
         return (
-          <div key={`question-${idx}`} id={`sum30-page-${idx}`} className="sum30-page">
+          <div key={`question-${idx}`} id={`${idPrefix}-page-${idx}`} className="sum30-page">
             <div className="sum30-page-content">
               {/* 출처 */}
               {result.source && (
@@ -63,22 +64,24 @@ function Sum30Viewer({ data }) {
       })}
       
       {/* 답지 페이지 (맨 마지막) */}
-      <div id="sum30-answer-page" className="sum30-page sum30-answer-page">
-        <div className="sum30-page-content">
-          <div className="sum30-answer-title">답지</div>
-          <div className="sum30-answer-content">
-            {data.results
-              .filter(r => !r.error)
-              .map((r, idx) => (
-                <div key={`answer-${idx}`} className="sum30-answer-item">
-                  <div className="sum30-answer-source">{r.source || `지문 ${idx + 1}`}</div>
-                  <div className="sum30-answer-summary">{r.summary}</div>
-                </div>
-              ))
-            }
+      {!hideAnswerPage && (
+        <div id={`${idPrefix}-answer-page`} className="sum30-page sum30-answer-page">
+          <div className="sum30-page-content">
+            <div className="sum30-answer-title">답지</div>
+            <div className="sum30-answer-content">
+              {data.results
+                .filter(r => !r.error)
+                .map((r, idx) => (
+                  <div key={`answer-${idx}`} className="sum30-answer-item">
+                    <div className="sum30-answer-source">{r.source || `지문 ${idx + 1}`}</div>
+                    <div className="sum30-answer-summary">{r.summary}</div>
+                  </div>
+                ))
+              }
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

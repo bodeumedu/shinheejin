@@ -257,6 +257,39 @@
   padding: 6px 10px;
 }
 
+.header-main-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-main-group .main-header-input {
+  flex: 1;
+}
+
+.chapter-add-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chapter-add-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.chapter-add-btn:disabled {
+  background: #cbd5e1;
+  cursor: not-allowed;
+}
+
 .progress-table td {
   padding: 12px 16px;
   text-align: center;

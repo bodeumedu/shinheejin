@@ -5,7 +5,7 @@ function WordShuffler() {
   const [inputWords, setInputWords] = useState('')
   const [shuffledWords, setShuffledWords] = useState('')
   const [splitDelimiter, setSplitDelimiter] = useState(' ') // 기본값: 공백
-  const [joinDelimiter, setJoinDelimiter] = useState('/') // 기본값: /
+  const [joinDelimiter, setJoinDelimiter] = useState(' / ') // 기본값: 공백 + 슬래시 + 공백
   const [tupleLength, setTupleLength] = useState(1) // 기본값: 1 (단어 단위)
   const [removeRepeated, setRemoveRepeated] = useState(false)
   const [removePunctuation, setRemovePunctuation] = useState(false)
@@ -272,7 +272,7 @@ function WordShuffler() {
                 className="word-shuffler-input"
                 value={joinDelimiter}
                 onChange={(e) => setJoinDelimiter(e.target.value)}
-                placeholder="/"
+                placeholder=" / "
               />
               <p className="word-shuffler-description">
                 섞인 결과를 이 문자로 연결합니다. (줄바꿈은 \n을 사용하세요.)

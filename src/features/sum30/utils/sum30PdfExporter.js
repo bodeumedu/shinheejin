@@ -12,7 +12,7 @@ async function loadPdfLibraries() {
   }
 }
 
-export async function exportSum30ToPdf() {
+export async function exportSum30ToPdf(options = {}) {
   try {
     // 라이브러리 로드
     await loadPdfLibraries()
@@ -88,7 +88,7 @@ export async function exportSum30ToPdf() {
   }
 
   // PDF 저장
-  pdf.save('SUM30_문제지.pdf')
+  pdf.save(options.filename || 'SUM30_문제지.pdf')
 }
 
 

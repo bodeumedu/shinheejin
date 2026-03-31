@@ -1,18 +1,19 @@
 import './Sum15Viewer.css'
+import { getSum15ThemeCssVars } from '../utils/sum15Themes'
 
-function Sum15Viewer({ data, blankPrefix = 'The passage suggests that ', blankSuffix = '.', answerKey = 'summary', showSummaryBeforeBlank = false, hideBlankLine = false }) {
+function Sum15Viewer({ data, blankPrefix = 'The passage suggests that ', blankSuffix = '.', answerKey = 'summary', showSummaryBeforeBlank = false, hideBlankLine = false, hideAnswerPage = false, theme = 'classic', idPrefix = 'sum15' }) {
   if (!data || !data.results || data.results.length === 0) {
     return <div>데이터가 없습니다.</div>
   }
 
   return (
-    <div className="sum15-viewer">
+    <div className="sum15-viewer" style={getSum15ThemeCssVars(theme)}>
       {/* 문제 페이지들 */}
       {data.results.map((result, idx) => {
         if (result.error) return null
         
         return (
-          <div key={`question-${idx}`} id={`sum15-page-${idx}`} className="sum15-page">
+          <div key={`question-${idx}`} id={`${idPrefix}-page-${idx}`} className="sum15-page">
             <div className="sum15-page-content">
               {/* 출처 */}
               {result.source && (
@@ -53,9 +54,17 @@ function Sum15Viewer({ data, blankPrefix = 'The passage suggests that ', blankSu
                 {/* 보기 */}
                 <div className="sum15-choices">
                   <div className="sum15-choices-title">&lt;보기&gt;</div>
-                  <div className="sum15-choices-content">
-                    {result.transformedShuffledWords ? result.transformedShuffledWords.join(' / ') : (result.shuffledWords ? result.shuffledWords.join(' / ') : '')}
-                  </div>
+                  <div
+                    className="sum15-choices-content"
+                    dangerouslySetInnerHTML={{
+                      __html: (
+                        result.boldedShuffledWords ||
+                        result.transformedShuffledWords ||
+                        result.shuffledWords ||
+                        []
+                      ).join(' / '),
+                    }}
+                  />
                 </div>
                 
                 {/* 조건 */}
@@ -72,23 +81,24 @@ function Sum15Viewer({ data, blankPrefix = 'The passage suggests that ', blankSu
         )
       })}
       
-      {/* 답지 페이지 (맨 마지막) */}
-      <div id="sum15-answer-page" className="sum15-page sum15-answer-page">
-        <div className="sum15-page-content">
-          <div className="sum15-answer-title">답지</div>
-          <div className="sum15-answer-content">
-            {data.results
-              .filter(r => !r.error)
-              .map((r, idx) => (
-                <div key={`answer-${idx}`} className="sum15-answer-item">
-                  <div className="sum15-answer-source">{r.source || `지문 ${idx + 1}`}</div>
-                  <div className="sum15-answer-summary">{r[answerKey] ?? r.summary}</div>
-                </div>
-              ))
-            }
+      {!hideAnswerPage && (
+        <div id={`${idPrefix}-answer-page`} className="sum15-page sum15-answer-page">
+          <div className="sum15-page-content">
+            <div className="sum15-answer-title">답지</div>
+            <div className="sum15-answer-content">
+              {data.results
+                .filter(r => !r.error)
+                .map((r, idx) => (
+                  <div key={`answer-${idx}`} className="sum15-answer-item">
+                    <div className="sum15-answer-source">{r.source || `지문 ${idx + 1}`}</div>
+                    <div className="sum15-answer-summary">{r[answerKey] ?? r.summary}</div>
+                  </div>
+                ))
+              }
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

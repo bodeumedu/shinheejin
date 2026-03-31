@@ -8,6 +8,13 @@
   z-index: 1000;
 }
 
+.student-data-page-shell {
+  min-height: 100vh;
+  background: #f3f4f6;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
 .student-data-modal {
   background: #fff;
   border-radius: 12px;
@@ -17,6 +24,13 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.student-data-modal-fullscreen {
+  width: min(1500px, 100%);
+  max-width: 100%;
+  max-height: calc(100vh - 40px);
+  border-radius: 20px;
 }
 
 .student-data-modal-header {
@@ -273,4 +287,131 @@
 
 .student-data-send-btn:hover {
   background: #0284c7;
+}
+
+.student-score-modal-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 20px;
+}
+
+.student-score-side-card,
+.student-score-main-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 18px;
+  background: #fff;
+}
+
+.student-score-section + .student-score-section {
+  margin-top: 24px;
+}
+
+.student-score-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.student-score-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.student-score-subtitle {
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+  color: #6b7280;
+  line-height: 1.6;
+}
+
+.student-score-save-btn {
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.student-score-save-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.student-score-filter-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.student-score-filter-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #374151;
+  font-weight: 600;
+}
+
+.student-score-filter-label select {
+  min-width: 120px;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+}
+
+.student-score-table-wrap {
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.student-score-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+  font-size: 0.84rem;
+}
+
+.student-score-table th,
+.student-score-table td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px;
+  text-align: left;
+  background: #fff;
+}
+
+.student-score-table th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  z-index: 1;
+}
+
+.student-score-input,
+.student-score-trend-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-size: 0.84rem;
+}
+
+.student-score-trend-input {
+  min-height: 110px;
+  resize: vertical;
+}
+
+@media (max-width: 1100px) {
+  .student-score-modal-grid {
+    grid-template-columns: 1fr;
+  }
 }

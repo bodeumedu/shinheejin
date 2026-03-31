@@ -34,6 +34,27 @@
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
 }
 
+.main-menu-admin-btn {
+  position: absolute;
+  right: 170px;
+  bottom: 0;
+  padding: 12px 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+}
+
+.main-menu-admin-btn:hover {
+  background: linear-gradient(135deg, #9333ea 0%, #6b21a8 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.4);
+}
+
 .main-menu-title {
   font-size: 2.5rem;
   color: #2c3e50;
