@@ -11,21 +11,21 @@ import { summarizeText as summarizeSum40Text, findWordMatches as findSum40WordMa
 import { exportSum40ToPdf } from '../../sum40/utils/sum40PdfExporter'
 
 const TYPE_GROUPS = [
-  { id: 'sum15', label: 'SUM 15', transformedId: 'sum15', originalId: 'sum15Original', supportsTransform: true },
-  { id: 'sum30', label: 'SUM 30', transformedId: 'sum30', originalId: null, supportsTransform: false },
-  { id: 'sum40', label: 'SUM 40', transformedId: 'sum40', originalId: null, supportsTransform: false },
-  { id: 'topic15', label: 'topic 15', transformedId: 'topic15', originalId: 'topic15Original', supportsTransform: true },
-  { id: 'topicSentence15', label: 'topic sentence 15', transformedId: 'topicSentence15', originalId: 'topicSentence15Original', supportsTransform: true },
-  { id: 'response20', label: 'response 20', transformedId: 'response20', originalId: 'response20Original', supportsTransform: true },
-  { id: 'title10', label: 'title 10', transformedId: 'title10', originalId: null, supportsTransform: false },
-  { id: 'interview25', label: 'interview 25', transformedId: 'interview25', originalId: 'interview25Original', supportsTransform: true },
+  { id: 'title10', label: '짧은 제목 (구)', transformedId: 'title10', originalId: null, supportsTransform: false },
+  { id: 'sum15', label: '짧은 요약문 배열', transformedId: 'sum15', originalId: 'sum15Original', supportsTransform: true },
+  { id: 'sum30', label: '긴 요약문 배열', transformedId: 'sum30', originalId: null, supportsTransform: false },
+  { id: 'sum40', label: '요약문 단어 채우기', transformedId: 'sum40', originalId: null, supportsTransform: false },
+  { id: 'topic15', label: '주제 쓰기 (구)', transformedId: 'topic15', originalId: 'topic15Original', supportsTransform: true },
+  { id: 'topicSentence15', label: '주제문 쓰기 (절)', transformedId: 'topicSentence15', originalId: 'topicSentence15Original', supportsTransform: true },
+  { id: 'response20', label: '적절한 응답 쓰기', transformedId: 'response20', originalId: 'response20Original', supportsTransform: true },
+  { id: 'interview25', label: '내용 질의응답 (절)', transformedId: 'interview25', originalId: 'interview25Original', supportsTransform: true },
 ]
 
 const PROBLEM_TYPES = {
   sum15: {
     id: 'sum15',
-    label: 'SUM 15 변형 있음',
-    badge: '15단어 요약문 (변형 있음)',
+    label: '짧은 요약문 배열 변형 있음',
+    badge: '짧은 요약문 배열 (변형 있음)',
     description:
       '지문 핵심을 15단어 요약문으로 만든 뒤, <보기>의 단어를 모두 사용해 빈칸을 완성하는 유형입니다. 필요하면 1~2개 단어의 형태를 바꾸게 만듭니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능)',
@@ -44,8 +44,8 @@ const PROBLEM_TYPES = {
   },
   sum15Original: {
     id: 'sum15Original',
-    label: 'SUM 15 변형 없음',
-    badge: '15단어 요약문 (변형 없음)',
+    label: '짧은 요약문 배열 변형 없음',
+    badge: '짧은 요약문 배열 (변형 없음)',
     description:
       '지문 핵심을 15단어 요약문으로 만든 뒤, <보기>의 단어를 그대로 모두 사용해 빈칸을 완성하는 유형입니다. 어법 변형 조건은 없습니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능)',
@@ -64,8 +64,8 @@ const PROBLEM_TYPES = {
   },
   sum30: {
     id: 'sum30',
-    label: 'SUM 30',
-    badge: '30단어 요약문 (2단어쌍 배열)',
+    label: '긴 요약문 배열',
+    badge: '긴 요약문 배열',
     description:
       '지문 핵심을 정확히 30단어 요약문으로 만든 뒤, 두 단어씩 묶인 <보기>를 모두 사용해 빈칸을 완성하는 유형입니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 보기는 2단어씩 고정 묶음',
@@ -86,8 +86,8 @@ const PROBLEM_TYPES = {
   },
   sum40: {
     id: 'sum40',
-    label: 'SUM 40',
-    badge: '40단어 요약문 빈칸 완성',
+    label: '요약문 단어 채우기',
+    badge: '요약문 단어 채우기',
     description:
       '지문 핵심을 약 40단어 요약문으로 만든 뒤, 원문과 매칭되는 핵심 단어 6개를 앞글자만 제시한 빈칸으로 바꾸고 나머지는 답지에서 확인하는 유형입니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 매칭 단어 6개를 빈칸 처리',
@@ -109,8 +109,8 @@ const PROBLEM_TYPES = {
   },
   topic15: {
     id: 'topic15',
-    label: 'topic 15 변형 있음',
-    badge: '15단어 주제 구 (변형 있음)',
+    label: '주제 쓰기 (구) 변형 있음',
+    badge: '주제 쓰기 (구) (변형 있음)',
     description:
       '지문의 주제를 15단어 구(phrase)로 만든 뒤, <보기>의 단어를 모두 사용해 주제를 완성하는 유형입니다. 한 단어만 어법에 맞게 변형합니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 주제는 15단어 구(phrase)',
@@ -129,8 +129,8 @@ const PROBLEM_TYPES = {
   },
   topic15Original: {
     id: 'topic15Original',
-    label: 'topic 15 변형 없음',
-    badge: '15단어 주제 구 (변형 없음)',
+    label: '주제 쓰기 (구) 변형 없음',
+    badge: '주제 쓰기 (구) (변형 없음)',
     description:
       '지문의 주제를 15단어 구(phrase)로 만든 뒤, <보기>의 단어를 그대로 모두 사용해 주제를 완성하는 유형입니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 주제는 15단어 구(phrase)',
@@ -149,8 +149,8 @@ const PROBLEM_TYPES = {
   },
   topicSentence15: {
     id: 'topicSentence15',
-    label: 'topic sentence 15 변형 있음',
-    badge: '15단어 주제문 (변형 있음)',
+    label: '주제문 쓰기 (절) 변형 있음',
+    badge: '주제문 쓰기 (절) (변형 있음)',
     description:
       '지문의 핵심을 15단어 완전한 주제문으로 만든 뒤, <보기>의 단어를 모두 사용해 문장을 완성하는 유형입니다. 한 단어만 어법에 맞게 변형합니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 주제문은 정확히 15단어 문장',
@@ -169,8 +169,8 @@ const PROBLEM_TYPES = {
   },
   topicSentence15Original: {
     id: 'topicSentence15Original',
-    label: 'topic sentence 15 변형 없음',
-    badge: '15단어 주제문 (변형 없음)',
+    label: '주제문 쓰기 (절) 변형 없음',
+    badge: '주제문 쓰기 (절) (변형 없음)',
     description:
       '지문의 핵심을 15단어 완전한 주제문으로 만든 뒤, <보기>의 단어를 그대로 모두 사용해 문장을 완성하는 유형입니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 주제문은 정확히 15단어 문장',
@@ -189,8 +189,8 @@ const PROBLEM_TYPES = {
   },
   response20: {
     id: 'response20',
-    label: 'response 20 변형 있음',
-    badge: '20단어 감상문 (변형 있음)',
+    label: '적절한 응답 쓰기 변형 있음',
+    badge: '적절한 응답 쓰기 (변형 있음)',
     description:
       '독자가 글을 읽고 이해한 뒤 남기는 약 20단어 감상문을 만들고, <보기>의 단어를 모두 사용해 문장을 완성하는 유형입니다. 한 단어만 어법에 맞게 변형합니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 감상문은 약 20단어 문장',
@@ -209,8 +209,8 @@ const PROBLEM_TYPES = {
   },
   response20Original: {
     id: 'response20Original',
-    label: 'response 20 변형 없음',
-    badge: '20단어 감상문 (변형 없음)',
+    label: '적절한 응답 쓰기 변형 없음',
+    badge: '적절한 응답 쓰기 (변형 없음)',
     description:
       '독자가 글을 읽고 이해한 뒤 남기는 약 20단어 감상문을 만들고, <보기>의 단어를 그대로 모두 사용해 문장을 완성하는 유형입니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 감상문은 약 20단어 문장',
@@ -229,8 +229,8 @@ const PROBLEM_TYPES = {
   },
   interview25: {
     id: 'interview25',
-    label: 'interview 25 변형 있음',
-    badge: '인터뷰 25단어 답변 1문항 (변형 있음)',
+    label: '내용 질의응답 (절) 변형 있음',
+    badge: '내용 질의응답 (절) (변형 있음)',
     description:
       '기자 질문 1개와 저자 답변 1개를 만들고, 답변은 약 25단어 한 문장으로 생성합니다. <보기>에서는 한 단어만 어법에 맞게 변형합니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 인터뷰는 질문 1개, 답변 1개',
@@ -251,8 +251,8 @@ const PROBLEM_TYPES = {
   },
   interview25Original: {
     id: 'interview25Original',
-    label: 'interview 25 변형 없음',
-    badge: '인터뷰 25단어 답변 1문항 (변형 없음)',
+    label: '내용 질의응답 (절) 변형 없음',
+    badge: '내용 질의응답 (절) (변형 없음)',
     description:
       '기자 질문 1개와 저자 답변 1개를 만들고, 답변은 약 25단어 한 문장으로 생성합니다. <보기> 단어는 그대로 사용합니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 인터뷰는 질문 1개, 답변 1개',
@@ -273,8 +273,8 @@ const PROBLEM_TYPES = {
   },
   title10: {
     id: 'title10',
-    label: 'title 10',
-    badge: '약 10단어 제목 만들기',
+    label: '짧은 제목 (구)',
+    badge: '짧은 제목 (구)',
     description:
       '지문의 핵심을 약 10단어 제목으로 만들고, <보기>에 있는 단어를 모두 사용해 가장 적절한 제목을 재구성하는 유형입니다.',
     guide: '형식: 출처/영어원문/한글해석// (// 기준으로 여러 지문 입력 가능) · 제목은 약 8~12단어',
@@ -345,11 +345,18 @@ function splitSingleBlock(block) {
   }
 }
 
+function shouldGlueWordWithNext(token) {
+  const clean = String(token || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/[.,!?;:()[\]{}"']/g, '')
+    .toLowerCase()
+  return clean === 'the' || clean === 'a' || clean === 'and' || clean === 'or'
+}
+
 function glueArticlePairs(words) {
   const groupedWords = []
   for (let i = 0; i < words.length; i += 1) {
-    const clean = String(words[i] || '').replace(/[.,!?;:]/g, '')
-    if ((clean === 'The' || clean === 'a') && i < words.length - 1) {
+    if (shouldGlueWordWithNext(words[i]) && i < words.length - 1) {
       groupedWords.push(`${words[i]} ${words[i + 1]}`)
       i += 1
     } else {
@@ -364,16 +371,30 @@ function normalizeGroupSize(groupSize) {
   return Math.min(3, Math.max(1, n))
 }
 
-function buildWordBankUnits(tokens, groupSize = 1) {
+function buildParallelWordBankUnits(baseTokens, transformedTokens, boldTokens, groupSize = 1) {
   const size = normalizeGroupSize(groupSize)
-  const cleanTokens = Array.isArray(tokens) ? tokens.filter(Boolean) : []
-  const units = []
-
-  for (let i = 0; i < cleanTokens.length; i += size) {
-    units.push(cleanTokens.slice(i, i + size).join(' '))
+  const base = Array.isArray(baseTokens) ? baseTokens : []
+  const transformed = Array.isArray(transformedTokens) ? transformedTokens : []
+  const bold = Array.isArray(boldTokens) ? boldTokens : []
+  const groups = {
+    base: [],
+    transformed: [],
+    bold: [],
   }
 
-  return units
+  for (let i = 0; i < base.length;) {
+    const step = size === 1 && shouldGlueWordWithNext(base[i]) && i < base.length - 1 ? 2 : size
+    groups.base.push(base.slice(i, i + step).filter(Boolean).join(' '))
+    groups.transformed.push(transformed.slice(i, i + step).filter(Boolean).join(' '))
+    groups.bold.push(bold.slice(i, i + step).filter(Boolean).join(' '))
+    i += step
+  }
+
+  return groups
+}
+
+function buildWordBankUnits(tokens, groupSize = 1) {
+  return buildParallelWordBankUnits(tokens, tokens, tokens, groupSize).base
 }
 
 function shuffleArray(items) {
@@ -386,9 +407,10 @@ function shuffleArray(items) {
 }
 
 function buildGroupedDisplays(baseTokens, transformedTokens, boldTokens, groupSize = 1) {
-  const baseGroups = buildWordBankUnits(baseTokens, groupSize)
-  const transformedGroups = buildWordBankUnits(transformedTokens, groupSize)
-  const boldGroups = buildWordBankUnits(boldTokens, groupSize)
+  const grouped = buildParallelWordBankUnits(baseTokens, transformedTokens, boldTokens, groupSize)
+  const baseGroups = grouped.base
+  const transformedGroups = grouped.transformed
+  const boldGroups = grouped.bold
   const order = shuffleArray(baseGroups.map((_, index) => index))
 
   return {
@@ -436,6 +458,18 @@ function chooseSum40BlankTargets(words, count = 6) {
     .filter((word) => word.replace(/[^\w]/g, '').length >= 4)
     .sort((a, b) => b.replace(/[^\w]/g, '').length - a.replace(/[^\w]/g, '').length)
     .slice(0, count)
+}
+
+function orderSum40BlankTargetsByAppearance(summary, words) {
+  return [...(words || [])].sort((a, b) => {
+    const aEscaped = a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const bEscaped = b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const aMatch = summary.match(new RegExp(`\\b${aEscaped}\\b`, 'i'))
+    const bMatch = summary.match(new RegExp(`\\b${bEscaped}\\b`, 'i'))
+    const aIndex = aMatch ? aMatch.index ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER
+    const bIndex = bMatch ? bMatch.index ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER
+    return aIndex - bIndex
+  })
 }
 
 function buildSum40BlankToken(word) {
@@ -548,7 +582,10 @@ async function processSum40Texts(inputText, apiKey) {
         console.error('SUM40 단어 매칭 오류:', matchError)
       }
 
-      const blankTargets = chooseSum40BlankTargets(matchedWords, 6)
+      const blankTargets = orderSum40BlankTargetsByAppearance(
+        summary,
+        chooseSum40BlankTargets(matchedWords, 6)
+      )
       let blankedSummary = summary
       blankTargets.forEach((word) => {
         blankedSummary = replaceSum40FirstToken(blankedSummary, word, buildSum40BlankToken(word))
@@ -1848,7 +1885,7 @@ function PdfSamplePreview({ config, groupSize, theme }) {
 
 function DescriptiveProblemBuilder({ apiKey }) {
   const [text, setText] = useState('')
-  const [selectedType, setSelectedType] = useState('sum15')
+  const [selectedType, setSelectedType] = useState('title10')
   const [useTransformation, setUseTransformation] = useState(true)
   const [shuffleGroupSize, setShuffleGroupSize] = useState(1)
   const [pdfTheme, setPdfTheme] = useState('classic')

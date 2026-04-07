@@ -493,6 +493,34 @@
   border-bottom: 2px solid #e0e0e0;
 }
 
+.preview-schedule-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 30px;
+  background: #fff7ed;
+  border-bottom: 1px solid #fed7aa;
+  flex-wrap: wrap;
+}
+
+.preview-schedule-section label {
+  font-weight: 700;
+  color: #9a3412;
+}
+
+.preview-schedule-section input {
+  padding: 8px 12px;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: white;
+}
+
+.preview-schedule-section span {
+  color: #7c2d12;
+  font-size: 0.9rem;
+}
+
 .preview-list {
   padding: 20px 30px;
   overflow-y: auto;
@@ -573,8 +601,14 @@
 .preview-modal-actions {
   display: flex;
   justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 20px 30px;
   border-top: 2px solid #e0e0e0;
   background: #f8f9fa;
+}
+
+.preview-schedule-btn {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
 }
 

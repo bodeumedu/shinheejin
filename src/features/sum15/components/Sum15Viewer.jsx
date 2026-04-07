@@ -1,10 +1,46 @@
 import './Sum15Viewer.css'
 import { getSum15ThemeCssVars } from '../utils/sum15Themes'
 
+function splitAnswerItemsIntoPages(results, answerKey = 'summary') {
+  const pages = []
+  let currentPage = []
+  let currentWeight = 0
+  const pageBudget = 30
+
+  results.forEach((result, idx) => {
+    const sourceText = String(result.source || `지문 ${idx + 1}`)
+    const answerText = String(result[answerKey] ?? result.summary ?? '')
+    const itemWeight =
+      3 +
+      Math.ceil(sourceText.length / 28) +
+      Math.ceil(answerText.length / 90)
+
+    if (currentPage.length > 0 && currentWeight + itemWeight > pageBudget) {
+      pages.push(currentPage)
+      currentPage = []
+      currentWeight = 0
+    }
+
+    currentPage.push({ result, idx })
+    currentWeight += itemWeight
+  })
+
+  if (currentPage.length > 0) {
+    pages.push(currentPage)
+  }
+
+  return pages
+}
+
 function Sum15Viewer({ data, blankPrefix = 'The passage suggests that ', blankSuffix = '.', answerKey = 'summary', showSummaryBeforeBlank = false, hideBlankLine = false, hideAnswerPage = false, theme = 'classic', idPrefix = 'sum15' }) {
   if (!data || !data.results || data.results.length === 0) {
     return <div>데이터가 없습니다.</div>
   }
+
+  const answerPages = splitAnswerItemsIntoPages(
+    data.results.filter((r) => !r.error),
+    answerKey
+  )
 
   return (
     <div className="sum15-viewer" style={getSum15ThemeCssVars(theme)}>
@@ -81,24 +117,28 @@ function Sum15Viewer({ data, blankPrefix = 'The passage suggests that ', blankSu
         )
       })}
       
-      {!hideAnswerPage && (
-        <div id={`${idPrefix}-answer-page`} className="sum15-page sum15-answer-page">
-          <div className="sum15-page-content">
-            <div className="sum15-answer-title">답지</div>
-            <div className="sum15-answer-content">
-              {data.results
-                .filter(r => !r.error)
-                .map((r, idx) => (
-                  <div key={`answer-${idx}`} className="sum15-answer-item">
+      {!hideAnswerPage &&
+        answerPages.map((pageItems, pageIdx) => (
+          <div
+            key={`answer-page-${pageIdx}`}
+            id={`${idPrefix}-answer-page-${pageIdx}`}
+            className="sum15-page sum15-answer-page"
+          >
+            <div className="sum15-page-content">
+              <div className="sum15-answer-title">
+                답지{answerPages.length > 1 ? ` (${pageIdx + 1}/${answerPages.length})` : ''}
+              </div>
+              <div className="sum15-answer-content">
+                {pageItems.map(({ result: r, idx }) => (
+                  <div key={`answer-${pageIdx}-${idx}`} className="sum15-answer-item">
                     <div className="sum15-answer-source">{r.source || `지문 ${idx + 1}`}</div>
                     <div className="sum15-answer-summary">{r[answerKey] ?? r.summary}</div>
                   </div>
-                ))
-              }
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        ))}
     </div>
   )
 }

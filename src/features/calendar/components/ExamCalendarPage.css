@@ -1,0 +1,384 @@
+.exam-calendar-page {
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: #f8fafc;
+  min-height: 100vh;
+}
+
+.exam-calendar-header,
+.exam-calendar-toolbar,
+.exam-calendar-grid-card,
+.exam-calendar-side-card,
+.exam-calendar-panel {
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.07);
+}
+
+.exam-calendar-header,
+.exam-calendar-toolbar {
+  padding: 20px 22px;
+}
+
+.exam-calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.exam-calendar-header h1 {
+  margin: 0 0 6px;
+  color: #0f172a;
+}
+
+.exam-calendar-header p {
+  margin: 0;
+  color: #475569;
+}
+
+.exam-calendar-header-actions,
+.exam-calendar-month-picker,
+.exam-calendar-school-filters,
+.exam-calendar-form-actions,
+.form-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.exam-calendar-header-actions button,
+.exam-calendar-month-picker button,
+.exam-calendar-school-filters button,
+.exam-calendar-form-actions button,
+.upload-button {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.exam-calendar-school-filters button.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.exam-calendar-month-picker {
+  align-items: center;
+}
+
+.exam-calendar-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.exam-calendar-grid-card,
+.exam-calendar-side-card,
+.exam-calendar-panel {
+  padding: 20px;
+}
+
+.exam-calendar-grid-card {
+  width: 100%;
+}
+
+.exam-calendar-weekdays,
+.exam-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.exam-calendar-weekdays {
+  margin-bottom: 10px;
+  color: #64748b;
+  font-weight: 700;
+  text-align: center;
+}
+
+.exam-calendar-cell {
+  min-height: 150px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 10px;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.exam-calendar-cell.selected {
+  border-color: #2563eb;
+  box-shadow: inset 0 0 0 1px #2563eb;
+}
+
+.exam-calendar-cell.today {
+  background: #eff6ff;
+}
+
+.exam-calendar-cell-empty {
+  background: #f8fafc;
+  border-style: dashed;
+  cursor: default;
+}
+
+.exam-calendar-day-number {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.exam-calendar-day-events {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.event-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  background: #e2e8f0;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-chip.type-시험 {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.event-chip.type-휴강 {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.event-chip.type-직전보강 {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.event-chip.more {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.exam-calendar-side-card h2,
+.exam-calendar-panel h2 {
+  margin: 0 0 12px;
+  color: #0f172a;
+}
+
+.exam-calendar-side-card {
+  width: 100%;
+}
+
+.exam-calendar-panel p,
+.exam-calendar-event-item p,
+.exam-calendar-readonly {
+  margin: 0;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.exam-calendar-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.exam-calendar-event-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #f8fafc;
+}
+
+.exam-calendar-event-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.exam-calendar-event-actions button,
+.exam-calendar-edit-banner button {
+  border: none;
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.exam-calendar-edit-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.exam-calendar-divider {
+  height: 1px;
+  margin: 20px 0;
+  background: #e2e8f0;
+}
+
+.exam-calendar-bottom {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.exam-calendar-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.exam-calendar-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.exam-calendar-form input,
+.exam-calendar-form select,
+.exam-calendar-form textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 11px 13px;
+  font-size: 0.95rem;
+  background: #ffffff;
+}
+
+.exam-calendar-teacher-section,
+.exam-calendar-ai-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.exam-calendar-teacher-help {
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.exam-calendar-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.exam-calendar-check-item {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #ffffff;
+  font-weight: 600 !important;
+}
+
+.exam-calendar-check-item input {
+  width: auto;
+}
+
+.exam-calendar-ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.exam-calendar-ai-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.exam-calendar-ai-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #dbe4f0;
+}
+
+.upload-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.exam-calendar-empty,
+.exam-calendar-readonly,
+.exam-calendar-error {
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.exam-calendar-empty,
+.exam-calendar-readonly {
+  background: #f8fafc;
+}
+
+.exam-calendar-error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+@media (max-width: 1100px) {
+  .exam-calendar-layout,
+  .exam-calendar-bottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .exam-calendar-page {
+    padding: 16px;
+  }
+
+  .exam-calendar-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .exam-calendar-cell {
+    min-height: 110px;
+  }
+}

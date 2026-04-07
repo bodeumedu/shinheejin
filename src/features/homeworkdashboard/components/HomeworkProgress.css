@@ -119,6 +119,22 @@
   font-size: 18px;
 }
 
+.kakao-option-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  color: #374151;
+}
+
+.kakao-option-toggle input {
+  margin: 0;
+}
+
 /* 카카오톡 전송 미리보기 패널 */
 .kakao-preview-panel {
   margin-top: 16px;
@@ -225,6 +241,13 @@
   border: 1px solid #e5e7eb;
 }
 
+.progress-table th.student-sticky-cell {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background: #f9fafb;
+}
+
 .progress-table th.header-input-cell {
   min-width: 60px;
   padding: 8px 12px;
@@ -290,6 +313,84 @@
   cursor: not-allowed;
 }
 
+.dynamic-header-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.dynamic-header-cell .header-input {
+  width: 100%;
+}
+
+.test-item-meta-row {
+  width: 100%;
+}
+
+.test-item-max-score-input {
+  width: 100%;
+  height: 28px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  text-align: center;
+  box-sizing: border-box;
+  background: #f8fafc;
+}
+
+.header-action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.header-inline-add-btn,
+.header-remove-btn {
+  width: 28px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.header-inline-add-btn {
+  background: #2563eb;
+}
+
+.header-inline-add-btn:disabled {
+  background: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.header-remove-btn {
+  background: #ef4444;
+}
+
+.header-empty-cell {
+  background: #f8fafc;
+}
+
+.header-empty-add-btn {
+  width: 100%;
+  min-height: 34px;
+  border: 1px dashed #94a3b8;
+  border-radius: 6px;
+  background: #fff;
+  color: #2563eb;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .progress-table td {
   padding: 12px 16px;
   text-align: center;
@@ -309,6 +410,10 @@
   text-align: center;
   font-size: 13px;
   box-sizing: border-box;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: #f9fafb;
 }
 
 .phone-number-cell {
@@ -368,12 +473,32 @@
   background: #f9fafb;
 }
 
+.student-history-btn {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #1f2937;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.student-history-btn:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
 .assignment-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+.assignment-empty-cell {
+  background: #f8fafc;
 }
 
 .progress-table input[type="checkbox"] {
@@ -460,6 +585,91 @@
 
 .add-student-btn:hover {
   background: #15803d;
+}
+
+.student-history-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 20px;
+}
+
+.student-history-modal {
+  width: min(760px, 100%);
+  max-height: 80vh;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.student-history-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.student-history-modal-header h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 18px;
+}
+
+.student-history-modal-body {
+  padding: 20px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.student-history-empty {
+  color: #6b7280;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.student-history-entry {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: #f9fafb;
+}
+
+.student-history-entry-time {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2563eb;
+  margin-bottom: 8px;
+}
+
+.student-history-entry-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #374151;
+  margin-bottom: 10px;
+}
+
+.student-history-entry-content {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  white-space: pre-wrap;
+  font-family: inherit;
+  line-height: 1.5;
 }
 
 .all-assignment-section {

@@ -10,6 +10,234 @@ function sanitizeDocId(id) {
   return id.replace(/\//g, '_').trim() || '';
 }
 
+function normalizeKakaoSendHistoryEntries(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry, index) => ({
+      id: String(entry.id || `${entry.student || 'unknown'}_${entry.sentAt || index}`),
+      student: String(entry.student || '').trim(),
+      title: String(entry.title || '').trim(),
+      content: String(entry.content || '').trim(),
+      templateCode: String(entry.templateCode || '').trim(),
+      sentAt: String(entry.sentAt || '').trim(),
+      status: String(entry.status || 'sent').trim(),
+      snapshot: entry?.snapshot && typeof entry.snapshot === 'object' ? entry.snapshot : null,
+      recipients: Array.isArray(entry.recipients)
+        ? entry.recipients.map((recipient) => ({
+            type: String(recipient?.type || '').trim(),
+            phone: String(recipient?.phone || '').trim(),
+          }))
+        : [],
+    }))
+    .filter((entry) => entry.student && entry.content)
+    .sort((a, b) => String(b.sentAt || '').localeCompare(String(a.sentAt || '')));
+}
+
+function getHistoryDateKey(sentAt) {
+  const date = new Date(sentAt);
+  if (Number.isNaN(date.getTime())) return String(sentAt || '').trim().slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatHistoryDateLabel(dateKey) {
+  if (!dateKey) return '날짜 미상';
+  const [year, month, day] = String(dateKey).split('-');
+  if (!year || !month || !day) return dateKey;
+  return `${year}.${month}.${day}`;
+}
+
+function getSnapshotRecoveryWeight(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return 0;
+  let weight = 0;
+
+  (Array.isArray(snapshot.chapters) ? snapshot.chapters : []).forEach((chapter) => {
+    if (chapter?.completed) weight += 1;
+    if (String(chapter?.score || '').trim()) weight += 2;
+  });
+
+  if (snapshot?.vocabulary?.completed) weight += 1;
+
+  (Array.isArray(snapshot.testGroups) ? snapshot.testGroups : []).forEach((group) => {
+    (Array.isArray(group?.items) ? group.items : []).forEach((item) => {
+      if (item?.completed) weight += 1;
+      if (String(item?.score || '').trim()) weight += 3;
+    });
+  });
+
+  return weight;
+}
+
+function parseScoreNumber(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const normalized = raw.replace(/,/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatScoreStat(value) {
+  if (!Number.isFinite(value)) return '-';
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function buildScoreStatMap(students = [], scores = {}) {
+  const statMap = new Map();
+  const fieldKeys = new Set();
+
+  students.forEach((student) => {
+    Object.keys(scores?.[student] || {}).forEach((fieldKey) => fieldKeys.add(fieldKey));
+  });
+
+  fieldKeys.forEach((fieldKey) => {
+    const values = students.map((student) => ({
+      student,
+      value: parseScoreNumber(scores?.[student]?.[fieldKey]),
+    }));
+    const allFilled = values.length > 0 && values.every((entry) => entry.value !== null);
+    if (!allFilled) return;
+
+    const numericValues = values.map((entry) => entry.value);
+    const average = numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length;
+    const sortedValues = [...numericValues].sort((a, b) => b - a);
+    const rankMap = new Map();
+    sortedValues.forEach((value, index) => {
+      if (!rankMap.has(value)) rankMap.set(value, index + 1);
+    });
+
+    statMap.set(fieldKey, {
+      average,
+      totalCount: numericValues.length,
+      rankByStudent: new Map(values.map((entry) => [entry.student, rankMap.get(entry.value)])),
+    });
+  });
+
+  return statMap;
+}
+
+function buildGroupAggregateStatMap(students = [], scores = {}, groups = []) {
+  const statMap = new Map();
+
+  groups.forEach((group) => {
+    const items = Array.isArray(group?.items) ? group.items : [];
+    if (items.length < 2) return;
+
+    const totals = students.map((student) => {
+      const values = items.map((item) => parseScoreNumber(scores?.[student]?.[item.id]));
+      if (values.some((value) => value === null)) {
+        return { student, total: null };
+      }
+      return { student, total: values.reduce((sum, value) => sum + value, 0) };
+    });
+
+    const allFilled = totals.length > 0 && totals.every((entry) => entry.total !== null);
+    if (!allFilled) return;
+
+    const numericTotals = totals.map((entry) => entry.total);
+    const average = numericTotals.reduce((sum, value) => sum + value, 0) / numericTotals.length;
+    const sortedTotals = [...numericTotals].sort((a, b) => b - a);
+    const rankMap = new Map();
+    sortedTotals.forEach((value, index) => {
+      if (!rankMap.has(value)) rankMap.set(value, index + 1);
+    });
+
+    const maxScores = items.map((item) => parseScoreNumber(item?.maxScore));
+    const maxTotal = maxScores.every((value) => value !== null)
+      ? maxScores.reduce((sum, value) => sum + value, 0)
+      : null;
+
+    statMap.set(group.id, {
+      average,
+      totalCount: numericTotals.length,
+      maxTotal,
+      totalByStudent: new Map(totals.map((entry) => [entry.student, entry.total])),
+      rankByStudent: new Map(totals.map((entry) => [entry.student, rankMap.get(entry.total)])),
+    });
+  });
+
+  return statMap;
+}
+
+const LEGACY_TEST_GROUP_CONFIG = [
+  { id: 'bodeum', defaultTitle: '', legacyCount: 10 },
+  { id: 'vision', defaultTitle: '보듬교육의 시선', legacyCount: 4 },
+];
+const HOMEWORK_PROGRESS_FIXED_TEMPLATE_CODE = 'KA01TP251128032646018yKogg613GWY';
+
+function buildEmptyTestGroups() {
+  return LEGACY_TEST_GROUP_CONFIG.map((group) => ({
+    id: group.id,
+    title: group.defaultTitle,
+    items: [],
+  }));
+}
+
+function createDynamicGroupItem(groupId, label = '', maxScore = '') {
+  return {
+    id: `${groupId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    label: String(label || ''),
+    maxScore: String(maxScore || '').trim(),
+  };
+}
+
+function hasLegacyFieldData(fieldKey, progressData = {}, scores = {}) {
+  return Object.values(progressData || {}).some((row) => Boolean(row?.[fieldKey])) ||
+    Object.values(scores || {}).some((row) => String(row?.[fieldKey] || '').trim() !== '');
+}
+
+function buildLegacyGroupItems(groupId, legacyCount, labels, progressData, scores) {
+  const items = [];
+  for (let index = 1; index <= legacyCount; index += 1) {
+    const fieldKey = `${groupId}${index}`;
+    const label = String(labels?.[index] || '').trim();
+    const defaultLabel = `${index}회`;
+    const hasData = hasLegacyFieldData(fieldKey, progressData, scores);
+    const isCustomLabel = label && label !== defaultLabel;
+    if (!hasData && !isCustomLabel) continue;
+    items.push({ id: fieldKey, label: isCustomLabel ? label : '', maxScore: '' });
+  }
+  return items;
+}
+
+function normalizeTestGroups(rawHeaderTexts = {}, progressData = {}, scores = {}) {
+  const savedGroups = Array.isArray(rawHeaderTexts?.testGroups) ? rawHeaderTexts.testGroups : null;
+  if (savedGroups) {
+    const normalizedMap = new Map();
+    savedGroups.forEach((group, groupIndex) => {
+      const base = LEGACY_TEST_GROUP_CONFIG.find((entry) => entry.id === group?.id);
+      const groupId = String(group?.id || base?.id || `group_${groupIndex}`).trim();
+      const title = String(group?.title ?? base?.defaultTitle ?? '').trim();
+      const rawItems = Array.isArray(group?.items) ? group.items : [];
+      const items = rawItems
+        .map((item, itemIndex) => ({
+          id: String(item?.id || `${groupId}_${itemIndex + 1}`).trim(),
+          label: String(item?.label || '').trim(),
+          maxScore: String(item?.maxScore || '').trim(),
+        }))
+        .filter((item) => item.id);
+      normalizedMap.set(groupId, { id: groupId, title, items });
+    });
+    LEGACY_TEST_GROUP_CONFIG.forEach((group) => {
+      if (!normalizedMap.has(group.id)) {
+        normalizedMap.set(group.id, { id: group.id, title: group.defaultTitle, items: [] });
+      }
+    });
+    return Array.from(normalizedMap.values());
+  }
+
+  return LEGACY_TEST_GROUP_CONFIG.map((group) => ({
+    id: group.id,
+    title: String(rawHeaderTexts?.[`${group.id}Title`] ?? group.defaultTitle).trim(),
+    items: buildLegacyGroupItems(
+      group.id,
+      group.legacyCount,
+      rawHeaderTexts?.[group.id],
+      progressData,
+      scores
+    ),
+  }));
+}
+
 // 과제 진행 상황 컴포넌트 (docIdOverride: 숙제 완료도에서 이전한 반을 열 때 문서 ID 직접 지정)
 export default function HomeworkProgress({ subject = 'english', school, grade, class: selectedClass, teacher, docIdOverride, onClose }) {
   const [activeTab, setActiveTab] = useState('progress'); // 'progress', 'all'
@@ -110,6 +338,19 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     return chapterConfig.chapters.length > 0 ? [chapterConfig.chapters[0]] : [];
   }, [chapterConfig.chapters]);
 
+  const buildDefaultHeaderTexts = useCallback(() => {
+    const defaultHeaders = {
+      mainTitle: '',
+      visibleChapters: chapterConfig.chapters.length > 0 ? [chapterConfig.chapters[0]] : [],
+      chapters: {},
+      testGroups: buildEmptyTestGroups(),
+    };
+    chapterConfig.chapters.forEach(chapter => {
+      defaultHeaders.chapters[chapter] = getDefaultChapterLabel(chapter);
+    });
+    return defaultHeaders;
+  }, [chapterConfig.chapters, getDefaultChapterLabel]);
+
   const getDefaultData = () => {
     // 기본 학생 목록 제거 - 0명에서 시작
     const defaultStudents = [];
@@ -148,13 +389,22 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   // 카카오톡 전송 미리보기 상태
   // { templateCode: string, messages: [{ student, phones: [{phone,type}], content }] }
   const [kakaoPreview, setKakaoPreview] = useState(null);
+  const [kakaoSendHistory, setKakaoSendHistory] = useState([]);
+  const [selectedHistoryStudent, setSelectedHistoryStudent] = useState(null);
   
-  // 템플릿 코드 저장 (localStorage에 저장하여 다음에도 사용)
-  const [savedTemplateCode, setSavedTemplateCode] = useState(() => {
+  const savedTemplateCode = HOMEWORK_PROGRESS_FIXED_TEMPLATE_CODE;
+  const [includeScoreStatsInKakao, setIncludeScoreStatsInKakao] = useState(() => {
     try {
-      return localStorage.getItem('kakaoTemplateCode') || '';
+      return localStorage.getItem('homeworkProgress_includeScoreStatsInKakao') === '1';
     } catch {
-      return '';
+      return false;
+    }
+  });
+  const [includeAggregateScoreSummaryInKakao, setIncludeAggregateScoreSummaryInKakao] = useState(() => {
+    try {
+      return localStorage.getItem('homeworkProgress_includeAggregateScoreSummaryInKakao') === '1';
+    } catch {
+      return false;
     }
   });
   
@@ -163,20 +413,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   
   // 헤더 텍스트 관리 (2행 헤더 편집용)
   const [headerTexts, setHeaderTexts] = useState(() => {
-    // 기본값 설정
-    const defaultHeaders = {
-      mainTitle: '',
-      bodeumTitle: '보듬내신모의고사',
-      visionTitle: '보듬교육의 시선',
-      visibleChapters: chapterConfig.chapters.length > 0 ? [chapterConfig.chapters[0]] : [],
-      chapters: {},
-      bodeum: { 1: '1회', 2: '2회', 3: '3회', 4: '4회', 5: '5회', 6: '6회', 7: '7회', 8: '8회', 9: '9회', 10: '10회' },
-      vision: { 1: '1회', 2: '2회', 3: '3회', 4: '4회' },
-    };
-    chapterConfig.chapters.forEach(chapter => {
-      defaultHeaders.chapters[chapter] = getDefaultChapterLabel(chapter);
-    });
-    return defaultHeaders;
+    return buildDefaultHeaderTexts();
   });
 
   const visibleChapters = useMemo(() => {
@@ -184,6 +421,30 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     const filtered = raw.filter((chapter) => chapterConfig.chapters.includes(chapter));
     return filtered.length > 0 ? filtered : getDefaultVisibleChapters();
   }, [chapterConfig.chapters, getDefaultVisibleChapters, headerTexts.visibleChapters]);
+
+  const testGroups = useMemo(
+    () => normalizeTestGroups(headerTexts, progressData, scores),
+    [headerTexts, progressData, scores]
+  );
+
+  const visibleTestGroupItems = useMemo(
+    () =>
+      testGroups.map((group) => ({
+        ...group,
+        items: Array.isArray(group.items) ? group.items : [],
+      })),
+    [testGroups]
+  );
+
+  const totalVisibleTestColumns = useMemo(
+    () => visibleTestGroupItems.reduce((sum, group) => sum + Math.max(1, group.items.length), 0),
+    [visibleTestGroupItems]
+  );
+  const scoreStatMap = useMemo(() => buildScoreStatMap(students, scores), [students, scores]);
+  const groupAggregateStatMap = useMemo(
+    () => buildGroupAggregateStatMap(students, scores, visibleTestGroupItems),
+    [students, scores, visibleTestGroupItems]
+  );
   
   // 진도와 과제 입력 중인 날짜 추적 (다른 사용자의 업데이트가 덮어쓰지 않도록)
   const dirtyDetailDatesRef = useRef(new Set());
@@ -328,6 +589,11 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   
   // Firebase 설정 오류 상태
   const [firebaseError, setFirebaseError] = useState(null);
+
+  const selectedStudentHistoryEntries = useMemo(() => {
+    if (!selectedHistoryStudent) return [];
+    return kakaoSendHistory.filter((entry) => entry.student === selectedHistoryStudent);
+  }, [kakaoSendHistory, selectedHistoryStudent]);
   
   // localStorage에서 데이터 불러오기 (Firebase 미설정 시)
   const loadDataFromLocalStorage = () => {
@@ -378,20 +644,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       setSaveProgressMessage('');
       setSaveDetailMessage('');
       
-      // docId 변경 시 headerTexts를 기본값으로 초기화 (Firestore에서 불러올 때까지)
-      const defaultHeaders = {
-        mainTitle: '',
-        bodeumTitle: '보듬내신모의고사',
-        visionTitle: '보듬교육의 시선',
-        visibleChapters: chapterConfig.chapters.length > 0 ? [chapterConfig.chapters[0]] : [],
-        chapters: {},
-        bodeum: { 1: '1회', 2: '2회', 3: '3회', 4: '4회', 5: '5회', 6: '6회', 7: '7회', 8: '8회', 9: '9회', 10: '10회' },
-        vision: { 1: '1회', 2: '2회', 3: '3회', 4: '4회' },
-      };
-      chapterConfig.chapters.forEach(chapter => {
-        defaultHeaders.chapters[chapter] = getDefaultChapterLabel(chapter);
-      });
-      setHeaderTexts(defaultHeaders);
+      setHeaderTexts(buildDefaultHeaderTexts());
     }
     
     setLoading(true);
@@ -406,6 +659,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       setProgressData(defaultData.progressData);
       setScores(defaultData.scores);
       setPhoneNumbers(defaultData.phoneNumbers);
+      setKakaoSendHistory([]);
       setProgressDetailData({});
       dirtyDetailDatesRef.current.clear();
       setLoading(false);
@@ -420,6 +674,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       setProgressData(defaultData.progressData);
       setScores(defaultData.scores);
       setPhoneNumbers(defaultData.phoneNumbers);
+      setKakaoSendHistory([]);
       setProgressDetailData({});
       dirtyDetailDatesRef.current.clear();
       setLoading(false);
@@ -519,6 +774,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
             isInitialLoad,
             timeSinceLastSave: now - lastSaveTimeRef.current
           });
+          setKakaoSendHistory(normalizeKakaoSendHistoryEntries(data.kakaoSendHistory || []));
           
           // 로컬에 더 많은 학생이 있으면 (방금 추가한 학생이 있으면) 로컬 상태 유지
           if (!isInitialLoad && localCount > firestoreCount) {
@@ -640,6 +896,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                 ? loadedHeaders.visibleChapters.filter((chapter) => chapterConfig.chapters.includes(chapter))
                 : [];
               loadedHeaders.visibleChapters = loadedVisible.length > 0 ? loadedVisible : getDefaultVisibleChapters();
+              loadedHeaders.testGroups = normalizeTestGroups(loadedHeaders, filteredProgressData, filteredScores);
               setHeaderTexts(loadedHeaders);
               headerTextsLoadedFromFirestoreRef.current = true;
             } else {
@@ -687,6 +944,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
             setProgressData(defaultData.progressData);
             setScores(defaultData.scores);
             setPhoneNumbers(defaultData.phoneNumbers);
+            setKakaoSendHistory([]);
             setProgressDetailData({});
             dirtyDetailDatesRef.current.clear();
             // Firestore에 기본 데이터 저장
@@ -731,6 +989,8 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
         setStudents(defaultData.students);
         setProgressData(defaultData.progressData);
         setScores(defaultData.scores);
+        setPhoneNumbers(defaultData.phoneNumbers);
+        setKakaoSendHistory([]);
           setProgressDetailData({});
           dirtyDetailDatesRef.current.clear();
         setLoading(false);
@@ -742,7 +1002,18 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       clearTimeout(timeoutId);
       unsubscribe();
     };
-  }, [chapterConfig, clearDetailPageDirty, clearProgressPageDirty, docId, docRef]);
+  }, [
+    buildDefaultHeaderTexts,
+    chapterConfig,
+    clearDetailPageDirty,
+    clearProgressPageDirty,
+    collectionName,
+    docId,
+    docRef,
+    getDefaultVisibleChapters,
+    oldDocRef,
+    subject,
+  ]);
   
   // Firestore에 데이터 저장하기
   const saveData = useCallback(async (studentsData, progressData, scoresData, headerTextsData = null, phoneNumbersData = null) => {
@@ -822,6 +1093,63 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     }
   }, [buildSanitizedPhoneNumbers, collectionName, docRef, phoneNumbers]);
 
+  const saveKakaoHistoryEntries = useCallback(async (entriesToAdd) => {
+    if (!docRef || !Array.isArray(entriesToAdd) || entriesToAdd.length === 0) return;
+
+    const docSnapshot = await getDoc(docRef);
+    const existingData = docSnapshot.exists() ? docSnapshot.data() : {};
+    const existingEntries = normalizeKakaoSendHistoryEntries(existingData.kakaoSendHistory || []);
+    const mergedMap = new Map();
+    [...existingEntries, ...entriesToAdd].forEach((entry, index) => {
+      const normalized = normalizeKakaoSendHistoryEntries([entry])[0];
+      if (!normalized) return;
+      const key = normalized.id || `${normalized.student || 'unknown'}_${normalized.sentAt || index}`;
+      mergedMap.set(key, normalized);
+    });
+    const mergedEntries = Array.from(mergedMap.values()).sort((a, b) =>
+      String(b.sentAt || '').localeCompare(String(a.sentAt || ''))
+    );
+
+    await setDoc(docRef, {
+      kakaoSendHistory: mergedEntries,
+      lastUpdated: new Date().toISOString(),
+    }, { merge: true });
+
+    setKakaoSendHistory(mergedEntries);
+  }, [docRef]);
+
+  const buildStudentSendSnapshot = useCallback((student) => ({
+    mainTitle: String(headerTexts.mainTitle || '').trim(),
+    chapters: visibleChapters.map((chapter) => ({
+      fieldKey: `${chapterConfig.fieldPrefix}${chapter}`,
+      label: String(headerTexts.chapters?.[chapter] || getDefaultChapterLabel(chapter)).trim(),
+      completed: Boolean(progressData[student]?.[`${chapterConfig.fieldPrefix}${chapter}`]),
+      score: '',
+    })),
+    vocabulary: {
+      completed: Boolean(progressData[student]?.vocabulary),
+    },
+    testGroups: visibleTestGroupItems.map((group) => ({
+      id: group.id,
+      title: String(group.title || '').trim(),
+      items: group.items.map((item, index) => ({
+        fieldKey: item.id,
+        label: String(item.label || '').trim() || `${index + 1}회`,
+          maxScore: String(item.maxScore || '').trim(),
+        completed: Boolean(progressData[student]?.[item.id]),
+        score: String(scores[student]?.[item.id] || '').trim(),
+      })),
+    })),
+  }), [
+    chapterConfig.fieldPrefix,
+    getDefaultChapterLabel,
+    headerTexts,
+    progressData,
+    scores,
+    visibleChapters,
+    visibleTestGroupItems,
+  ]);
+
   const handleSaveProgressPage = useCallback(async () => {
     if (!isFirebaseConfigured() || !db || !docRef) {
       setSaveProgressMessage('⚠️ Firebase가 설정되지 않아 저장할 수 없습니다.');
@@ -845,11 +1173,49 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       setSavingProgress(false);
     }
   }, [clearProgressPageDirty, docRef, headerTexts, phoneNumbers, progressData, saveData, scores, students]);
+
+  useEffect(() => {
+    if (!hasUnsavedProgress || !docRef || savingProgress) return undefined;
+    const timeoutId = setTimeout(() => {
+      handleSaveProgressPage();
+    }, 1200);
+    return () => clearTimeout(timeoutId);
+  }, [docRef, handleSaveProgressPage, hasUnsavedProgress, savingProgress]);
+
+  useEffect(() => {
+    if (!hasUnsavedDetail || !docRef || savingDetail) return undefined;
+    const timeoutId = setTimeout(() => {
+      handleSaveProgressDetail();
+    }, 1200);
+    return () => clearTimeout(timeoutId);
+  }, [docRef, handleSaveProgressDetail, hasUnsavedDetail, savingDetail]);
   
   // students 상태가 변경될 때마다 studentsRef 업데이트
   useEffect(() => {
     studentsRef.current = students;
   }, [students]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'homeworkProgress_includeScoreStatsInKakao',
+        includeScoreStatsInKakao ? '1' : '0'
+      );
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [includeScoreStatsInKakao]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'homeworkProgress_includeAggregateScoreSummaryInKakao',
+        includeAggregateScoreSummaryInKakao ? '1' : '0'
+      );
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [includeAggregateScoreSummaryInKakao]);
   
   // chapterConfig 변경 시 headerTexts의 chapters 부분 업데이트
   // (Firestore에서 불러온 값이 없을 때만 기본값으로 채우기)
@@ -993,7 +1359,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       setPhoneNumbers(mergedPhones);
       await saveData(mergedStudents, progressData, scores, headerTexts, mergedPhones);
       clearProgressPageDirty();
-      alert(`✅ 업로드 완료 (${Object.keys(newPhones).length}명 전화번호 반영). 영어 과제 관리에서만 사용됩니다.`);
+      alert(`✅ 업로드 완료 (${Object.keys(newPhones).length}명 전화번호 반영). 전체 완성도와 테스트관리에서만 사용됩니다.`);
     } catch (err) {
       console.error(err);
       alert('엑셀 처리 중 오류가 났습니다.');
@@ -1039,22 +1405,6 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       },
     }));
   }, [chapterConfig.chapters, getDefaultChapterLabel, markProgressPageDirty, visibleChapters]);
-  
-  // 로딩 중 표시
-  if (loading) {
-    return (
-      <div className="homework-progress-page">
-        <div className="homework-progress-container">
-          <div style={{ padding: '40px', textAlign: 'center' }}>
-            <p>데이터를 불러오는 중...</p>
-            <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
-              Firebase에서 실시간 데이터를 동기화하고 있습니다.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
   
   // 학생 추가
   const handleAddStudent = () => {
@@ -1249,14 +1599,12 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   const handleHeaderTextChange = (type, key, value) => {
     markProgressPageDirty();
     setHeaderTexts(prev => {
-      // mainTitle, bodeumTitle, visionTitle 같은 단일 값 처리
-      if (type === 'mainTitle' || type === 'bodeumTitle' || type === 'visionTitle') {
+      if (type === 'mainTitle') {
         return {
           ...prev,
           [type]: value,
         };
       }
-      // chapters, bodeum, vision 같은 객체 값 처리
       return {
         ...prev,
         [type]: {
@@ -1266,6 +1614,253 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       };
     });
   };
+
+  const handleTestGroupTitleChange = useCallback((groupId, value) => {
+    markProgressPageDirty();
+    setHeaderTexts((prev) => ({
+      ...prev,
+      testGroups: normalizeTestGroups(prev, progressData, scores).map((group) =>
+        group.id === groupId ? { ...group, title: value } : group
+      ),
+    }));
+  }, [markProgressPageDirty, progressData, scores]);
+
+  const handleTestGroupItemLabelChange = useCallback((groupId, itemId, value) => {
+    markProgressPageDirty();
+    setHeaderTexts((prev) => ({
+      ...prev,
+      testGroups: normalizeTestGroups(prev, progressData, scores).map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              items: group.items.map((item) => (item.id === itemId ? { ...item, label: value } : item)),
+            }
+          : group
+      ),
+    }));
+  }, [markProgressPageDirty, progressData, scores]);
+
+  const handleTestGroupItemMaxScoreChange = useCallback((groupId, itemId, value) => {
+    const cleanedValue = String(value || '').replace(/[^0-9.]/g, '');
+    markProgressPageDirty();
+    setHeaderTexts((prev) => ({
+      ...prev,
+      testGroups: normalizeTestGroups(prev, progressData, scores).map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              items: group.items.map((item) =>
+                item.id === itemId ? { ...item, maxScore: cleanedValue } : item
+              ),
+            }
+          : group
+      ),
+    }));
+  }, [markProgressPageDirty, progressData, scores]);
+
+  const handleAddTestGroupItem = useCallback((groupId) => {
+    markProgressPageDirty();
+    setHeaderTexts((prev) => ({
+      ...prev,
+      testGroups: normalizeTestGroups(prev, progressData, scores).map((group) =>
+        group.id === groupId
+          ? { ...group, items: [...group.items, createDynamicGroupItem(groupId)] }
+          : group
+      ),
+    }));
+  }, [markProgressPageDirty, progressData, scores]);
+
+  const handleRemoveTestGroupItem = useCallback((groupId, itemId) => {
+    markProgressPageDirty();
+    setHeaderTexts((prev) => ({
+      ...prev,
+      testGroups: normalizeTestGroups(prev, progressData, scores).map((group) =>
+        group.id === groupId
+          ? { ...group, items: group.items.filter((item) => item.id !== itemId) }
+          : group
+      ),
+    }));
+  }, [markProgressPageDirty, progressData, scores]);
+
+  const handleRestoreFromLatestKakaoSnapshot = useCallback(async () => {
+    const snapshotEntries = kakaoSendHistory.filter((entry) => entry?.snapshot && typeof entry.snapshot === 'object');
+    if (snapshotEntries.length === 0) {
+      alert('이 반에는 복구에 사용할 카카오톡 스냅샷 이력이 없습니다.');
+      return;
+    }
+
+    const entriesByDate = new Map();
+    snapshotEntries.forEach((entry) => {
+      const dateKey = getHistoryDateKey(entry.sentAt) || 'unknown';
+      if (!entriesByDate.has(dateKey)) entriesByDate.set(dateKey, []);
+      entriesByDate.get(dateKey).push(entry);
+    });
+
+    const dateOptions = Array.from(entriesByDate.entries()).sort(([a], [b]) => String(b).localeCompare(String(a)));
+    let selectedDateKey = dateOptions[0]?.[0] || '';
+
+    if (dateOptions.length > 1) {
+      const selectionMessage = [
+        '복구할 카카오톡 스냅샷 날짜를 선택하세요.',
+        '가장 최근 날짜가 기본값입니다.',
+        '',
+        ...dateOptions.map(([dateKey, entries], index) => {
+          const studentCount = new Set(entries.map((entry) => entry.student).filter(Boolean)).size;
+          return `${index + 1}. ${formatHistoryDateLabel(dateKey)} (${studentCount}명, ${entries.length}건)`;
+        }),
+        '',
+        '번호를 입력하세요.',
+      ].join('\n');
+      const rawSelection = window.prompt(selectionMessage, '1');
+      if (rawSelection === null) return;
+      const selectedIndex = Number.parseInt(String(rawSelection).trim(), 10);
+      if (!Number.isInteger(selectedIndex) || selectedIndex < 1 || selectedIndex > dateOptions.length) {
+        alert('올바른 번호를 입력해주세요.');
+        return;
+      }
+      selectedDateKey = dateOptions[selectedIndex - 1][0];
+    }
+
+    const selectedEntries = entriesByDate.get(selectedDateKey) || snapshotEntries;
+
+    const latestByStudent = new Map();
+    selectedEntries.forEach((entry) => {
+      const studentName = String(entry.student || '').trim();
+      if (!studentName) return;
+      const prev = latestByStudent.get(studentName);
+      const currentWeight = getSnapshotRecoveryWeight(entry.snapshot);
+      const prevWeight = getSnapshotRecoveryWeight(prev?.snapshot);
+      if (
+        !prev ||
+        currentWeight > prevWeight ||
+        (currentWeight === prevWeight && String(prev.sentAt || '') < String(entry.sentAt || ''))
+      ) {
+        latestByStudent.set(studentName, entry);
+      }
+    });
+
+    if (latestByStudent.size === 0) {
+      alert('선택한 날짜에 복구 가능한 학생별 카카오톡 스냅샷이 없습니다.');
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `${formatHistoryDateLabel(selectedDateKey)} 카카오톡 발송 이력 스냅샷으로 이 반의 진행 데이터 일부를 복구할까요? 현재 값 위에 덮어씁니다.`
+      )
+    ) {
+      return;
+    }
+
+    const nextProgressData = JSON.parse(JSON.stringify(progressData || {}));
+    const nextScores = JSON.parse(JSON.stringify(scores || {}));
+    let nextHeaderTexts = {
+      ...headerTexts,
+      testGroups: normalizeTestGroups(headerTexts, progressData, scores),
+    };
+
+    const firstSnapshot = Array.from(latestByStudent.values()).find((entry) => entry?.snapshot);
+    if (firstSnapshot?.snapshot) {
+      const snapshot = firstSnapshot.snapshot;
+      const nextChapters = { ...(nextHeaderTexts.chapters || {}) };
+      const nextVisible = [];
+      (Array.isArray(snapshot.chapters) ? snapshot.chapters : []).forEach((chapter) => {
+        const fieldKey = String(chapter?.fieldKey || '').trim();
+        const prefix = `${chapterConfig.fieldPrefix}`;
+        if (fieldKey.startsWith(prefix)) {
+          const chapterNo = Number(fieldKey.slice(prefix.length));
+          if (!Number.isNaN(chapterNo) && chapterConfig.chapters.includes(chapterNo)) {
+            if (!nextVisible.includes(chapterNo)) nextVisible.push(chapterNo);
+            nextChapters[chapterNo] = String(chapter?.label || nextChapters[chapterNo] || '').trim();
+          }
+        }
+      });
+
+      nextHeaderTexts = {
+        ...nextHeaderTexts,
+        mainTitle: String(snapshot.mainTitle || nextHeaderTexts.mainTitle || '').trim(),
+        chapters: nextChapters,
+        visibleChapters: nextVisible.length > 0 ? nextVisible : nextHeaderTexts.visibleChapters,
+        testGroups: Array.isArray(snapshot.testGroups)
+          ? snapshot.testGroups.map((group) => ({
+              id: String(group?.id || '').trim(),
+              title: String(group?.title || '').trim(),
+              items: Array.isArray(group?.items)
+                ? group.items
+                    .map((item) => ({
+                      id: String(item?.fieldKey || item?.id || '').trim(),
+                      label: String(item?.label || '').trim(),
+                      maxScore: String(item?.maxScore || '').trim(),
+                    }))
+                    .filter((item) => item.id)
+                : [],
+            }))
+          : nextHeaderTexts.testGroups,
+      };
+    }
+
+    latestByStudent.forEach((entry, studentName) => {
+      const snapshot = entry?.snapshot;
+      if (!snapshot || typeof snapshot !== 'object') return;
+      const nextStudentProgress = { ...(nextProgressData[studentName] || {}) };
+      const nextStudentScores = { ...(nextScores[studentName] || {}) };
+
+      (Array.isArray(snapshot.chapters) ? snapshot.chapters : []).forEach((chapter) => {
+        const fieldKey = String(chapter?.fieldKey || '').trim();
+        if (!fieldKey) return;
+        nextStudentProgress[fieldKey] = Boolean(chapter?.completed);
+      });
+
+      if (snapshot.vocabulary) {
+        nextStudentProgress.vocabulary = Boolean(snapshot.vocabulary.completed);
+      }
+
+      (Array.isArray(snapshot.testGroups) ? snapshot.testGroups : []).forEach((group) => {
+        (Array.isArray(group?.items) ? group.items : []).forEach((item) => {
+          const fieldKey = String(item?.fieldKey || item?.id || '').trim();
+          if (!fieldKey) return;
+          nextStudentProgress[fieldKey] = Boolean(item?.completed);
+          const score = String(item?.score || '').trim();
+          if (score) nextStudentScores[fieldKey] = score;
+        });
+      });
+
+      nextProgressData[studentName] = nextStudentProgress;
+      nextScores[studentName] = nextStudentScores;
+    });
+
+    setHeaderTexts(nextHeaderTexts);
+    setProgressData(nextProgressData);
+    setScores(nextScores);
+    markProgressPageDirty();
+
+    try {
+      setSavingProgress(true);
+      setSaveProgressMessage(`${formatHistoryDateLabel(selectedDateKey)} 카카오톡 스냅샷 복구 저장 중...`);
+      await saveData(students, nextProgressData, nextScores, nextHeaderTexts, phoneNumbers);
+      clearProgressPageDirty();
+      setSaveProgressMessage(`✅ ${formatHistoryDateLabel(selectedDateKey)} 카카오톡 스냅샷 기준으로 복구 저장 완료!`);
+      setTimeout(() => setSaveProgressMessage(''), 2500);
+    } catch (error) {
+      console.error('카카오톡 스냅샷 복구 실패:', error);
+      setSaveProgressMessage('❌ 카카오톡 스냅샷 복구 실패');
+      setTimeout(() => setSaveProgressMessage(''), 3000);
+    } finally {
+      setSavingProgress(false);
+    }
+  }, [
+    chapterConfig.chapters,
+    chapterConfig.fieldPrefix,
+    clearProgressPageDirty,
+    headerTexts,
+    kakaoSendHistory,
+    markProgressPageDirty,
+    phoneNumbers,
+    progressData,
+    saveData,
+    scores,
+    students,
+  ]);
 
   // 카카오톡 전송 미리보기 생성 (솔라피 API 사용 전 단계)
   const handleKakaoSend = async () => {
@@ -1291,26 +1886,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       return;
     }
 
-    // 템플릿 코드 입력 받기 (저장된 값이 있으면 제안)
-    const defaultTemplateCode = savedTemplateCode || '';
-    const promptMessage = defaultTemplateCode 
-      ? `카카오톡 템플릿 코드를 입력하세요:\n(이전 입력: ${defaultTemplateCode})`
-      : '카카오톡 템플릿 코드를 입력하세요:';
-    
-    const templateCode = prompt(promptMessage, defaultTemplateCode);
-    if (!templateCode || !templateCode.trim()) {
-      return;
-    }
-    
-    const trimmedTemplateCode = templateCode.trim();
-    
-    // 입력한 템플릿 코드를 저장 (localStorage 및 state)
-    setSavedTemplateCode(trimmedTemplateCode);
-    try {
-      localStorage.setItem('kakaoTemplateCode', trimmedTemplateCode);
-    } catch (error) {
-      console.warn('템플릿 코드를 localStorage에 저장하지 못했습니다:', error);
-    }
+    const trimmedTemplateCode = savedTemplateCode;
   
     // 미리보기용 메시지 배열 생성
     const title = getTitle(); // 모든 학생에게 동일하게 사용
@@ -1335,7 +1911,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       let content = '';
       
       // 공지 문구 추가 (모든 학생 메시지에 포함)
-      content += `📢 2학기 기말고사(4차고사) 전체 과제 완료도입니다.\n\n`;
+      content += `📢 내신대비 전체 과제 완료도입니다.\n\n`;
       content += `1. 모든 과제는 선생님과 클리닉 선생님들께 검사를 받으면 됩니다.\n\n`;
       content += `2. 일부 완료는 완료로 체크되지 않습니다. 전체 완료만 완료입니다.\n\n`;
       content += `3. 완료하였는데 체크되지 않은 것이 있다면 채널로 알려주고 확인을 받아주세요.\n\n`;
@@ -1366,51 +1942,72 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
         }
       });
       
-      // 보듬내신모의고사
-      for (let i = 1; i <= 10; i++) {
-        const isCompleted = progressData[student]?.[`bodeum${i}`] || false;
-        const score = scores[student]?.[`bodeum${i}`];
-        const roundText = headerTexts.bodeum?.[i] || `${i}회`;
-        const bodeumTitle = headerTexts.bodeumTitle || '보듬내신모의고사';
-        
-        // 반 전체 학생이 모두 미완료인지 확인
-        const allStudentsIncomplete = students.every(s => !progressData[s]?.[`bodeum${i}`] && !scores[s]?.[`bodeum${i}`]);
-        
-        // 보듬내신모의고사는 📝 아이콘 사용
-        const bodeumIcon = '📝';
-        // 제출기간 아님(모든 학생이 미완료)인 경우 메시지에서 제외
-        if (!allStudentsIncomplete) {
-          if (score) {
-            // 점수가 있으면 "완료(점수)" 형태로 표시
-            content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 완료(${score}점)\n`;
+      visibleTestGroupItems.forEach((group) => {
+        const groupTitle = String(group.title || '').trim() || '카테고리';
+        const groupIcon = group.id === 'vision' ? '👁️' : '📝';
+        const groupLines = [];
+
+        group.items.forEach((item, itemIndex) => {
+          const fieldKey = item.id;
+          const isCompleted = progressData[student]?.[fieldKey] || false;
+          const score = scores[student]?.[fieldKey];
+          const itemLabel = String(item.label || '').trim() || `${itemIndex + 1}회`;
+          const allStudentsIncomplete = students.every(
+            (s) => !progressData[s]?.[fieldKey] && !String(scores[s]?.[fieldKey] || '').trim()
+          );
+          if (allStudentsIncomplete) return;
+
+          if (String(score || '').trim() !== '') {
+            const scoreStats = includeScoreStatsInKakao ? scoreStatMap.get(fieldKey) : null;
+            const maxScore = parseScoreNumber(item?.maxScore);
+            const detailParts = [];
+            if (maxScore !== null) detailParts.push(`${formatScoreStat(maxScore)}점 만점`);
+            if (scoreStats) detailParts.push(`평균 ${formatScoreStat(scoreStats.average)}점`);
+            const detailSuffix = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : '';
+            const detailInlineSuffix = detailParts.length > 0 ? `, ${detailParts.join(', ')}` : '';
+
+            if (includeAggregateScoreSummaryInKakao && group.items.length > 1) {
+              groupLines.push(`${itemIndex + 1}) ${itemLabel} : ${score}점${detailSuffix}`);
+            } else {
+              content += `${groupIcon} ${groupTitle} ${itemLabel}: 완료(${score}점${detailInlineSuffix})\n`;
+            }
+          } else if (includeAggregateScoreSummaryInKakao && group.items.length > 1) {
+            groupLines.push(`${itemIndex + 1}) ${itemLabel} : 미입력`);
           } else if (isCompleted) {
-            content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 완료\n`;
+            content += `${groupIcon} ${groupTitle} ${itemLabel}: 완료\n`;
           } else {
-            content += `${bodeumIcon} ${bodeumTitle} ${roundText}: 미완료\n`;
+            content += `${groupIcon} ${groupTitle} ${itemLabel}: 미완료\n`;
+          }
+        });
+
+        if (includeAggregateScoreSummaryInKakao && groupLines.length > 0 && group.items.length > 1) {
+          content += `\n${groupTitle}\n\n`;
+          content += `${groupLines.join('\n')}\n\n`;
+
+          const aggregateStats = groupAggregateStatMap.get(group.id);
+          const totalScore = aggregateStats?.totalByStudent?.get(student);
+          const totalRank = aggregateStats?.rankByStudent?.get(student);
+
+          if (totalScore !== undefined && totalScore !== null) {
+            const aggregateParts = [];
+            if (aggregateStats?.maxTotal !== null && aggregateStats?.maxTotal !== undefined) {
+              aggregateParts.push(`${formatScoreStat(aggregateStats.maxTotal)}점 만점`);
+            }
+            if (aggregateStats) {
+              aggregateParts.push(`평균 ${formatScoreStat(aggregateStats.average)}점`);
+            }
+            content += `◈ 합산 결과 : ${formatScoreStat(totalScore)}점`;
+            if (aggregateParts.length > 0) {
+              content += ` (${aggregateParts.join(', ')})`;
+            }
+            content += `\n`;
+          }
+
+          if (aggregateStats && totalRank) {
+            content += `◈ 석차 : ${totalRank}등 (${aggregateStats.totalCount}명 응시)\n`;
           }
         }
-      }
-      
-      // 보듬교육의 시선
-      for (let i = 1; i <= 4; i++) {
-        const isCompleted = progressData[student]?.[`vision${i}`] || false;
-        const roundText = headerTexts.vision?.[i] || `${i}회`;
-        const visionTitle = headerTexts.visionTitle || '보듬교육의 시선';
-        
-        // 반 전체 학생이 모두 미완료인지 확인
-        const allStudentsIncomplete = students.every(s => !progressData[s]?.[`vision${i}`]);
-        
-        // 보듬교육의 시선은 👁️ 아이콘 사용
-        const visionIcon = '👁️';
-        // 제출기간 아님(모든 학생이 미완료)인 경우 메시지에서 제외
-        if (!allStudentsIncomplete) {
-          if (isCompleted) {
-            content += `${visionIcon} ${visionTitle} ${roundText}: 완료\n`;
-          } else {
-            content += `${visionIcon} ${visionTitle} ${roundText}: 미완료\n`;
-          }
-        }
-      }
+      });
       
       // 어휘워크북
       const isVocabularyCompleted = progressData[student]?.vocabulary || false;
@@ -1474,14 +2071,44 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     
     console.log('✅ 최종 발송 시작 - 템플릿 코드:', templateCode, '메시지 개수:', messages.length);
     console.log('✅ prompt를 호출하지 않습니다. 저장된 템플릿 코드를 사용합니다.');
+    try {
+      await saveData(students, progressData, scores, headerTexts, phoneNumbers);
+      clearProgressPageDirty();
+    } catch (error) {
+      console.error('카카오톡 발송 전 데이터 저장 실패:', error);
+    }
     const title = getTitle();
     let successCount = 0;
     let failCount = 0;
     const errorMessages = []; // 오류 메시지 수집용
+    const sentAt = new Date().toISOString();
+    const historyEntriesByStudent = new Map(
+      messages.map((message) => [
+        message.student,
+        {
+          id: `${message.student}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          student: message.student,
+          title,
+          content: message.content,
+          templateCode,
+          sentAt,
+          status: 'pending',
+          recipients: [],
+          snapshot: buildStudentSendSnapshot(message.student),
+        },
+      ])
+    );
+
+    try {
+      await saveKakaoHistoryEntries(Array.from(historyEntriesByStudent.values()));
+    } catch (error) {
+      console.error('카카오톡 발송 전 스냅샷 저장 실패:', error);
+    }
   
     for (const message of messages) {
       const { student, phones, content } = message;
       const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
+      const sentRecipients = [];
       
       for (const { phone, type } of phones) {
         const phoneNumber = phone;
@@ -1551,6 +2178,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
           if (result.success) {
             successCount++;
             console.log(`✅ ${student} 학생 ${type}에게 카카오톡 발송 성공`);
+            sentRecipients.push({ type, phone: phoneNumber });
           } else {
             throw new Error(result.error || '알 수 없는 오류');
           }
@@ -1564,6 +2192,20 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
           }
         }
       }
+
+      const historyEntry = historyEntriesByStudent.get(student);
+      if (historyEntry) {
+        historyEntriesByStudent.set(student, {
+          ...historyEntry,
+          recipients: sentRecipients,
+          status:
+            sentRecipients.length === phones.length
+              ? 'sent'
+              : sentRecipients.length > 0
+                ? 'partial'
+                : 'failed',
+        });
+      }
     }
     
     // 모든 발송 시도 후 오류 메시지 한 번만 표시
@@ -1571,6 +2213,15 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
       alert(`❌ 카카오톡 발송 오류:\n${errorMessages.join('\n')}`);
     }
     
+    try {
+      await saveKakaoHistoryEntries(Array.from(historyEntriesByStudent.values()));
+    } catch (error) {
+      console.error('카카오톡 전송 이력 저장 실패:', error);
+      if (successCount > 0) {
+        alert(`⚠️ 카카오톡은 발송됐지만 전송 이력 저장에 실패했습니다: ${error.message}`);
+      }
+    }
+
     if (successCount > 0) {
       alert(`✅ ${successCount}건의 카카오톡 메시지가 성공적으로 발송되었습니다!${failCount > 0 ? `\n❌ ${failCount}건 발송 실패` : ''}`);
       // 발송 성공 후 미리보기 상태 유지 (같은 내용으로 다시 발송 가능)
@@ -1586,46 +2237,55 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   // 제목 생성 (학교명 없이 반/학년만 표시)
   const getTitle = () => {
     if (docIdOverride) {
-      return `${docIdOverride} 과제 진행상황`;
+      return `${docIdOverride} 전체 완성도와 테스트관리`;
     }
     if (school === '중학교 1학년') {
       if (teacher) {
-        return `${school} ${teacher} 선생님 과제 진행상황`;
+        return `${school} ${teacher} 선생님 전체 완성도와 테스트관리`;
       }
-      return `${school} 과제 진행상황`;
+      return `${school} 전체 완성도와 테스트관리`;
     }
     if (grade && selectedClass) {
-      return `${grade} ${selectedClass} 과제 진행상황`;
+      return `${grade} ${selectedClass} 전체 완성도와 테스트관리`;
     }
-    if (grade) return `${grade} 과제 진행상황`;
-    if (selectedClass) return `${selectedClass} 과제 진행상황`;
-    return '과제 진행상황';
+    if (grade) return `${grade} 전체 완성도와 테스트관리`;
+    if (selectedClass) return `${selectedClass} 전체 완성도와 테스트관리`;
+    return '전체 완성도와 테스트관리';
   };
   
   return (
     <div className="homework-progress-page">
       <div className="homework-progress-container">
-        <div className="homework-progress-header">
-          <h2>{getTitle()}</h2>
-          <button className="close-btn" onClick={onClose}>닫기</button>
-        </div>
-        
-        <div className="homework-progress-tabs">
-          <button 
-            className={`tab-btn ${activeTab === 'progress' ? 'active' : ''}`}
-            onClick={() => setActiveTab('progress')}
-          >
-            전체 과제 상황
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'all' ? 'active' : ''}`}
-            onClick={() => setActiveTab('all')}
-          >
-            진도와 과제
-          </button>
-        </div>
-        
-        <div className="homework-progress-content">
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center' }}>
+            <p>데이터를 불러오는 중...</p>
+            <p style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
+              Firebase에서 실시간 데이터를 동기화하고 있습니다.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="homework-progress-header">
+              <h2>{getTitle()}</h2>
+              <button className="close-btn" onClick={onClose}>닫기</button>
+            </div>
+            
+            <div className="homework-progress-tabs">
+              <button 
+                className={`tab-btn ${activeTab === 'progress' ? 'active' : ''}`}
+                onClick={() => setActiveTab('progress')}
+              >
+                전체 과제 상황
+              </button>
+              <button 
+                className={`tab-btn ${activeTab === 'all' ? 'active' : ''}`}
+                onClick={() => setActiveTab('all')}
+              >
+                진도와 과제
+              </button>
+            </div>
+            
+            <div className="homework-progress-content">
           {activeTab === 'progress' && (
             <div className="progress-section">
               <div className="section-header">
@@ -1664,15 +2324,22 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                       </a>
                     </div>
                   )}
-                  {/* 영어 과제 관리 전용: 전화번호 엑셀 업로드 */}
-                  <div style={{ padding: '10px 14px', backgroundColor: '#e0f2fe', borderRadius: '8px', border: '2px solid #0ea5e9' }}>
-                    <span style={{ fontWeight: '600', marginRight: '10px', color: '#0c4a6e' }}>📤 전화번호 엑셀 업로드</span>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: phoneUploading ? 'not-allowed' : 'pointer', opacity: phoneUploading ? 0.7 : 1 }}>
-                      <input type="file" accept=".xlsx,.xls" onChange={handlePhoneExcelUpload} disabled={phoneUploading} style={{ fontSize: '0.85rem' }} />
-                      <span style={{ padding: '6px 12px', background: '#0ea5e9', color: '#fff', borderRadius: '6px', fontWeight: '600', fontSize: '0.9rem' }}>{phoneUploading ? '처리 중...' : '엑셀 선택'}</span>
-                    </label>
-                    <span style={{ marginLeft: '8px', fontSize: '0.85rem', color: '#0369a1' }}>(이 메뉴에서만 사용, 윈터스쿨·클리닉 미반영)</span>
-                  </div>
+                  <label className="kakao-option-toggle">
+                    <input
+                      type="checkbox"
+                      checked={includeScoreStatsInKakao}
+                      onChange={(e) => setIncludeScoreStatsInKakao(e.target.checked)}
+                    />
+                    <span>점수 입력 완료 시 평균/석차 포함</span>
+                  </label>
+                  <label className="kakao-option-toggle">
+                    <input
+                      type="checkbox"
+                      checked={includeAggregateScoreSummaryInKakao}
+                      onChange={(e) => setIncludeAggregateScoreSummaryInKakao(e.target.checked)}
+                    />
+                    <span>테스트 여러 개면 합산 결과로 보내기</span>
+                  </label>
                   <button className="kakao-btn" onClick={handleKakaoSend}>
                     <span className="kakao-icon">💬</span>
                     카카오톡 전송 미리보기
@@ -1719,7 +2386,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                 <table className="progress-table">
                   <thead>
                     <tr>
-                      <th rowSpan="2" style={{ width: '90px', minWidth: '90px', maxWidth: '90px', padding: '12px 16px', boxSizing: 'border-box' }}>학생</th>
+                      <th rowSpan="2" className="student-sticky-cell" style={{ width: '90px', minWidth: '90px', maxWidth: '90px', padding: '12px 16px', boxSizing: 'border-box' }}>학생</th>
                       <th colSpan={Math.max(1, visibleChapters.length)}>
                         <div className="header-main-group">
                           <input
@@ -1741,24 +2408,27 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                         </div>
                       </th>
                       <th rowSpan="2">어휘워크북</th>
-                      <th colSpan="10">
-                        <input
-                          type="text"
-                          className="header-input main-header-input"
-                          value={headerTexts.bodeumTitle || '보듬내신모의고사'}
-                          onChange={(e) => handleHeaderTextChange('bodeumTitle', 'title', e.target.value)}
-                          placeholder="보듬내신모의고사"
-                        />
-                      </th>
-                      <th colSpan="4">
-                        <input
-                          type="text"
-                          className="header-input main-header-input"
-                          value={headerTexts.visionTitle || '보듬교육의 시선'}
-                          onChange={(e) => handleHeaderTextChange('visionTitle', 'title', e.target.value)}
-                          placeholder="보듬교육의 시선"
-                        />
-                      </th>
+                      {visibleTestGroupItems.map((group) => (
+                        <th key={`group-top-${group.id}`} colSpan={Math.max(1, group.items.length)}>
+                          <div className="header-main-group">
+                            <input
+                              type="text"
+                              className="header-input main-header-input"
+                              value={group.title || ''}
+                              onChange={(e) => handleTestGroupTitleChange(group.id, e.target.value)}
+                              placeholder="카테고리명"
+                            />
+                            <button
+                              type="button"
+                              className="chapter-add-btn"
+                              onClick={() => handleAddTestGroupItem(group.id)}
+                              title="카테고리 칸 추가"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </th>
+                      ))}
                       <th rowSpan="2" style={{ backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 'bold', width: '180px', minWidth: '180px', maxWidth: '180px', padding: '12px 16px', boxSizing: 'border-box' }}>
                         📱 전화번호<br/>
                         <span style={{ fontSize: '11px', fontWeight: 'normal' }}>(위: 학부모, 아래: 학생)</span>
@@ -1771,52 +2441,98 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                         const currentValue = headerTexts.chapters?.[chapter];
                         return (
                           <th key={`${chapterConfig.fieldPrefix}-h-${chapter}`} className="header-input-cell">
-                            <input
-                              type="text"
-                              className="header-input"
-                              value={currentValue || defaultValue}
-                              onChange={(e) => handleHeaderTextChange('chapters', chapter, e.target.value)}
-                              placeholder={defaultValue}
-                            />
+                            <div className="dynamic-header-cell">
+                              <input
+                                type="text"
+                                className="header-input"
+                                value={currentValue || defaultValue}
+                                onChange={(e) => handleHeaderTextChange('chapters', chapter, e.target.value)}
+                                placeholder={defaultValue}
+                              />
+                              <div className="header-action-buttons">
+                                <button
+                                  type="button"
+                                  className="header-inline-add-btn"
+                                  onClick={handleAddChapterColumn}
+                                  title="강 칸 추가"
+                                  disabled={visibleChapters.length >= chapterConfig.chapters.length}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
                           </th>
                         );
                       })}
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
-                        const defaultValue = `${num}회`;
-                        const currentValue = headerTexts.bodeum?.[num];
-                        return (
-                          <th key={`bodeum-h-${num}`} className="header-input-cell">
-                            <input
-                              type="text"
-                              className="header-input"
-                              value={currentValue || defaultValue}
-                              onChange={(e) => handleHeaderTextChange('bodeum', num, e.target.value)}
-                              placeholder={defaultValue}
-                            />
+                      {visibleTestGroupItems.map((group) =>
+                        group.items.length > 0 ? (
+                          group.items.map((item, index) => (
+                            <th key={`${group.id}-${item.id}`} className="header-input-cell">
+                              <div className="dynamic-header-cell">
+                                <input
+                                  type="text"
+                                  className="header-input"
+                                  value={item.label || ''}
+                                  onChange={(e) => handleTestGroupItemLabelChange(group.id, item.id, e.target.value)}
+                                  placeholder={`${index + 1}회`}
+                                />
+                                <div className="test-item-meta-row">
+                                  <input
+                                    type="text"
+                                    className="test-item-max-score-input"
+                                    value={item.maxScore || ''}
+                                    onChange={(e) => handleTestGroupItemMaxScoreChange(group.id, item.id, e.target.value)}
+                                    placeholder="만점"
+                                    inputMode="decimal"
+                                  />
+                                </div>
+                                <div className="header-action-buttons">
+                                  <button
+                                    type="button"
+                                    className="header-inline-add-btn"
+                                    onClick={() => handleAddTestGroupItem(group.id)}
+                                    title="칸 추가"
+                                  >
+                                    +
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="header-remove-btn"
+                                    onClick={() => handleRemoveTestGroupItem(group.id, item.id)}
+                                    title="칸 삭제"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              </div>
+                            </th>
+                          ))
+                        ) : (
+                          <th key={`${group.id}-empty`} className="header-input-cell header-empty-cell">
+                            <button
+                              type="button"
+                              className="header-empty-add-btn"
+                              onClick={() => handleAddTestGroupItem(group.id)}
+                            >
+                              +
+                            </button>
                           </th>
-                        );
-                      })}
-                      {[1, 2, 3, 4].map((num) => {
-                        const defaultValue = `${num}회`;
-                        const currentValue = headerTexts.vision?.[num];
-                        return (
-                          <th key={`vision-h-${num}`} className="header-input-cell">
-                            <input
-                              type="text"
-                              className="header-input"
-                              value={currentValue || defaultValue}
-                              onChange={(e) => handleHeaderTextChange('vision', num, e.target.value)}
-                              placeholder={defaultValue}
-                            />
-                          </th>
-                        );
-                      })}
+                        )
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {sortedStudents.map((student) => (
                         <tr key={student}>
-                        <td className="student-name">{student}</td>
+                        <td className="student-name">
+                          <button
+                            type="button"
+                            className="student-history-btn"
+                            onClick={() => setSelectedHistoryStudent(student)}
+                          >
+                            {student}
+                          </button>
+                        </td>
                         {visibleChapters.map((chapter) => (
                           <td key={`${chapterConfig.fieldPrefix}-${student}-${chapter}`}>
                             <input
@@ -1834,44 +2550,30 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                             onChange={() => handleCheckboxChange(student, 'vocabulary')}
                           />
                         </td>
-                        {/* 보듬내신모의고사 1-10회 */}
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                          <td key={num}>
-                            <div className="assignment-cell">
-                              <input
-                                type="checkbox"
-                                checked={progressData[student]?.[`bodeum${num}`] || false}
-                                onChange={() => handleCheckboxChange(student, `bodeum${num}`)}
-                              />
-                              <input
-                                type="text"
-                                className="score-input"
-                                placeholder="점수"
-                                value={scores[student]?.[`bodeum${num}`] || ''}
-                                onChange={(e) => handleScoreChange(student, `bodeum${num}`, e.target.value)}
-                              />
-                            </div>
-                          </td>
-                        ))}
-                        {/* 보듬교육의 시선 1-4회 */}
-                        {[1, 2, 3, 4].map((num) => (
-                          <td key={`vision${num}`}>
-                            <div className="assignment-cell">
-                              <input
-                                type="checkbox"
-                                checked={progressData[student]?.[`vision${num}`] || false}
-                                onChange={() => handleCheckboxChange(student, `vision${num}`)}
-                              />
-                              <input
-                                type="text"
-                                className="score-input"
-                                placeholder="점수"
-                                value={scores[student]?.[`vision${num}`] || ''}
-                                onChange={(e) => handleScoreChange(student, `vision${num}`, e.target.value)}
-                              />
-                            </div>
-                          </td>
-                        ))}
+                        {visibleTestGroupItems.map((group) =>
+                          group.items.length > 0 ? (
+                            group.items.map((item) => (
+                              <td key={`${student}-${item.id}`}>
+                                <div className="assignment-cell">
+                                  <input
+                                    type="checkbox"
+                                    checked={progressData[student]?.[item.id] || false}
+                                    onChange={() => handleCheckboxChange(student, item.id)}
+                                  />
+                                  <input
+                                    type="text"
+                                    className="score-input"
+                                    placeholder="점수"
+                                    value={scores[student]?.[item.id] || ''}
+                                    onChange={(e) => handleScoreChange(student, item.id, e.target.value)}
+                                  />
+                                </div>
+                              </td>
+                            ))
+                          ) : (
+                            <td key={`${student}-${group.id}-empty`} className="assignment-empty-cell"></td>
+                          )
+                        )}
                         <td className="phone-number-cell">
                           <div className="phone-input-container">
                             <input
@@ -1919,7 +2621,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                           }}
                         />
                       </td>
-                      <td colSpan="17">
+                      <td colSpan={visibleChapters.length + 1 + totalVisibleTestColumns + 2}>
                         <button
                           className="add-student-btn"
                           onClick={handleAddStudent}
@@ -2062,8 +2764,43 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
             </div>
           )}
           
-        </div>
+            </div>
+          </>
+        )}
       </div>
+      {selectedHistoryStudent && (
+        <div className="student-history-modal-overlay" onClick={() => setSelectedHistoryStudent(null)}>
+          <div className="student-history-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="student-history-modal-header">
+              <h3>{selectedHistoryStudent} 카카오톡 이력</h3>
+              <button className="close-btn" onClick={() => setSelectedHistoryStudent(null)}>닫기</button>
+            </div>
+            <div className="student-history-modal-body">
+              {selectedStudentHistoryEntries.length === 0 ? (
+                <div className="student-history-empty">저장된 카카오톡 전송 이력이 없습니다.</div>
+              ) : (
+                selectedStudentHistoryEntries.map((entry) => (
+                  <div key={entry.id} className="student-history-entry">
+                    <div className="student-history-entry-time">
+                      {entry.sentAt ? new Date(entry.sentAt).toLocaleString() : '-'}
+                    </div>
+                    <div className="student-history-entry-meta">
+                      <strong>{entry.title || '전체 완성도와 테스트관리'}</strong>
+                      <span>템플릿: {entry.templateCode || '-'}</span>
+                      <span>
+                        수신자: {entry.recipients.length > 0
+                          ? entry.recipients.map((recipient) => `${recipient.type} ${recipient.phone}`).join(', ')
+                          : '-'}
+                      </span>
+                    </div>
+                    <pre className="student-history-entry-content">{entry.content}</pre>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

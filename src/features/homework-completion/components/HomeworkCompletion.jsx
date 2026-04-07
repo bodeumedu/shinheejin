@@ -8,6 +8,7 @@ const HOMEWORK_COMPLETION_PHONE_DOC = 'homeworkCompletionPhoneNumbers';
 const HOMEWORK_COMPLETION_PHONE_DOC_ID = 'all';
 const HOMEWORK_COMPLETION_PHONE_BACKUP_DOC = 'studentPhoneNumbers';
 const HOMEWORK_COMPLETION_PHONE_BACKUP_DOC_ID = 'all';
+const WITHDRAWN_NAMES_FIELD = 'withdrawnNames';
 const SEND_HISTORY_COLLECTION = 'homeworkCompletionSendHistory';
 const SENT_COUNTS_DOC = 'homeworkCompletionSentCounts';
 const DATE_DATA_DOC = 'homeworkCompletionDateData';
@@ -113,6 +114,21 @@ function formatLocalYMD(d = new Date()) {
 
 function formatLocalYearMonth(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatLocalDateTimeInputValue(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function getDefaultScheduleDateTimeInputValue() {
+  const base = new Date(Date.now() + 10 * 60 * 1000);
+  base.setSeconds(0, 0);
+  return formatLocalDateTimeInputValue(base);
 }
 
 /** StudentDataModal과 동일 키 — 완료도에서 학생 삭제 시 학생 데이터 화면 퇴원 목록에 반영 */
@@ -321,10 +337,65 @@ const repairPhoneMapFromBackup = (phoneMap, backupPhoneMap) => {
   return { repairedPhoneMap: repaired, repairedNames };
 };
 
-const getDuplicateStudentNameKey = (name) => String(name || '').trim().replace(/\d+$/, '');
+const STUDENT_KEY_PHONE_SUFFIX_REGEX = /\s+\((\d{4}(?:-\d+)?)\)$/;
+
+const normalizePhoneDigits = (value) => String(value || '').replace(/[^0-9]/g, '');
+
+const getDuplicateStudentNameKey = (name) =>
+  String(name || '')
+    .trim()
+    .replace(STUDENT_KEY_PHONE_SUFFIX_REGEX, '')
+    .replace(/\d+$/, '');
+
+const getStudentDisplayName = (studentKey, infoMap = {}) => {
+  const stored = infoMap?.[studentKey]?.displayName;
+  if (stored != null && String(stored).trim()) return String(stored).trim();
+  return getDuplicateStudentNameKey(studentKey) || String(studentKey || '').trim();
+};
+
+const getStudentDisambiguationTag = (studentKey) => {
+  const match = String(studentKey || '').trim().match(STUDENT_KEY_PHONE_SUFFIX_REGEX);
+  return match ? match[1] : '';
+};
+
+const normalizeWithdrawnNames = (value) => {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => String(item || '').trim()).filter(Boolean))];
+};
+
+const loadWithdrawnNamesFromLocalStorage = () => {
+  try {
+    const raw = localStorage.getItem(STUDENT_DATA_WITHDRAWN_STORAGE_KEY);
+    return normalizeWithdrawnNames(raw ? JSON.parse(raw) : []);
+  } catch {
+    return [];
+  }
+};
+
+const isStudentMarkedWithdrawn = (studentKey, infoMap, withdrawnSet) => {
+  if (!withdrawnSet || withdrawnSet.size === 0) return false;
+  const displayName = String(infoMap?.[studentKey]?.displayName || '').trim();
+  const normalizedKey = String(studentKey || '').trim();
+  const baseName = getDuplicateStudentNameKey(studentKey);
+  return [normalizedKey, displayName, baseName].filter(Boolean).some((name) => withdrawnSet.has(name));
+};
+
+const buildDisambiguatedStudentKey = (studentName, phoneDigits, existingStudents = []) => {
+  const baseName = String(studentName || '').trim();
+  const last4 = String(phoneDigits || '').slice(-4) || 'new';
+  let candidate = `${baseName} (${last4})`;
+  let suffix = 2;
+  const existingSet = new Set(existingStudents || []);
+  while (existingSet.has(candidate)) {
+    candidate = `${baseName} (${last4}-${suffix})`;
+    suffix += 1;
+  }
+  return candidate;
+};
 
 const QUICK_MEMO_STORAGE_KEY = 'homeworkCompletionQuickMemoByClass';
 const NOTEBOOK_STORAGE_KEY = 'homeworkCompletionNotebookByClass';
+const EMPTY_NOTEBOOK = { title: '', content: '', attachments: [] };
 
 function loadJsonLocalStorage(key, fallback = {}) {
   try {
@@ -343,6 +414,24 @@ function saveJsonLocalStorage(key, value) {
   } catch (e) {
     console.warn('localStorage 저장 실패:', e);
   }
+}
+
+function normalizeNotebookByClass(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out = {};
+  Object.keys(value).forEach((className) => {
+    const item = value[className];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      out[className] = { ...EMPTY_NOTEBOOK };
+      return;
+    }
+    out[className] = {
+      title: String(item.title || ''),
+      content: String(item.content || ''),
+      attachments: Array.isArray(item.attachments) ? item.attachments : [],
+    };
+  });
+  return out;
 }
 
 const parseSingleClassName = (className) => {
@@ -443,12 +532,17 @@ const parseProgressLabelsFromSituation = (text) => {
   return out;
 };
 
+const parseMultilineItems = (text) =>
+  String(text || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
 // 숙제 과제 완료도 관리 컴포넌트
-export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
+export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpenStudentData, onOpenAdminPage, onOpenClassBuilder, onOpenWeeklySchedule, initialEntryAction = 'default' }) {
   const config = useMemo(() => getHomeworkCompletionConfig(), []);
   const [students, setStudents] = useState([]);
   const [commentAiLoading, setCommentAiLoading] = useState(null);
-  const commentAiTimersRef = useRef({});
   const [studentInfo, setStudentInfo] = useState({}); // {학생명: {school, grade, className}}
   const [phoneNumbers, setPhoneNumbers] = useState({}); // {학생명: {student: '010...', parent: '010...'}}
   const [loading, setLoading] = useState(true);
@@ -465,7 +559,11 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
   const [showPreview, setShowPreview] = useState(false); // 미리보기 표시 여부
   const [previewRecipientSelections, setPreviewRecipientSelections] = useState({}); // {학생명: {student: boolean, parent: boolean}}
   const [previewSendType, setPreviewSendType] = useState(null); // 'notice' 또는 'completion' 또는 null (일반 미리보기)
+  const [scheduledSendAt, setScheduledSendAt] = useState(getDefaultScheduleDateTimeInputValue());
+  const [scheduleSending, setScheduleSending] = useState(false);
   const [showAddStudentForm, setShowAddStudentForm] = useState(false); // 학생 추가 폼 표시 여부
+  const [studentImportQuery, setStudentImportQuery] = useState('');
+  const [studentImportKey, setStudentImportKey] = useState('');
   const [showIndividualFields, setShowIndividualFields] = useState(false); // 학생별 숙제/진도 입력 표시 여부
   const [calendarStudentFilter, setCalendarStudentFilter] = useState('all'); // 캘린더 학생별 보기
   const [newStudentForm, setNewStudentForm] = useState({
@@ -492,8 +590,9 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
   const [selectedDateForHomework, setSelectedDateForHomework] = useState(null); // 과제 입력을 위한 선택한 날짜
   const [dateHomeworkInput, setDateHomeworkInput] = useState(''); // 날짜별 과제 입력 필드
   const [dateProgressInput, setDateProgressInput] = useState(''); // 날짜별 진도 입력 필드
+  const [dateEntrySaving, setDateEntrySaving] = useState(false); // 날짜별 과제/진도 즉시 저장 중
   const [quickMemoByClass, setQuickMemoByClass] = useState(() => loadJsonLocalStorage(QUICK_MEMO_STORAGE_KEY, {}));
-  const [notebookByClass, setNotebookByClass] = useState(() => loadJsonLocalStorage(NOTEBOOK_STORAGE_KEY, {}));
+  const [notebookByClass, setNotebookByClass] = useState(() => normalizeNotebookByClass(loadJsonLocalStorage(NOTEBOOK_STORAGE_KEY, {})));
   const [dateCompletionData, setDateCompletionData] = useState({}); // {날짜: {반명: {학생명: {과제명: {completed: boolean, percentage: string(메모)}}}}}
   const [dateHomeworkList, setDateHomeworkList] = useState({}); // {날짜: {반명: [과제목록]}}
   const [progressList, setProgressList] = useState({}); // {반명: [진도항목목록]}
@@ -520,6 +619,10 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
   const [addedClassList, setAddedClassList] = useState([]); // 반 추가 폼으로만 추가한 반(학생 0명일 수 있음)
   /** 삭제된 반 이력: { [학생명]: [{ className, removedAt }] } — 학생 데이터에서 이전 수강 반 표시용 */
   const [studentClassHistory, setStudentClassHistory] = useState({});
+  const memoSyncReadyRef = useRef(false);
+  const memoSyncTimersRef = useRef({});
+  const addClassFormRef = useRef(null);
+  const selectedClassRef = useRef('all');
 
   useEffect(() => {
     if (!selectedClass || selectedClass === 'all') {
@@ -531,12 +634,98 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
   }, [selectedClass]);
 
   useEffect(() => {
+    selectedClassRef.current = selectedClass;
+  }, [selectedClass]);
+
+  useEffect(() => {
     saveJsonLocalStorage(QUICK_MEMO_STORAGE_KEY, quickMemoByClass);
   }, [quickMemoByClass]);
 
   useEffect(() => {
     saveJsonLocalStorage(NOTEBOOK_STORAGE_KEY, notebookByClass);
   }, [notebookByClass]);
+
+  const buildAiGuardianGreetingName = useCallback((studentName) => {
+    const trimmed = String(studentName || '').trim();
+    if (!trimmed) return '학생 학부모님 :)';
+    const compact = trimmed.replace(/\s+/g, '');
+    if (/^[가-힣]{3}$/.test(compact)) {
+      return `${compact.slice(1)} 학생 학부모님 :)`;
+    }
+    return `${trimmed} 학생 학부모님 :)`;
+  }, []);
+
+  const getCommentAiRotationProfile = useCallback(() => {
+    const variants = [
+      {
+        label: '담백형',
+        guide: '첫 문장에 핵심 수업/숙제 상황을 바로 짚고, 마지막은 짧고 무난하게 마무리하세요.',
+      },
+      {
+        label: '부드러운 연결형',
+        guide: '첫 문장은 가볍게 안부를 건넨 뒤, 두 번째 문장에서 수업/숙제 상황을 자연스럽게 이어서 설명하세요.',
+      },
+      {
+        label: '확인사항 강조형',
+        guide: '중간에 오늘 확인된 점이나 다음에 볼 포인트를 한 번 짚어주고, 전체 문장은 짧게 유지하세요.',
+      },
+      {
+        label: '생활기록형',
+        guide: '수업 분위기나 태도 표현을 짧게 한 번 넣되, 과장 없이 사실 전달 중심으로 정리하세요.',
+      },
+    ];
+    const today = new Date();
+    const localMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const dayIndex = Math.floor(localMidnight.getTime() / 86400000);
+    return variants[Math.floor(dayIndex / 3) % variants.length];
+  }, []);
+
+  const persistMemoFieldsToFirebase = useCallback(async (className, quickMemoValue, notebookValue) => {
+    if (!className || className === 'all' || !isFirebaseConfigured() || !db) return;
+    const dateDataRef = doc(db, config.dateDataDoc, 'all');
+    const dateSnap = await getDoc(dateDataRef);
+    const existingData = dateSnap.exists() ? (dateSnap.data() || {}) : {};
+    const nextQuickMemoByClass = {
+      ...((existingData.quickMemoByClass && typeof existingData.quickMemoByClass === 'object') ? existingData.quickMemoByClass : {}),
+      [className]: String(quickMemoValue || ''),
+    };
+    const nextNotebookByClass = {
+      ...normalizeNotebookByClass(existingData.notebookByClass || {}),
+      [className]: normalizeNotebookByClass({ [className]: notebookValue || EMPTY_NOTEBOOK })[className],
+    };
+    await setDoc(
+      dateDataRef,
+      {
+        quickMemoByClass: nextQuickMemoByClass,
+        notebookByClass: nextNotebookByClass,
+        lastUpdated: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  }, [db, config.dateDataDoc]);
+
+  useEffect(() => {
+    if (!memoSyncReadyRef.current) {
+      memoSyncReadyRef.current = true;
+      return;
+    }
+    const className = selectedClassRef.current;
+    if (className === 'all') return;
+    clearTimeout(memoSyncTimersRef.current[className]);
+    memoSyncTimersRef.current[className] = setTimeout(() => {
+      persistMemoFieldsToFirebase(
+        className,
+        quickMemoByClass[className] || '',
+        notebookByClass[className] || EMPTY_NOTEBOOK
+      ).catch((error) => {
+        console.error('메모 Firestore 저장 실패:', error);
+      });
+    }, 800);
+  }, [quickMemoByClass, notebookByClass, persistMemoFieldsToFirebase]);
+
+  useEffect(() => () => {
+    Object.values(memoSyncTimersRef.current).forEach((timerId) => clearTimeout(timerId));
+  }, []);
 
   // 학생 이름 클릭: 해당 학생에게 보내진 카톡 전송 이력을 모달로 표시
   const handleStudentNameClick = useCallback((studentName) => {
@@ -580,56 +769,97 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
 
   // 숙제 과제 완료도 전용 전화번호/학생 데이터 불러오기 (다른 메뉴와 분리)
   useEffect(() => {
-    const loadData = async () => {
-      if (!isFirebaseConfigured() || !db) {
-        setLoading(false);
-        return;
-      }
+    if (!isFirebaseConfigured() || !db) {
+      setLoading(false);
+      return undefined;
+    }
 
-      try {
-        setLoadError(null);
-        const docRef = doc(db, config.phoneDoc, HOMEWORK_COMPLETION_PHONE_DOC_ID);
-        const backupRef = doc(db, HOMEWORK_COMPLETION_PHONE_BACKUP_DOC, HOMEWORK_COMPLETION_PHONE_BACKUP_DOC_ID);
-        const [docSnapshot, backupSnapshot] = await Promise.all([getDoc(docRef), getDoc(backupRef)]);
+    const docRef = doc(db, config.phoneDoc, HOMEWORK_COMPLETION_PHONE_DOC_ID);
+    const backupRef = doc(db, HOMEWORK_COMPLETION_PHONE_BACKUP_DOC, HOMEWORK_COMPLETION_PHONE_BACKUP_DOC_ID);
 
-        if (docSnapshot.exists()) {
-          const data = docSnapshot.data();
-          const studentList = data.students || [];
-          const infoData = data.studentInfo || {};
-          const backupPhoneData = backupSnapshot.exists() ? extractPhoneMapFromDocData(backupSnapshot.data()) : {};
-          const { repairedPhoneMap, repairedNames } = repairPhoneMapFromBackup(data.phoneNumbers || {}, backupPhoneData);
-          const savedAddedClasses = data.addedClassList || [];
+    const unsubscribe = onSnapshot(
+      docRef,
+      async (docSnapshot) => {
+        try {
+          setLoadError(null);
+          const backupSnapshot = await getDoc(backupRef);
 
-          setStudents(studentList);
-          setStudentInfo(infoData);
-          setPhoneNumbers(repairedPhoneMap);
-          setAddedClassList(Array.isArray(savedAddedClasses) ? savedAddedClasses : []);
-          const hist = data.studentClassHistory;
-          setStudentClassHistory(hist && typeof hist === 'object' && !Array.isArray(hist) ? hist : {});
-          console.log('✅ 숙제 과제 완료도 학생/전화번호 불러옴:', { 학생수: studentList.length, 전화번호수: Object.keys(repairedPhoneMap).length, 추가반: savedAddedClasses.length, 자동복구: repairedNames.length });
+          if (docSnapshot.exists()) {
+            const data = docSnapshot.data();
+            const studentList = data.students || [];
+            const infoData = data.studentInfo || {};
+            const mergedWithdrawnNames = normalizeWithdrawnNames([
+              ...normalizeWithdrawnNames(data?.[WITHDRAWN_NAMES_FIELD]),
+              ...loadWithdrawnNamesFromLocalStorage(),
+            ]);
+            const withdrawnSet = new Set(mergedWithdrawnNames);
+            const backupPhoneData = backupSnapshot.exists() ? extractPhoneMapFromDocData(backupSnapshot.data()) : {};
+            const { repairedPhoneMap, repairedNames } = repairPhoneMapFromBackup(data.phoneNumbers || {}, backupPhoneData);
+            const savedAddedClasses = data.addedClassList || [];
+            const filteredStudentList = (Array.isArray(studentList) ? studentList : []).filter(
+              (studentKey) => !isStudentMarkedWithdrawn(studentKey, infoData, withdrawnSet)
+            );
+            const filteredStudentInfo = Object.fromEntries(
+              Object.entries(infoData || {}).filter(([studentKey]) => !isStudentMarkedWithdrawn(studentKey, infoData, withdrawnSet))
+            );
+            const filteredPhoneMap = Object.fromEntries(
+              Object.entries(repairedPhoneMap || {}).filter(([studentKey]) => !isStudentMarkedWithdrawn(studentKey, infoData, withdrawnSet))
+            );
 
-          if (repairedNames.length > 0) {
-            await setDoc(docRef, {
-              phoneNumbers: repairedPhoneMap,
-              lastUpdated: new Date().toISOString(),
-            }, { merge: true });
-            console.log('🔧 학생/학부모 번호 자동 복구 완료:', repairedNames);
+            setStudents(filteredStudentList);
+            setStudentInfo(filteredStudentInfo);
+            setPhoneNumbers(filteredPhoneMap);
+            setAddedClassList(Array.isArray(savedAddedClasses) ? savedAddedClasses : []);
+            const hist = data.studentClassHistory;
+            setStudentClassHistory(hist && typeof hist === 'object' && !Array.isArray(hist) ? hist : {});
+            console.log('✅ 숙제 과제 완료도 학생/전화번호 불러옴:', { 학생수: filteredStudentList.length, 숨김퇴원생수: Math.max((Array.isArray(studentList) ? studentList.length : 0) - filteredStudentList.length, 0), 전화번호수: Object.keys(filteredPhoneMap).length, 추가반: savedAddedClasses.length, 자동복구: repairedNames.length });
+
+            if (JSON.stringify(normalizeWithdrawnNames(data?.[WITHDRAWN_NAMES_FIELD])) !== JSON.stringify(mergedWithdrawnNames)) {
+              await setDoc(docRef, {
+                [WITHDRAWN_NAMES_FIELD]: mergedWithdrawnNames,
+                lastUpdated: new Date().toISOString(),
+              }, { merge: true });
+            }
+
+            if (repairedNames.length > 0) {
+              await setDoc(docRef, {
+                phoneNumbers: repairedPhoneMap,
+                lastUpdated: new Date().toISOString(),
+              }, { merge: true });
+              console.log('🔧 학생/학부모 번호 자동 복구 완료:', repairedNames);
+            }
+          } else {
+            setStudents([]);
+            setStudentInfo({});
+            setPhoneNumbers({});
+            setAddedClassList([]);
+            setStudentClassHistory({});
           }
+        } catch (error) {
+          console.error('학생 데이터 불러오기 실패:', error);
+          const isPermission = error?.code === 'permission-denied' || error?.message?.includes('permission');
+          if (isPermission) {
+            setLoadError('Firestore 권한 오류입니다. 규칙을 배포해주세요: 터미널에서 "firebase deploy --only firestore:rules" 실행 (FIRESTORE_RULES_DEPLOY.md 참고)');
+          } else {
+            setLoadError(error?.message || '데이터를 불러오지 못했습니다.');
+          }
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error('학생 데이터 불러오기 실패:', error);
+      },
+      (error) => {
+        console.error('학생 데이터 구독 실패:', error);
         const isPermission = error?.code === 'permission-denied' || error?.message?.includes('permission');
         if (isPermission) {
           setLoadError('Firestore 권한 오류입니다. 규칙을 배포해주세요: 터미널에서 "firebase deploy --only firestore:rules" 실행 (FIRESTORE_RULES_DEPLOY.md 참고)');
         } else {
           setLoadError(error?.message || '데이터를 불러오지 못했습니다.');
         }
-      } finally {
         setLoading(false);
       }
-    };
+    );
 
-    loadData();
+    return () => unsubscribe();
   }, [config.phoneDoc]);
 
   // 저장 버튼: 학생·연락처·추가반은 화면 상태를 기준으로 저장(삭제 유지). 완료도·과제는 현재 선택한 반만 병합.
@@ -699,6 +929,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
       let existingHomeworkList = (dateSnap.exists() ? dateSnap.data().homeworkList : null) || {};
       let existingProgressList = (dateSnap.exists() ? dateSnap.data().progressList : null) || {};
       let existingProgressData = normalizeReservedMetaKeys((dateSnap.exists() ? dateSnap.data().progressData : null) || {});
+      let existingQuickMemoByClass = dateSnap.exists() ? (dateSnap.data().quickMemoByClass || {}) : {};
+      let existingNotebookByClass = normalizeNotebookByClass(dateSnap.exists() ? (dateSnap.data().notebookByClass || {}) : {});
 
       const validStudentSet = new Set(students);
       pruneRemovedStudentsFromDateTree(existingCompletion, validStudentSet);
@@ -739,6 +971,14 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
           const val = dateProgressData[date]?.[selectedClass] ?? existingProgressData[date][selectedClass];
           existingProgressData[date][selectedClass] = normalizeReservedMetaKeys(val !== undefined ? val : {});
         });
+        existingQuickMemoByClass = {
+          ...existingQuickMemoByClass,
+          ...(selectedClass in quickMemoByClass ? { [selectedClass]: String(quickMemoByClass[selectedClass] || '') } : {}),
+        };
+        existingNotebookByClass = {
+          ...existingNotebookByClass,
+          ...(selectedClass in notebookByClass ? { [selectedClass]: normalizeNotebookByClass({ [selectedClass]: notebookByClass[selectedClass] })[selectedClass] } : {}),
+        };
         const stripUndefined = (obj) => {
           if (obj === null || typeof obj !== 'object') return obj;
           const out = Array.isArray(obj) ? [] : {};
@@ -754,6 +994,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
           homeworkList: stripUndefined(existingHomeworkList),
           progressList: stripUndefined(existingProgressList),
           progressData: stripUndefined(existingProgressData),
+          quickMemoByClass: stripUndefined(existingQuickMemoByClass),
+          notebookByClass: stripUndefined(existingNotebookByClass),
           lastUpdated: new Date().toISOString(),
         }, { merge: true });
         alert(`✅ 저장되었습니다. (학생·연락처·추가반 반영 + "${formatClassName(selectedClass)}" 반 완료도·과제만 반영)`);
@@ -773,6 +1015,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
           {
             completionData: stripUndefined(existingCompletion),
             progressData: stripUndefined(existingProgressData),
+            quickMemoByClass: stripUndefined(existingQuickMemoByClass),
+            notebookByClass: stripUndefined(existingNotebookByClass),
             lastUpdated: new Date().toISOString(),
           },
           { merge: true }
@@ -787,7 +1031,54 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     } finally {
       setSaving(false);
     }
-  }, [students, studentInfo, phoneNumbers, addedClassList, studentClassHistory, completionData, homeworkList, progressList, progressData, dateCompletionData, dateHomeworkList, dateProgressList, dateProgressData, selectedClass, tableDisplayDate, db, config.phoneDoc, config.dateDataDoc]);
+  }, [students, studentInfo, phoneNumbers, addedClassList, studentClassHistory, completionData, homeworkList, progressList, progressData, dateCompletionData, dateHomeworkList, dateProgressList, dateProgressData, quickMemoByClass, notebookByClass, selectedClass, tableDisplayDate, db, config.phoneDoc, config.dateDataDoc]);
+
+  const saveDateHomeworkProgressToFirebase = useCallback(async (targetDate, className, homeworkArray, progressArray) => {
+    if (!targetDate || !className || className === 'all') {
+      throw new Error('저장할 날짜와 반 정보를 확인해주세요.');
+    }
+
+    setDateEntrySaving(true);
+    try {
+      setDateHomeworkList(prev => ({
+        ...prev,
+        [targetDate]: {
+          ...(prev[targetDate] || {}),
+          [className]: homeworkArray,
+        },
+      }));
+
+      setDateProgressList(prev => ({
+        ...prev,
+        [targetDate]: {
+          ...(prev[targetDate] || {}),
+          [className]: progressArray,
+        },
+      }));
+
+      if (isFirebaseConfigured() && db) {
+        await setDoc(
+          doc(db, config.dateDataDoc, 'all'),
+          {
+            homeworkList: {
+              [targetDate]: {
+                [className]: homeworkArray,
+              },
+            },
+            progressList: {
+              [targetDate]: {
+                [className]: progressArray,
+              },
+            },
+            lastUpdated: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
+    } finally {
+      setDateEntrySaving(false);
+    }
+  }, [db, config.dateDataDoc]);
 
   /**
    * 학생/연락처/반 편집 즉시 서버 반영.
@@ -934,6 +1225,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
         setDateCompletionData((prev) => mergeDateClassKeyed(prev, normalizeReservedMetaKeys(data.completionData || {})));
         setDateProgressList((prev) => mergeDateClassKeyed(prev, data.progressList || {}));
         setDateProgressData((prev) => mergeDateClassKeyed(prev, normalizeReservedMetaKeys(data.progressData || {})));
+        setQuickMemoByClass((prev) => ({ ...(data.quickMemoByClass || {}), ...prev }));
+        setNotebookByClass((prev) => ({ ...normalizeNotebookByClass(data.notebookByClass || {}), ...prev }));
         const today = formatLocalYMD();
         const todayData = (data.homeworkList || {})[today] || {};
         setHomeworkList(prev => ({ ...prev, ...todayData }));
@@ -1037,35 +1330,44 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
       });
     }
 
-    // 학교 → 반명 → 이름 순으로 정렬
-    return filtered.sort((a, b) => {
-      const infoA = studentInfo[a] || {};
-      const infoB = studentInfo[b] || {};
-      
-      // 1. 학교로 비교
-      const schoolA = infoA.school || '';
-      const schoolB = infoB.school || '';
-      if (schoolA !== schoolB) {
-        return schoolA.localeCompare(schoolB, 'ko');
-      }
-      
-      // 2. 학교가 같으면 반명으로 비교
-      const classA = infoA.className || '';
-      const classB = infoB.className || '';
-      const classesA = parseClassNames(classA);
-      const classesB = parseClassNames(classB);
-      
-      const firstClassA = classesA[0] || '';
-      const firstClassB = classesB[0] || '';
-      
-      if (firstClassA !== firstClassB) {
-        return firstClassA.localeCompare(firstClassB, 'ko');
-      }
-      
-      // 3. 반명도 같으면 이름으로 정렬
-      return a.localeCompare(b, 'ko');
+    // 학생 이름 가나다순 정렬, 동명이인은 구분 태그까지 포함해 안정적으로 정렬
+    return [...filtered].sort((a, b) => {
+      const nameA = getStudentDisplayName(a, studentInfo);
+      const nameB = getStudentDisplayName(b, studentInfo);
+      if (nameA !== nameB) return nameA.localeCompare(nameB, 'ko');
+      return String(a || '').localeCompare(String(b || ''), 'ko');
     });
   }, [students, studentInfo, selectedClass, selectedTeacher, mergedClassesByTeacher]);
+
+  const availableRegistryStudents = useMemo(() => {
+    if (selectedClass === 'all') return [];
+
+    return students
+      .filter((studentKey) => {
+        const classes = parseClassNames(studentInfo[studentKey]?.className || '');
+        return !classes.includes(selectedClass);
+      })
+      .map((studentKey) => {
+        const info = studentInfo[studentKey] || {};
+        const phone = normalizePhoneEntry(phoneNumbers[studentKey] || {});
+        const displayName = getStudentDisplayName(studentKey, studentInfo);
+        const displayClassText = formatClassName(info.className || '');
+        const phoneLabel = phone.student || phone.parent || '';
+        return {
+          key: studentKey,
+          displayName,
+          searchText: [displayName, info.school || '', info.grade || '', displayClassText, phoneLabel].join(' ').toLowerCase(),
+          optionLabel: [
+            displayName,
+            info.school || '-',
+            info.grade || '-',
+            displayClassText || '반 미등록',
+            phoneLabel || '번호 없음',
+          ].join(' / '),
+        };
+      })
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'ko'));
+  }, [students, studentInfo, phoneNumbers, selectedClass]);
 
   const exitIndividualModeWhenProgressComplete = useCallback((studentName, value, date = tableDisplayDate) => {
     if (!showIndividualFields || selectedClass === 'all') return;
@@ -1115,8 +1417,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     : '';
 
   const currentNotebook = selectedClass !== 'all'
-    ? (notebookByClass[selectedClass] || { title: '', content: '', attachments: [] })
-    : { title: '', content: '', attachments: [] };
+    ? (notebookByClass[selectedClass] || EMPTY_NOTEBOOK)
+    : EMPTY_NOTEBOOK;
 
   const updateQuickMemo = useCallback((value) => {
     if (selectedClass === 'all') return;
@@ -1526,6 +1828,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     }
     setCommentAiLoading(studentName);
     try {
+      const guardianGreetingName = buildAiGuardianGreetingName(studentName);
+      const rotationProfile = getCommentAiRotationProfile();
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -1540,9 +1844,11 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
               content: `당신은 학생을 지도하는 선생님입니다. 짧은 메모를 받으면, 학부모님께 보낼 문자/알림 멘트로 바꿔주세요.
 
 [톤·형식]
-- "안녕하세요, ○○ 학부모님."으로 시작하는 학부모 대상 어투.
+- 반드시 "안녕하세요, ${guardianGreetingName}"으로 시작할 것.
+- 학생 이름이 3글자 한국 이름이면 성은 빼고 이름 두 글자만 사용한 호칭을 유지할 것. 예: "구태은" -> "태은 학생 학부모님 :)".
 - 사용자가 입력한 원래 말투와 핵심 표현을 최대한 유지하고, 문장만 자연스럽게 정리할 것.
 - 지금보다 길이는 대체로 절반 정도로 줄이고, 짧고 읽기 쉽게 쓸 것.
+- 이번 3일 주기 기본 구성은 "${rotationProfile.label}"입니다. ${rotationProfile.guide}
 - 과장된 칭찬, 지나치게 감정적인 표현, 과한 희망 멘트는 넣지 말 것.
 - 원문에 없는 평가를 새로 덧붙이지 말고, 적힌 내용 안에서만 친절하게 다듬을 것.
 - 숙제/수업 상황/다음 확인 사항이 있으면 짧게 정리하되, 오바하지 말고 담백하게 쓸 것.
@@ -1551,7 +1857,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
             },
             {
               role: 'user',
-              content: `학생 이름: ${studentName}\n\n다음 메모를 이 학생 학부모님께 보낼 짧은 선생님 멘트로 다듬어주세요. "안녕하세요, ${studentName} 학부모님."으로 시작하되, 지금 메모보다 짧게 줄이고 원래 적은 내용 안에서만 친절하게 정리해주세요. 과장 없이 담백하게 써주세요.\n\n메모: ${trimmed}`,
+              content: `학생 이름: ${studentName}\n호칭: ${guardianGreetingName}\n이번 3일 주기 구성: ${rotationProfile.label}\n\n다음 메모를 이 학생 학부모님께 보낼 짧은 선생님 멘트로 다듬어주세요. 반드시 "안녕하세요, ${guardianGreetingName}"으로 시작하되, 지금 메모보다 짧게 줄이고 원래 적은 내용 안에서만 친절하게 정리해주세요. 말투는 현재 메모의 결을 유지하되, 이번 3일 주기 구성에 맞춰 문장 틀만 살짝 다르게 정리해주세요.\n\n메모: ${trimmed}`,
             },
           ],
           temperature: 0.7,
@@ -1578,30 +1884,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     } finally {
       setCommentAiLoading(null);
     }
-  }, [apiKey, selectedClass, tableDisplayDate, isTableShowingDateHomework, updateDateComment, updateCompletionComment]);
-
-  const scheduleCommentRewriteWithAI = useCallback((studentName, commentText) => {
-    const timers = commentAiTimersRef.current;
-    if (timers[studentName]) {
-      clearTimeout(timers[studentName]);
-    }
-    const trimmed = String(commentText || '').trim();
-    if (!trimmed) {
-      delete timers[studentName];
-      return;
-    }
-    timers[studentName] = setTimeout(() => {
-      rewriteCommentWithAI(studentName, trimmed, { silent: true });
-      delete timers[studentName];
-    }, 2000);
-  }, [rewriteCommentWithAI]);
-
-  useEffect(() => {
-    return () => {
-      Object.values(commentAiTimersRef.current).forEach((timerId) => clearTimeout(timerId));
-      commentAiTimersRef.current = {};
-    };
-  }, []);
+  }, [apiKey, buildAiGuardianGreetingName, getCommentAiRotationProfile, selectedClass, tableDisplayDate, isTableShowingDateHomework, updateDateComment, updateCompletionComment]);
 
   // 과제 추가 (반별로 분리)
   const addHomework = useCallback(() => {
@@ -1662,9 +1945,38 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
           ...prev,
           [selectedClass]: (prev[selectedClass] || []).filter(hw => hw !== hwName),
         }));
+
+        setDateHomeworkList(prev => {
+          const next = { ...prev };
+          const day = next[tableDisplayDate];
+          if (!day?.[selectedClass]) return prev;
+          next[tableDisplayDate] = {
+            ...day,
+            [selectedClass]: (day[selectedClass] || []).filter((hw) => hw !== hwName),
+          };
+          return next;
+        });
+
+        setDateCompletionData(prev => {
+          const next = { ...prev };
+          const day = next[tableDisplayDate];
+          const classRows = day?.[selectedClass];
+          if (!classRows || typeof classRows !== 'object') return prev;
+          const nextClassRows = { ...classRows };
+          Object.keys(nextClassRows).forEach((student) => {
+            if (nextClassRows[student]?.[hwName] === undefined) return;
+            const { [hwName]: removed, ...rest } = nextClassRows[student];
+            nextClassRows[student] = rest;
+          });
+          next[tableDisplayDate] = {
+            ...day,
+            [selectedClass]: nextClassRows,
+          };
+          return next;
+        });
       }
     }
-  }, [selectedClass]);
+  }, [selectedClass, tableDisplayDate]);
 
   // 진도 항목 추가 (반별, 과제와 동일하게 캘린더 오늘 날짜에도 반영)
   const addProgress = useCallback(() => {
@@ -1715,9 +2027,38 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
           ...prev,
           [selectedClass]: (prev[selectedClass] || []).filter(p => p !== progressName),
         }));
+
+        setDateProgressList(prev => {
+          const next = { ...prev };
+          const day = next[tableDisplayDate];
+          if (!day?.[selectedClass]) return prev;
+          next[tableDisplayDate] = {
+            ...day,
+            [selectedClass]: (day[selectedClass] || []).filter((p) => p !== progressName),
+          };
+          return next;
+        });
+
+        setDateProgressData(prev => {
+          const next = { ...prev };
+          const day = next[tableDisplayDate];
+          const classRows = day?.[selectedClass];
+          if (!classRows || typeof classRows !== 'object') return prev;
+          const nextClassRows = { ...classRows };
+          Object.keys(nextClassRows).forEach((student) => {
+            if (nextClassRows[student]?.[progressName] === undefined) return;
+            const { [progressName]: removed, ...rest } = nextClassRows[student];
+            nextClassRows[student] = rest;
+          });
+          next[tableDisplayDate] = {
+            ...day,
+            [selectedClass]: nextClassRows,
+          };
+          return next;
+        });
       }
     }
-  }, [selectedClass]);
+  }, [selectedClass, tableDisplayDate]);
 
   // 진도 값 업데이트 (반별)
   const updateProgress = useCallback((studentName, progressName, value) => {
@@ -1909,58 +2250,63 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     }
 
     const studentName = newStudentForm.name.trim();
-    const isNewStudent = !students.includes(studentName);
-    const existingInfo = studentInfo[studentName] || {};
+    const incomingStudentPhoneDigits = normalizePhoneDigits(newStudentForm.studentPhone);
+    const incomingParentPhoneDigits = normalizePhoneDigits(newStudentForm.parentPhone);
+    const incomingPhoneCandidates = [incomingStudentPhoneDigits, incomingParentPhoneDigits].filter(Boolean);
+    const sameNameStudentKeys = students.filter((key) => getDuplicateStudentNameKey(key) === studentName);
+    const matchedExistingStudentKey = sameNameStudentKeys.find((key) => {
+      const phoneEntry = normalizePhoneEntry(phoneNumbers[key] || {});
+      const existingDigits = [
+        normalizePhoneDigits(phoneEntry.student),
+        normalizePhoneDigits(phoneEntry.parent),
+      ].filter(Boolean);
+      return incomingPhoneCandidates.length > 0 && existingDigits.some((digit) => incomingPhoneCandidates.includes(digit));
+    });
+    const hasSameNameConflict = sameNameStudentKeys.length > 0 && !matchedExistingStudentKey;
+
+    if (hasSameNameConflict && incomingPhoneCandidates.length === 0) {
+      alert(
+        `"${studentName}" 이름의 학생이 이미 있습니다.\n\n` +
+        `같은 학생/다른 학생을 정확히 구분하려면 학생 전화번호나 학부모 전화번호를 입력해주세요.`
+      );
+      return;
+    }
+
+    const resolvedStudentKey = matchedExistingStudentKey
+      || (hasSameNameConflict
+        ? buildDisambiguatedStudentKey(studentName, incomingStudentPhoneDigits || incomingParentPhoneDigits, students)
+        : studentName);
+    const isNewStudent = !students.includes(resolvedStudentKey);
+    const existingInfo = studentInfo[resolvedStudentKey] || {};
     const incomingSchool = newStudentForm.school.trim();
     const incomingGrade = newStudentForm.grade.trim();
 
-    if (!isNewStudent) {
-      const schoolConflict =
-        incomingSchool &&
-        existingInfo.school &&
-        String(existingInfo.school).trim() !== incomingSchool;
-      const gradeConflict =
-        incomingGrade &&
-        existingInfo.grade &&
-        String(existingInfo.grade).trim() !== incomingGrade;
-
-      if (schoolConflict || gradeConflict) {
-        alert(
-          `동명이인 충돌 가능성이 있습니다.\n\n` +
-          `현재 "${studentName}" 학생은 이미 등록되어 있고,\n` +
-          `기존 정보: ${existingInfo.school || '-'} / ${existingInfo.grade || '-'}\n` +
-          `입력 정보: ${incomingSchool || '-'} / ${incomingGrade || '-'}\n\n` +
-          `지금 구조는 이름만으로 학생을 구분해서 다른 학생이어도 같은 학생으로 합쳐집니다.\n` +
-          `같은 이름의 다른 학생이면 이름을 구분해서 입력해주세요.`
-        );
-        return;
-      }
-
+    if (!isNewStudent && matchedExistingStudentKey) {
       const sameStudentConfirmed = window.confirm(
-        `"${studentName}" 학생은 이미 등록되어 있습니다.\n\n` +
+        `"${studentName}" 학생은 같은 전화번호로 이미 등록되어 있습니다.\n\n` +
         `기존 반: ${formatClassName(existingInfo.className || '-')}\n` +
         `선택 반: ${formatClassName(selectedClass)}\n\n` +
-        `같은 학생이면 확인을 눌러 현재 반에 추가하고,\n` +
-        `다른 학생이면 취소 후 이름을 구분해서 등록해주세요.`
+        `같은 학생이면 확인을 눌러 현재 반에 추가합니다.`
       );
       if (!sameStudentConfirmed) return;
     }
 
     try {
-      const updatedStudents = isNewStudent ? [...students, studentName] : [...students];
+      const updatedStudents = isNewStudent ? [...students, resolvedStudentKey] : [...students];
       if (isNewStudent) setStudents(updatedStudents);
 
-      const existingClasses = parseClassNames(studentInfo[studentName]?.className || '');
+      const existingClasses = parseClassNames(studentInfo[resolvedStudentKey]?.className || '');
       const finalClassName = existingClasses.includes(selectedClass)
-        ? (studentInfo[studentName]?.className || '')
+        ? (studentInfo[resolvedStudentKey]?.className || '')
         : [...existingClasses, selectedClass].join(',');
 
       const updatedStudentInfo = {
         ...studentInfo,
-        [studentName]: {
-          school: newStudentForm.school.trim() || (studentInfo[studentName]?.school || ''),
-          grade: newStudentForm.grade.trim() || (studentInfo[studentName]?.grade || ''),
+        [resolvedStudentKey]: {
+          school: newStudentForm.school.trim() || (studentInfo[resolvedStudentKey]?.school || ''),
+          grade: newStudentForm.grade.trim() || (studentInfo[resolvedStudentKey]?.grade || ''),
           className: finalClassName,
+          displayName: studentName,
         },
       };
       setStudentInfo(updatedStudentInfo);
@@ -1969,12 +2315,12 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
       const newParentPhone = newStudentForm.parentPhone.trim() || null;
       const updatedPhoneNumbers = {
         ...phoneNumbers,
-        [studentName]: normalizePhoneEntry({
-          ...(phoneNumbers[studentName] || {}),
-          student: newStudentPhone || phoneNumbers[studentName]?.student || null,
-          parent: newParentPhone || phoneNumbers[studentName]?.parent || null,
-          핸드폰: newStudentPhone || phoneNumbers[studentName]?.핸드폰 || null,
-          부모핸드폰: newParentPhone || phoneNumbers[studentName]?.부모핸드폰 || null,
+        [resolvedStudentKey]: normalizePhoneEntry({
+          ...(phoneNumbers[resolvedStudentKey] || {}),
+          student: newStudentPhone || phoneNumbers[resolvedStudentKey]?.student || null,
+          parent: newParentPhone || phoneNumbers[resolvedStudentKey]?.parent || null,
+          핸드폰: newStudentPhone || phoneNumbers[resolvedStudentKey]?.핸드폰 || null,
+          부모핸드폰: newParentPhone || phoneNumbers[resolvedStudentKey]?.부모핸드폰 || null,
         }),
       };
       setPhoneNumbers(updatedPhoneNumbers);
@@ -2001,12 +2347,82 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
         parentPhone: '',
       });
       setShowAddStudentForm(false);
-      alert(isNewStudent ? `✅ ${studentName} 학생이 추가되고 자동 저장되었습니다.` : `✅ ${studentName} 학생이 이 반에 추가되고 자동 저장되었습니다.`);
+      alert(
+        isNewStudent
+          ? `✅ ${studentName} 학생이 추가되고 자동 저장되었습니다.`
+          : `✅ ${studentName} 학생이 이 반에 추가되고 자동 저장되었습니다.`
+      );
     } catch (error) {
       console.error('학생 추가 실패:', error);
       alert(`❌ 학생 추가 중 오류가 발생했습니다: ${error.message}`);
     }
   }, [newStudentForm, students, studentInfo, phoneNumbers, selectedClass, addedClassList, studentClassHistory, persistRosterToFirebase]);
+
+  const handleImportRegisteredStudent = useCallback(async () => {
+    if (selectedClass === 'all') {
+      alert('반을 선택해주세요.');
+      return;
+    }
+
+    if (!studentImportKey) {
+      alert('불러올 학생을 선택해주세요.');
+      return;
+    }
+
+    if (!students.includes(studentImportKey)) {
+      alert('학생 데이터에서 다시 선택해주세요.');
+      return;
+    }
+
+    const existingInfo = studentInfo[studentImportKey] || {};
+    const existingClasses = parseClassNames(existingInfo.className || '');
+    if (existingClasses.includes(selectedClass)) {
+      alert('이 학생은 이미 현재 반에 등록되어 있습니다.');
+      return;
+    }
+
+    const updatedStudentInfo = {
+      ...studentInfo,
+      [studentImportKey]: {
+        ...existingInfo,
+        displayName: getStudentDisplayName(studentImportKey, studentInfo),
+        className: [...existingClasses, selectedClass].join(','),
+      },
+    };
+
+    setStudentInfo(updatedStudentInfo);
+
+    try {
+      await persistRosterToFirebase({
+        nextStudents: students,
+        nextStudentInfo: updatedStudentInfo,
+        nextPhoneNumbers: phoneNumbers,
+        nextAddedClassList: addedClassList,
+        nextStudentClassHistory: studentClassHistory,
+        pruneByStudents: false,
+      });
+      setStudentImportKey('');
+      setStudentImportQuery('');
+      setShowAddStudentForm(false);
+      alert(`✅ ${getStudentDisplayName(studentImportKey, studentInfo)} 학생을 현재 반에 등록했습니다.`);
+    } catch (error) {
+      console.error('등록된 학생 불러오기 실패:', error);
+      alert(`❌ 학생 불러오기 중 오류가 발생했습니다: ${error?.message || error}`);
+    }
+  }, [selectedClass, studentImportKey, students, studentInfo, phoneNumbers, addedClassList, studentClassHistory, persistRosterToFirebase]);
+
+  const openAddClassShortcut = useCallback(() => {
+    setShowAddClassForm(true);
+    setTimeout(() => {
+      addClassFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }, []);
+
+  useEffect(() => {
+    if (initialEntryAction === 'open-add-class') {
+      openAddClassShortcut();
+    }
+  }, [initialEntryAction, openAddClassShortcut]);
 
   // 반 추가
   const handleAddClass = useCallback(async () => {
@@ -2110,6 +2526,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     const nextDateProgressList = renameClassKeyInDateTree(dateProgressList, selectedClass, renamedClass);
     const nextDateCompletionData = renameClassKeyInDateTree(dateCompletionData, selectedClass, renamedClass);
     const nextDateProgressData = renameClassKeyInDateTree(dateProgressData, selectedClass, renamedClass);
+    const nextQuickMemoByClass = renameClassKey(quickMemoByClass, selectedClass, renamedClass);
+    const nextNotebookByClass = renameClassKey(normalizeNotebookByClass(notebookByClass), selectedClass, renamedClass);
     const nextSendHistory = renameClassInSendHistory(sendHistory, selectedClass, renamedClass);
     const renamedTeacher = editClassForm.teacher.trim();
 
@@ -2123,6 +2541,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     setDateProgressList(nextDateProgressList);
     setDateCompletionData(nextDateCompletionData);
     setDateProgressData(nextDateProgressData);
+    setQuickMemoByClass(nextQuickMemoByClass);
+    setNotebookByClass(nextNotebookByClass);
     setSendHistory(nextSendHistory);
     setSelectedTeacher(renamedTeacher);
     setSelectedClass(renamedClass);
@@ -2146,6 +2566,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
             homeworkList: nextDateHomeworkList,
             progressList: nextDateProgressList,
             progressData: nextDateProgressData,
+            quickMemoByClass: nextQuickMemoByClass,
+            notebookByClass: nextNotebookByClass,
             lastUpdated: new Date().toISOString(),
           },
           { merge: true }
@@ -2182,6 +2604,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     dateProgressList,
     dateCompletionData,
     dateProgressData,
+    quickMemoByClass,
+    notebookByClass,
     sendHistory,
     persistRosterToFirebase,
     phoneNumbers,
@@ -2229,10 +2653,14 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     const nextProgressList = { ...progressList };
     const nextCompletionData = { ...completionData };
     const nextProgressData = { ...progressData };
+    const nextQuickMemoByClass = { ...quickMemoByClass };
+    const nextNotebookByClass = { ...normalizeNotebookByClass(notebookByClass) };
     delete nextHomeworkList[selectedClass];
     delete nextProgressList[selectedClass];
     delete nextCompletionData[selectedClass];
     delete nextProgressData[selectedClass];
+    delete nextQuickMemoByClass[selectedClass];
+    delete nextNotebookByClass[selectedClass];
 
     setStudentClassHistory(nextStudentClassHistory);
     setAddedClassList(nextAddedClassList);
@@ -2245,6 +2673,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     setProgressList(nextProgressList);
     setCompletionData(nextCompletionData);
     setProgressData(nextProgressData);
+    setQuickMemoByClass(nextQuickMemoByClass);
+    setNotebookByClass(nextNotebookByClass);
 
     setSelectedClass('all');
     try {
@@ -2266,6 +2696,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
             homeworkList: nextDateHomeworkList,
             progressList: nextDateProgressList,
             progressData: nextDateProgressData,
+            quickMemoByClass: nextQuickMemoByClass,
+            notebookByClass: nextNotebookByClass,
             lastUpdated: new Date().toISOString(),
           },
           { merge: true }
@@ -2277,7 +2709,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
       console.error('반 삭제 자동 저장 실패:', error);
       alert(`⚠️ "${formatClassName(selectedClass)}" 반은 화면에서 제거되었지만 자동 저장은 실패했습니다. ${error?.message || error}`);
     }
-  }, [selectedClass, students, studentInfo, studentClassHistory, addedClassList, dateCompletionData, dateHomeworkList, dateProgressList, dateProgressData, homeworkList, progressList, completionData, progressData, persistRosterToFirebase, phoneNumbers, db, config.dateDataDoc]);
+  }, [selectedClass, students, studentInfo, studentClassHistory, addedClassList, dateCompletionData, dateHomeworkList, dateProgressList, dateProgressData, homeworkList, progressList, completionData, progressData, quickMemoByClass, notebookByClass, persistRosterToFirebase, phoneNumbers, db, config.dateDataDoc]);
 
   // 카톡 미리보기 생성
   const generatePreview = useCallback((sendType = null) => {
@@ -2417,6 +2849,12 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     });
   }, [showPreview, previewItems]);
 
+  useEffect(() => {
+    if (showPreview) {
+      setScheduledSendAt(getDefaultScheduleDateTimeInputValue());
+    }
+  }, [showPreview]);
+
   const togglePreviewRecipient = useCallback((studentName, recipientType) => {
     setPreviewRecipientSelections((prev) => ({
       ...prev,
@@ -2434,6 +2872,131 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     })
   ), [previewItems, previewRecipientSelections]);
 
+  const closePreviewModal = useCallback(() => {
+    setShowPreview(false);
+    setPreviewSendType(null);
+    setScheduledSendAt(getDefaultScheduleDateTimeInputValue());
+    sessionStorage.removeItem('previewSendStudent');
+    sessionStorage.removeItem('previewSendDate');
+    sessionStorage.removeItem('previewSendHomework');
+  }, []);
+
+  const previewTemplateCode = previewSendType === 'notice'
+    ? 'KA01TP260318145508902GuVLeuxXXlc'
+    : 'KA01TP260119030638192BnlwNmKPy78';
+
+  const buildPreviewVariables = useCallback((preview) => {
+    if (previewSendType === 'notice') {
+      return {
+        학생명: preview.student,
+        학년: preview.grade || '',
+        반명: preview.className || '',
+        과제목록: preview.homeworkList || '',
+        진도상황: preview.progressStatus || '',
+      };
+    }
+    return {
+      학생명: preview.student,
+      학년: preview.grade || '',
+      반명: preview.className || '',
+      과제목록: preview.homeworkList || '',
+      과제완료상태: preview.homeworkStatus || '',
+      진도상황: preview.progressStatus || '',
+    };
+  }, [previewSendType]);
+
+  const handleSchedulePreviewSend = useCallback(async () => {
+    if (!hasSelectedPreviewRecipients) {
+      alert('예약할 전송 대상을 하나 이상 선택해주세요.');
+      return;
+    }
+
+    if (!scheduledSendAt) {
+      alert('예약 발송 시간을 입력해주세요.');
+      return;
+    }
+
+    const scheduledDate = new Date(scheduledSendAt);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      alert('예약 발송 시간이 올바르지 않습니다.');
+      return;
+    }
+    if (scheduledDate.getTime() <= Date.now() + 60 * 1000) {
+      alert('예약 시간은 현재보다 1분 이상 이후로 설정해주세요.');
+      return;
+    }
+
+    try {
+      await saveAllToFirebase();
+    } catch (e) {
+      console.error('예약 전 저장 실패', e);
+    }
+
+    setScheduleSending(true);
+    try {
+      const apiUrl = import.meta.env.PROD
+        ? `${window.location.origin}/api/send-kakao`
+        : import.meta.env.VITE_API_URL || 'https://bodeumshjpocketbook.vercel.app/api/send-kakao';
+
+      let successCount = 0;
+      let failCount = 0;
+      const errorMessages = [];
+
+      for (const preview of previewItems) {
+        const selection = previewRecipientSelections[preview.student] || {};
+        const variables = buildPreviewVariables(preview);
+        const recipients = [
+          selection.student ?? true ? preview.phone : null,
+          selection.parent ?? true ? preview.parentPhone : null,
+        ].filter(Boolean);
+
+        for (const recipientPhone of recipients) {
+          try {
+            const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                phoneNumber: recipientPhone,
+                templateCode: previewTemplateCode,
+                variables,
+                scheduleDate: scheduledDate.toISOString(),
+              }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+              throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            successCount += 1;
+          } catch (error) {
+            failCount += 1;
+            const errorMessage = error?.message || '알 수 없는 오류';
+            if (!errorMessages.includes(errorMessage)) {
+              errorMessages.push(errorMessage);
+            }
+          }
+        }
+      }
+
+      if (errorMessages.length > 0) {
+        alert(`❌ 예약발송 오류:\n${errorMessages.join('\n')}`);
+      }
+
+      if (successCount > 0) {
+        alert(`✅ ${successCount}건 예약발송 접수 완료\n예약 시각: ${scheduledSendAt.replace('T', ' ') }${failCount > 0 ? `\n❌ ${failCount}건 접수 실패` : ''}`);
+        closePreviewModal();
+      } else {
+        alert('❌ 예약 접수된 메시지가 없습니다. 전화번호와 예약 시간을 확인해주세요.');
+      }
+    } catch (error) {
+      console.error('예약발송 처리 중 오류:', error);
+      alert(`❌ 예약발송 중 오류가 발생했습니다: ${error?.message || error}`);
+    } finally {
+      setScheduleSending(false);
+    }
+  }, [hasSelectedPreviewRecipients, scheduledSendAt, saveAllToFirebase, previewItems, previewRecipientSelections, buildPreviewVariables, previewTemplateCode, closePreviewModal]);
+
   // 미리보기 열기
   const handleOpenPreview = useCallback(() => {
     if (selectedClass === 'all') {
@@ -2441,6 +3004,18 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
       return;
     }
     if (showIndividualFields) {
+      const hasAnyIndividualPayload = filteredAndSortedStudents.some((student) => {
+        const payload = buildMathStudentPayload(student, tableDisplayDate);
+        return Boolean(payload.homeworkStatus || payload.progressText);
+      });
+      if (!hasAnyIndividualPayload) {
+        alert('개별 숙제나 진도를 먼저 입력해주세요.');
+        return;
+      }
+      setPreviewSendType('completion');
+      sessionStorage.removeItem('previewSendStudent');
+      sessionStorage.removeItem('previewSendDate');
+      sessionStorage.removeItem('previewSendHomework');
       setShowPreview(true);
       return;
     }
@@ -2450,8 +3025,9 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
       alert('과제를 추가하거나 캘린더 날짜를 선택해주세요.');
       return;
     }
+    setPreviewSendType(null);
     setShowPreview(true);
-  }, [selectedClass, homeworkList, dateHomeworkList, tableDisplayDate, showIndividualFields]);
+  }, [selectedClass, homeworkList, dateHomeworkList, tableDisplayDate, showIndividualFields, filteredAndSortedStudents, buildMathStudentPayload]);
 
   // 개별 학생에게 카톡 전송
   const sendKakaoToStudent = useCallback(async (studentName, recipientSelection = null) => {
@@ -2497,12 +3073,16 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     let homeworkStatus = '';
     let progressText = '';
     let homeworkListText = currentHomeworkList.join('\n');
+    let historyHomeworkList = [...currentHomeworkList];
+    let currentProgressList = [];
 
     if (showIndividualFields) {
       const mathPayload = buildMathStudentPayload(studentName, tableDisplayDate);
       homeworkStatus = mathPayload.homeworkStatus;
       progressText = mathPayload.progressText;
       homeworkListText = mathPayload.homeworkListText;
+      historyHomeworkList = parseMultilineItems(mathPayload.homeworkListText);
+      currentProgressList = parseProgressLabelsFromSituation(mathPayload.progressText);
       if (!homeworkStatus && !progressText) {
         alert('이 학생의 수학 숙제 또는 진도를 먼저 입력해주세요.');
         return;
@@ -2518,7 +3098,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
       if (comment) homeworkStatus += '\n\n코멘트: ' + comment;
 
       const dateProg = dateProgressList[tableDisplayDate]?.[selectedClass] || [];
-      const currentProgressList = (dateProg.length > 0) ? dateProg : (progressList[selectedClass] || []);
+      currentProgressList = (dateProg.length > 0) ? dateProg : (progressList[selectedClass] || []);
       const progressSource = (dateProg.length > 0)
         ? (dateProgressData[tableDisplayDate]?.[selectedClass] || {})
         : (progressData[selectedClass] || {});
@@ -2639,7 +3219,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
               };
               setDoc(docRef, { counts: updatedCounts, lastUpdated: new Date().toISOString() }, { merge: true })
                 .catch(error => console.error('전송 횟수 저장 실패:', error));
-            });
+            }).catch(error => console.error('전송 횟수 업데이트 실패 (읽기):', error));
           }
           
           return newCounts;
@@ -2649,7 +3229,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
         const completionEntry = {
           반명: selectedClass,
           학생명: studentName,
-          과제목록: [...currentHomeworkList],
+          과제목록: [...historyHomeworkList],
           진도목록: [...currentProgressList],
           ...(progressText ? { 진도상황: progressText } : {}),
           타입: '완료도',
@@ -2679,7 +3259,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     } finally {
       setSending(false);
     }
-  }, [selectedClass, homeworkList, progressList, phoneNumbers, completionData, progressData, dateCompletionData, dateProgressData, dateHomeworkList, dateProgressList, tableDisplayDate, studentInfo, db, saveAllToFirebase]);
+  }, [selectedClass, homeworkList, progressList, phoneNumbers, completionData, progressData, dateCompletionData, dateProgressData, dateHomeworkList, dateProgressList, tableDisplayDate, studentInfo, db, saveAllToFirebase, showIndividualFields, buildMathStudentPayload]);
 
   // 날짜별 완료도 카톡 전송 (단체)
   const sendDateCompletionMessages = useCallback(async (date, recipientSelections = {}) => {
@@ -2872,7 +3452,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
               };
               setDoc(docRef, { counts: updatedCounts, lastUpdated: new Date().toISOString() }, { merge: true })
                 .catch(error => console.error('전송 횟수 저장 실패:', error));
-            });
+            }).catch(error => console.error('전송 횟수 업데이트 실패 (읽기):', error));
           }
           
           return newCounts;
@@ -3071,7 +3651,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
               };
               setDoc(docRef, { counts: updatedCounts, lastUpdated: new Date().toISOString() }, { merge: true })
                 .catch(error => console.error('전송 횟수 저장 실패:', error));
-            });
+            }).catch(error => console.error('전송 횟수 업데이트 실패 (읽기):', error));
           }
           
           return newCounts;
@@ -3421,7 +4001,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
               };
               setDoc(docRef, { counts: updatedCounts, lastUpdated: new Date().toISOString() }, { merge: true })
                 .catch(error => console.error('전송 횟수 저장 실패:', error));
-            });
+            }).catch(error => console.error('전송 횟수 업데이트 실패 (읽기):', error));
           }
           
           return newCounts;
@@ -3492,6 +4072,204 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     }
     // 카톡 전송 전 현재 완료도·메모·진도·코멘트를 Firebase에 저장
     try { await saveAllToFirebase(); } catch (e) { console.error('전송 전 저장 실패', e); }
+    if (showIndividualFields) {
+      const individualTargets = filteredAndSortedStudents
+        .map((student) => ({
+          student,
+          payload: buildMathStudentPayload(student, tableDisplayDate),
+        }))
+        .filter(({ payload }) => payload.homeworkStatus || payload.progressText);
+
+      if (individualTargets.length === 0) {
+        alert('개별 숙제나 진도를 먼저 입력해주세요.');
+        return;
+      }
+
+      const trimmedTemplateCode = 'KA01TP260119030638192BnlwNmKPy78';
+      setSending(true);
+
+      try {
+        const apiUrl = import.meta.env.PROD
+          ? `${window.location.origin}/api/send-kakao`
+          : import.meta.env.VITE_API_URL || 'https://bodeumshjpocketbook.vercel.app/api/send-kakao';
+
+        let successCount = 0;
+        let failCount = 0;
+        const errorMessages = [];
+        const studentSuccessCounts = {};
+        const completionEntries = [];
+        const today = formatLocalYMD();
+        const now = new Date().toISOString();
+
+        for (const { student, payload } of individualTargets) {
+          const phoneData = phoneNumbers[student];
+          if (!phoneData) continue;
+
+          const studentPhone = phoneData.student ? phoneData.student.replace(/-/g, '') : null;
+          const parentPhone = phoneData.parent ? phoneData.parent.replace(/-/g, '') : null;
+          const recipientSelection = recipientSelections[student] || {};
+          const sendToStudent = recipientSelection.student ?? true;
+          const sendToParent = recipientSelection.parent ?? true;
+          if (!sendToStudent && !sendToParent) continue;
+
+          const info = studentInfo[student] || {};
+          const grade = info.grade || '';
+          const className = selectedClass !== 'all' ? formatClassName(selectedClass) : '';
+          let studentSuccess = 0;
+
+          const variables = {
+            학생명: student,
+            학년: grade,
+            반명: className,
+            과제목록: payload.homeworkListText,
+            과제완료상태: payload.homeworkStatus,
+            진도상황: payload.progressText,
+          };
+
+          if (sendToStudent && studentPhone && /^010\d{8}$/.test(studentPhone)) {
+            try {
+              const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  phoneNumber: studentPhone,
+                  templateCode: trimmedTemplateCode,
+                  variables,
+                }),
+              });
+
+              const result = await response.json();
+              if (result.success) {
+                successCount++;
+                studentSuccess++;
+              } else {
+                throw new Error(result.error || '알 수 없는 오류');
+              }
+            } catch (error) {
+              console.error(`${student} 학생 카카오톡 전송 실패:`, error);
+              failCount++;
+              const errorMessage = error.message || '알 수 없는 오류';
+              if (!errorMessages.includes(errorMessage)) errorMessages.push(errorMessage);
+            }
+          }
+
+          if (sendToParent && parentPhone && /^010\d{8}$/.test(parentPhone)) {
+            try {
+              const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  phoneNumber: parentPhone,
+                  templateCode: trimmedTemplateCode,
+                  variables,
+                }),
+              });
+
+              const result = await response.json();
+              if (result.success) {
+                successCount++;
+                studentSuccess++;
+              } else {
+                throw new Error(result.error || '알 수 없는 오류');
+              }
+            } catch (error) {
+              console.error(`${student} 학부모 카카오톡 전송 실패:`, error);
+              failCount++;
+              const errorMessage = error.message || '알 수 없는 오류';
+              if (!errorMessages.includes(errorMessage)) errorMessages.push(errorMessage);
+            }
+          }
+
+          if (studentSuccess > 0) {
+            studentSuccessCounts[student] = studentSuccess;
+            completionEntries.push({
+              반명: selectedClass,
+              학생명: student,
+              과제목록: parseMultilineItems(payload.homeworkListText),
+              진도목록: parseProgressLabelsFromSituation(payload.progressText),
+              ...(payload.progressText ? { 진도상황: payload.progressText } : {}),
+              타입: '완료도',
+              시간: now,
+            });
+          }
+        }
+
+        if (Object.keys(studentSuccessCounts).length > 0) {
+          setSentCounts(prev => {
+            const newCounts = {
+              ...prev,
+              [today]: {
+                ...(prev[today] || {}),
+                [selectedClass]: {
+                  ...(prev[today]?.[selectedClass] || {}),
+                },
+              },
+            };
+
+            Object.keys(studentSuccessCounts).forEach(student => {
+              if (!newCounts[today][selectedClass][student]) {
+                newCounts[today][selectedClass][student] = {};
+              }
+              newCounts[today][selectedClass][student] = {
+                ...newCounts[today][selectedClass][student],
+                completion: (newCounts[today][selectedClass][student].completion || 0) + studentSuccessCounts[student],
+              };
+            });
+
+            if (isFirebaseConfigured() && db) {
+              const docRef = doc(db, config.sentCountsDoc, 'all');
+              getDoc(docRef).then(docSnapshot => {
+                const existingCounts = docSnapshot.exists() ? (docSnapshot.data().counts || {}) : {};
+                const updatedCounts = {
+                  ...existingCounts,
+                  [today]: newCounts[today],
+                };
+                setDoc(docRef, { counts: updatedCounts, lastUpdated: new Date().toISOString() }, { merge: true })
+                  .catch(error => console.error('전송 횟수 저장 실패:', error));
+              }).catch(error => console.error('전송 횟수 업데이트 실패 (읽기):', error));
+            }
+
+            return newCounts;
+          });
+
+          if (completionEntries.length > 0 && isFirebaseConfigured() && db) {
+            saveSendHistoryToFirestore(db, config.sendHistoryCollection, today, completionEntries)
+              .then(merged => setSendHistory(merged))
+              .catch(e => {
+                console.error('전송 이력 저장 실패:', e);
+                alert('보내진 알림장 정리 달력 저장에 실패했습니다. ' + (e?.message || e));
+              });
+          } else if (completionEntries.length > 0) {
+            setSendHistory(prev => ({
+              ...prev,
+              [today]: [...(prev[today] || []), ...completionEntries],
+            }));
+          }
+        }
+
+        if (errorMessages.length > 0) {
+          alert(`❌ 카카오톡 발송 오류:\n${errorMessages.join('\n')}`);
+        }
+
+        if (successCount > 0) {
+          try { await saveAllToFirebase(); } catch (e) { console.error('자동 저장 실패', e); }
+          alert(`✅ ${successCount}건의 카카오톡 메시지가 성공적으로 발송되었습니다!${failCount > 0 ? `\n❌ ${failCount}건 발송 실패` : ''}`);
+        } else {
+          alert('❌ 발송된 메시지가 없습니다. 전화번호를 확인해주세요.');
+        }
+      } catch (error) {
+        console.error('카카오톡 발송 중 오류:', error);
+        alert(`❌ 카카오톡 발송 중 오류가 발생했습니다: ${error.message}`);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     const dateHw = dateHomeworkList[tableDisplayDate]?.[selectedClass];
     const currentHomeworkList = (dateHw && dateHw.length > 0) ? dateHw : (homeworkList[selectedClass] || []);
     const completionSource = (dateHw && dateHw.length > 0)
@@ -3679,7 +4457,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
               };
               setDoc(docRef, { counts: updatedCounts, lastUpdated: new Date().toISOString() }, { merge: true })
                 .catch(error => console.error('전송 횟수 저장 실패:', error));
-            });
+            }).catch(error => console.error('전송 횟수 업데이트 실패 (읽기):', error));
           }
           
           return newCounts;
@@ -3726,7 +4504,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
     } finally {
       setSending(false);
     }
-  }, [selectedClass, filteredAndSortedStudents, phoneNumbers, completionData, progressData, dateCompletionData, dateProgressData, homeworkList, progressList, dateHomeworkList, dateProgressList, tableDisplayDate, studentInfo, db, saveAllToFirebase]);
+  }, [selectedClass, filteredAndSortedStudents, phoneNumbers, completionData, progressData, dateCompletionData, dateProgressData, homeworkList, progressList, dateHomeworkList, dateProgressList, tableDisplayDate, studentInfo, db, saveAllToFirebase, showIndividualFields, buildMathStudentPayload]);
 
   if (loading) {
     return (
@@ -3748,6 +4526,76 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
             <strong>⚠️ {loadError}</strong>
           </div>
         )}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
+          <button
+            type="button"
+            onClick={onOpenStudentData}
+            style={{
+              flex: '1 1 180px',
+              padding: '16px 20px',
+              fontSize: '1rem',
+              fontWeight: '700',
+              border: 'none',
+              borderRadius: '12px',
+              backgroundColor: '#2563eb',
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            👥 학생 데이터
+          </button>
+          <button
+            type="button"
+            onClick={onOpenClassBuilder}
+            style={{
+              flex: '1 1 180px',
+              padding: '16px 20px',
+              fontSize: '1rem',
+              fontWeight: '700',
+              border: 'none',
+              borderRadius: '12px',
+              backgroundColor: '#10b981',
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            ➕ 반 만들기
+          </button>
+          <button
+            type="button"
+            onClick={onOpenWeeklySchedule}
+            style={{
+              flex: '1 1 180px',
+              padding: '16px 20px',
+              fontSize: '1rem',
+              fontWeight: '700',
+              border: 'none',
+              borderRadius: '12px',
+              backgroundColor: '#0f766e',
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            📅 주간 시간표
+          </button>
+          <button
+            type="button"
+            onClick={onOpenAdminPage}
+            style={{
+              flex: '1 1 180px',
+              padding: '16px 20px',
+              fontSize: '1rem',
+              fontWeight: '700',
+              border: 'none',
+              borderRadius: '12px',
+              backgroundColor: '#7c3aed',
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            🟣 관리자 페이지
+          </button>
+        </div>
         <div className="homework-completion-header">
           <div>
             <h2>{config.icon} {config.title}</h2>
@@ -3767,7 +4615,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
             <div style={{ marginBottom: '12px' }}>
               <span style={{ fontWeight: '600', marginRight: '10px' }}>선생님 선택:</span>
               {Array.from(mergedClassesByTeacher.keys()).length === 0 ? (
-                <span style={{ color: '#6b7280', fontSize: '0.9rem' }}>등록된 반이 없습니다. 반을 추가한 뒤 학생을 추가해주세요.</span>
+                <span style={{ color: '#6b7280', fontSize: '0.9rem' }}>등록된 반이 없습니다. `반 만들기`에서 반을 먼저 등록해주세요.</span>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
                   {Array.from(mergedClassesByTeacher.entries()).map(([teacher, classes]) => {
@@ -3829,44 +4677,6 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                   );
                 })}
               </select>
-              {selectedClass !== 'all' && (
-                <button
-                  type="button"
-                  onClick={() => setShowEditClassForm((prev) => !prev)}
-                  title="선택한 반 이름 수정"
-                  style={{
-                    padding: '8px 14px',
-                    fontSize: '0.9rem',
-                    backgroundColor: showEditClassForm ? '#64748b' : '#2563eb',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                  }}
-                >
-                  {showEditClassForm ? '닫기' : '✏️ 반 이름 수정'}
-                </button>
-              )}
-              {selectedClass !== 'all' && (
-                <button
-                  type="button"
-                  onClick={handleDeleteClass}
-                  title="선택한 반 삭제 (해당 반 학생 배정에서 제거)"
-                  style={{
-                    padding: '8px 14px',
-                    fontSize: '0.9rem',
-                    backgroundColor: '#ef4444',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                  }}
-                >
-                  🗑️ 반 삭제
-                </button>
-              )}
             </div>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', marginBottom: '15px' }}>
@@ -3886,239 +4696,10 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
             >
               {showIndividualFields ? '개별 진도 모드 사용 중' : '개별 진도'}
             </button>
-            <button
-              type="button"
-              onClick={() => setShowAddClassForm(!showAddClassForm)}
-              style={{
-                padding: '8px 16px',
-                fontSize: '0.9rem',
-                backgroundColor: showAddClassForm ? '#ef4444' : '#10b981',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: '600',
-              }}
-            >
-              {showAddClassForm ? '취소' : '➕ 반 추가'}
-            </button>
+            <span style={{ color: '#64748b', fontSize: '0.92rem' }}>
+              반 생성/수정/삭제는 `반 만들기` 화면에서만 가능합니다.
+            </span>
           </div>
-
-          {showEditClassForm && selectedClass !== 'all' && (
-            <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#eff6ff', borderRadius: '8px', border: '2px solid #60a5fa' }}>
-              <h3 style={{ margin: '0 0 8px 0', color: '#1e3a8a' }}>✏️ 반 이름 수정</h3>
-              <p style={{ margin: '0 0 15px 0', color: '#475569', fontSize: '0.92rem' }}>
-                현재 선택한 반: <strong>{formatClassName(selectedClass)}</strong>
-              </p>
-              <form onSubmit={(e) => { e.preventDefault(); handleRenameClass(); }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      년도 (2자리) <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={editClassForm.year}
-                      onChange={(e) => setEditClassForm((prev) => ({ ...prev, year: e.target.value }))}
-                      maxLength={2}
-                      required
-                      style={{ width: '100%', padding: '8px 12px', border: '2px solid #60a5fa', borderRadius: '6px', fontSize: '1rem' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      선생님 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={editClassForm.teacher}
-                      onChange={(e) => setEditClassForm((prev) => ({ ...prev, teacher: e.target.value }))}
-                      required
-                      style={{ width: '100%', padding: '8px 12px', border: '2px solid #60a5fa', borderRadius: '6px', fontSize: '1rem' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      수업이름 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={editClassForm.courseName}
-                      onChange={(e) => setEditClassForm((prev) => ({ ...prev, courseName: e.target.value }))}
-                      required
-                      style={{ width: '100%', padding: '8px 12px', border: '2px solid #60a5fa', borderRadius: '6px', fontSize: '1rem' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      요일 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={editClassForm.day}
-                      onChange={(e) => setEditClassForm((prev) => ({ ...prev, day: e.target.value }))}
-                      required
-                      style={{ width: '100%', padding: '8px 12px', border: '2px solid #60a5fa', borderRadius: '6px', fontSize: '1rem' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      시간 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={editClassForm.time}
-                      onChange={(e) => setEditClassForm((prev) => ({ ...prev, time: e.target.value }))}
-                      required
-                      style={{ width: '100%', padding: '8px 12px', border: '2px solid #60a5fa', borderRadius: '6px', fontSize: '1rem' }}
-                    />
-                  </div>
-                </div>
-                <div style={{ marginTop: '15px', textAlign: 'right' }}>
-                  <button
-                    type="submit"
-                    style={{
-                      padding: '10px 20px',
-                      fontSize: '1rem',
-                      backgroundColor: '#2563eb',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontWeight: '600',
-                    }}
-                  >
-                    반 이름 저장
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* 반 추가 폼 */}
-          {showAddClassForm && (
-            <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#f0f9ff', borderRadius: '8px', border: '2px solid #0ea5e9' }}>
-              <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50' }}>➕ 새 반 추가</h3>
-              <form onSubmit={(e) => { e.preventDefault(); handleAddClass(); }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      년도 (2자리) <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={newClassForm.year}
-                      onChange={(e) => setNewClassForm(prev => ({ ...prev, year: e.target.value }))}
-                      placeholder="예) 26"
-                      maxLength={2}
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: '2px solid #0ea5e9',
-                        borderRadius: '6px',
-                        fontSize: '1rem',
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      선생님 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={newClassForm.teacher}
-                      onChange={(e) => setNewClassForm(prev => ({ ...prev, teacher: e.target.value }))}
-                      placeholder="예) 김지수"
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: '2px solid #0ea5e9',
-                        borderRadius: '6px',
-                        fontSize: '1rem',
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      수업이름 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={newClassForm.courseName}
-                      onChange={(e) => setNewClassForm(prev => ({ ...prev, courseName: e.target.value }))}
-                      placeholder="예) 미적분1 특강"
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: '2px solid #0ea5e9',
-                        borderRadius: '6px',
-                        fontSize: '1rem',
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      요일 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={newClassForm.day}
-                      onChange={(e) => setNewClassForm(prev => ({ ...prev, day: e.target.value }))}
-                      placeholder="예) 월금"
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: '2px solid #0ea5e9',
-                        borderRadius: '6px',
-                        fontSize: '1rem',
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                      시간 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={newClassForm.time}
-                      onChange={(e) => setNewClassForm(prev => ({ ...prev, time: e.target.value }))}
-                      placeholder="예) 14:30"
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: '2px solid #0ea5e9',
-                        borderRadius: '6px',
-                        fontSize: '1rem',
-                      }}
-                    />
-                  </div>
-                </div>
-                <div style={{ marginTop: '15px', textAlign: 'right' }}>
-                  <button
-                    type="submit"
-                    style={{
-                      padding: '10px 20px',
-                      fontSize: '1rem',
-                      backgroundColor: '#0ea5e9',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontWeight: '600',
-                    }}
-                  >
-                    반 추가하기
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
           <p style={{ marginTop: '15px' }}>학생들의 숙제 및 과제 완료도를 관리합니다.</p>
           <p>{showIndividualFields ? '개별 진도 모드에서는 학생별 숙제·진도·코멘트를 직접 입력합니다.' : '반별로 학생을 확인하고, 완료 여부를 체크하여 추적할 수 있습니다.'}</p>
         </div>
@@ -4303,11 +4884,11 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
           )}
 
           <div className="students-list">
-            {/* 학생 추가 섹션 (반별, 첫 번째 학생 위) */}
+            {/* 학생 불러오기 섹션 (반별, 첫 번째 학생 위) */}
             {selectedClass !== 'all' && (
               <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '2px solid #e0e0e0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                  <h3 style={{ margin: 0, color: '#2c3e50' }}>➕ 학생 추가 ({formatClassName(selectedClass)})</h3>
+                  <h3 style={{ margin: 0, color: '#2c3e50' }}>👥 학생 데이터에서 불러오기 ({formatClassName(selectedClass)})</h3>
                   <button
                     type="button"
                     onClick={() => setShowAddStudentForm(!showAddStudentForm)}
@@ -4322,22 +4903,26 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                       fontWeight: '600',
                     }}
                   >
-                    {showAddStudentForm ? '취소' : '학생 추가'}
+                    {showAddStudentForm ? '취소' : '학생 불러오기'}
                   </button>
+                </div>
+
+                <div style={{ marginBottom: '10px', color: '#475569', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                  새 학생 등록은 <strong>학생 데이터</strong>에서 먼저 하세요. 여기서는 이미 등록된 학생만 현재 반으로 불러올 수 있습니다.
                 </div>
 
                 {showAddStudentForm && (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '15px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '15px', marginTop: '15px' }}>
                       <div>
                         <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                          학생 이름 <span style={{ color: '#ef4444' }}>*</span>
+                          학생 검색
                         </label>
                         <input
                           type="text"
-                          value={newStudentForm.name}
-                          onChange={(e) => setNewStudentForm(prev => ({ ...prev, name: e.target.value }))}
-                          placeholder="학생 이름"
+                          value={studentImportQuery}
+                          onChange={(e) => setStudentImportQuery(e.target.value)}
+                          placeholder="이름/학교/학년/전화번호로 검색"
                           style={{
                             width: '100%',
                             padding: '8px 12px',
@@ -4349,13 +4934,11 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                       </div>
                       <div>
                         <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                          학교
+                          등록된 학생 선택 <span style={{ color: '#ef4444' }}>*</span>
                         </label>
-                        <input
-                          type="text"
-                          value={newStudentForm.school}
-                          onChange={(e) => setNewStudentForm(prev => ({ ...prev, school: e.target.value }))}
-                          placeholder="예) 과천중앙고등학교"
+                        <select
+                          value={studentImportKey}
+                          onChange={(e) => setStudentImportKey(e.target.value)}
                           style={{
                             width: '100%',
                             padding: '8px 12px',
@@ -4363,98 +4946,35 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                             borderRadius: '6px',
                             fontSize: '1rem',
                           }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                          학년
-                        </label>
-                        <input
-                          type="text"
-                          value={newStudentForm.grade}
-                          onChange={(e) => setNewStudentForm(prev => ({ ...prev, grade: e.target.value }))}
-                          placeholder="예) 2학년"
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px',
-                            border: '2px solid #9b59b6',
-                            borderRadius: '6px',
-                            fontSize: '1rem',
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                          추가 반명 (선택)
-                        </label>
-                        <input
-                          type="text"
-                          value={newStudentForm.className}
-                          onChange={(e) => setNewStudentForm(prev => ({ ...prev, className: e.target.value }))}
-                          placeholder="다른 반명이 있으면 입력"
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px',
-                            border: '2px solid #9b59b6',
-                            borderRadius: '6px',
-                            fontSize: '1rem',
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                          학생 전화번호
-                        </label>
-                        <input
-                          type="text"
-                          value={newStudentForm.studentPhone}
-                          onChange={(e) => setNewStudentForm(prev => ({ ...prev, studentPhone: e.target.value }))}
-                          placeholder="예) 010-1234-5678"
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px',
-                            border: '2px solid #9b59b6',
-                            borderRadius: '6px',
-                            fontSize: '1rem',
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '5px', fontWeight: '600', fontSize: '0.9rem' }}>
-                          학부모 전화번호
-                        </label>
-                        <input
-                          type="text"
-                          value={newStudentForm.parentPhone}
-                          onChange={(e) => setNewStudentForm(prev => ({ ...prev, parentPhone: e.target.value }))}
-                          placeholder="예) 010-9876-5432"
-                          style={{
-                            width: '100%',
-                            padding: '8px 12px',
-                            border: '2px solid #9b59b6',
-                            borderRadius: '6px',
-                            fontSize: '1rem',
-                          }}
-                        />
+                        >
+                          <option value="">학생을 선택하세요</option>
+                          {availableRegistryStudents
+                            .filter((item) => !studentImportQuery.trim() || item.searchText.includes(studentImportQuery.trim().toLowerCase()))
+                            .map((item) => (
+                              <option key={item.key} value={item.key}>
+                                {item.optionLabel}
+                              </option>
+                            ))}
+                        </select>
                       </div>
                     </div>
                     <div style={{ marginTop: '15px', textAlign: 'right' }}>
                       <button
                         type="button"
-                        onClick={handleAddStudent}
-                        disabled={!newStudentForm.name.trim()}
+                        onClick={handleImportRegisteredStudent}
+                        disabled={!studentImportKey}
                         style={{
                           padding: '10px 20px',
                           fontSize: '1rem',
-                          backgroundColor: newStudentForm.name.trim() ? '#9b59b6' : '#9ca3af',
+                          backgroundColor: studentImportKey ? '#9b59b6' : '#9ca3af',
                           color: '#fff',
                           border: 'none',
                           borderRadius: '6px',
-                          cursor: newStudentForm.name.trim() ? 'pointer' : 'not-allowed',
+                          cursor: studentImportKey ? 'pointer' : 'not-allowed',
                           fontWeight: '600',
                         }}
                       >
-                        추가하기
+                        현재 반으로 등록하기
                       </button>
                     </div>
                   </>
@@ -4566,6 +5086,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                     {filteredAndSortedStudents.map((student, index) => {
                       const info = studentInfo[student] || {};
                       const phoneData = phoneNumbers[student] || {};
+                      const studentDisplayName = getStudentDisplayName(student, studentInfo);
+                      const studentDisambiguationTag = getStudentDisambiguationTag(student);
                       const formatPhone = (phone) => {
                         if (!phone) return '';
                         const cleaned = phone.replace(/[^0-9]/g, '');
@@ -4604,8 +5126,13 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                               }}
                               style={{ cursor: 'pointer', textDecoration: 'underline' }}
                             >
-                              {student}
+                              {studentDisplayName}
                             </span>
+                            {studentDisambiguationTag && (
+                              <span style={{ marginLeft: '6px', fontSize: '0.78rem', color: '#64748b', fontWeight: '700' }}>
+                                [{studentDisambiguationTag}]
+                              </span>
+                            )}
                             {noticeCount > 0 && <span style={{ marginLeft: '8px', fontSize: '0.85rem', color: '#10b981' }}>(알림장 {noticeCount}건)</span>}
                             {completionCount > 0 && <span style={{ marginLeft: '8px', fontSize: '0.85rem', color: '#9b59b6' }}>(완료도 {completionCount}건)</span>}
                             {selectedClass !== 'all' && (
@@ -4844,7 +5371,6 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                                   } else {
                                     updateCompletionComment(student, nextValue);
                                   }
-                                  scheduleCommentRewriteWithAI(student, nextValue);
                                 }}
                                 placeholder="학생별 코멘트"
                                 rows={3}
@@ -4867,6 +5393,40 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                                   AI 다듬는 중...
                                 </span>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentComment = (() => {
+                                    if (selectedClass !== 'all') {
+                                      return isTableShowingDateHomework
+                                        ? (dateCompletionData[tableDisplayDate]?.[selectedClass]?.[student]?.[COMMENT_KEY] ?? '')
+                                        : (completionData[selectedClass]?.[student]?.[COMMENT_KEY] ?? '');
+                                    }
+                                    const studentClasses = parseClassNames(studentInfo[student]?.className || '').filter((c) => classesForSelectedTeacher.includes(c));
+                                    const first = studentClasses[0];
+                                    if (!first) return '';
+                                    return isTableShowingDateHomework
+                                      ? (dateCompletionData[tableDisplayDate]?.[first]?.[student]?.[COMMENT_KEY] ?? '')
+                                      : (completionData[first]?.[student]?.[COMMENT_KEY] ?? '');
+                                  })();
+                                  rewriteCommentWithAI(student, currentComment);
+                                }}
+                                disabled={commentAiLoading === student}
+                                style={{
+                                  padding: '9px 12px',
+                                  fontSize: '0.85rem',
+                                  fontWeight: '700',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  backgroundColor: commentAiLoading === student ? '#c4b5fd' : '#8b5cf6',
+                                  color: '#fff',
+                                  cursor: commentAiLoading === student ? 'wait' : 'pointer',
+                                  whiteSpace: 'nowrap',
+                                  alignSelf: 'flex-start',
+                                }}
+                              >
+                                AI로 바꾸기
+                              </button>
                             </div>
                           </td>
                           <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
@@ -5003,6 +5563,45 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                 }}
               >
                 {sending ? '전송 중...' : '완료도 전송'}
+              </button>
+            </div>
+          )}
+
+          {showIndividualFields && filteredAndSortedStudents.length > 0 && selectedClass !== 'all' && (
+            <div className="class-modal-actions" style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={handleOpenPreview}
+                disabled={sending}
+                style={{
+                  padding: '12px 30px',
+                  background: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '1.1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                }}
+              >
+                👁️ 개별 진도 미리보기
+              </button>
+              <button
+                className="send-kakao-btn"
+                onClick={handleOpenPreview}
+                disabled={filteredAndSortedStudents.length === 0 || sending}
+                style={{
+                  padding: '12px 30px',
+                  background: '#9b59b6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '1.1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                {sending ? '전송 중...' : '개별 진도 전체 전송'}
               </button>
             </div>
           )}
@@ -5312,6 +5911,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                       // 저장된 날짜별 과제·진도 목록 우선 사용 (반별로 분리)
                       const savedHomework = dateHomeworkList[date] || {};
                       const savedProgress = dateProgressList[date] || {};
+                      const hasSavedHomeworkForClass = selectedClass !== 'all' && Object.prototype.hasOwnProperty.call(savedHomework, selectedClass);
+                      const hasSavedProgressForClass = selectedClass !== 'all' && Object.prototype.hasOwnProperty.call(savedProgress, selectedClass);
                       const allSavedHomework = new Set();
                       const allSavedProgress = new Set();
                       if (!showIndividualFields && selectedClass !== 'all' && savedHomework[selectedClass]) {
@@ -5331,8 +5932,8 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                       if (
                         !showIndividualFields &&
                         selectedClass !== 'all' &&
-                        (!savedHomework[selectedClass] || savedHomework[selectedClass].length === 0) &&
-                        (!savedProgress[selectedClass] || savedProgress[selectedClass].length === 0)
+                        !hasSavedHomeworkForClass &&
+                        !hasSavedProgressForClass
                       ) {
                         const dayHistory = sendHistory?.[date] || [];
                         const dayClassHistory = Array.isArray(dayHistory)
@@ -5387,7 +5988,12 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                             setSelectedDateDetail(date);
                             let existingHomework = dateHomeworkList[date]?.[selectedClass] || [];
                             // 저장된 과제 목록이 비어있으면, sendHistory에서 가져와 입력값도 채움
-                            if (Array.isArray(existingHomework) && existingHomework.length === 0 && selectedClass !== 'all') {
+                            if (
+                              Array.isArray(existingHomework) &&
+                              existingHomework.length === 0 &&
+                              selectedClass !== 'all' &&
+                              !Object.prototype.hasOwnProperty.call(dateHomeworkList[date] || {}, selectedClass)
+                            ) {
                               const dayHistory = sendHistory?.[date] || [];
                               const dayClassHistory = Array.isArray(dayHistory)
                                 ? dayHistory.filter((item) => item?.반명 === selectedClass)
@@ -5403,7 +6009,12 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                             }
                             setDateHomeworkInput((existingHomework || []).join('\n'));
                             let existingProgress = dateProgressList[date]?.[selectedClass] || [];
-                            if (Array.isArray(existingProgress) && existingProgress.length === 0 && selectedClass !== 'all') {
+                            if (
+                              Array.isArray(existingProgress) &&
+                              existingProgress.length === 0 &&
+                              selectedClass !== 'all' &&
+                              !Object.prototype.hasOwnProperty.call(dateProgressList[date] || {}, selectedClass)
+                            ) {
                               const dayHistoryP = sendHistory?.[date] || [];
                               const dayClassHistoryP = Array.isArray(dayHistoryP)
                                 ? dayHistoryP.filter((item) => item?.반명 === selectedClass)
@@ -5551,17 +6162,20 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                         const progressSet = new Set(savedProgress);
                         const studentSet = new Set();
 
-                        if (homeworkSet.size === 0 || progressSet.size === 0) {
+                        const hasSavedHomeworkForDetail = Object.prototype.hasOwnProperty.call(dateHomeworkList[selectedDateDetail] || {}, selectedClass);
+                        const hasSavedProgressForDetail = Object.prototype.hasOwnProperty.call(dateProgressList[selectedDateDetail] || {}, selectedClass);
+
+                        if ((!hasSavedHomeworkForDetail && homeworkSet.size === 0) || (!hasSavedProgressForDetail && progressSet.size === 0)) {
                           classHistory.forEach((item) => {
                             if (typeof item?.학생명 === 'string' && item.학생명.includes(',')) {
                               item.학생명.split(',').forEach((name) => studentSet.add(name.trim()));
                             } else if (item?.학생명) {
                               studentSet.add(item.학생명);
                             }
-                            if (homeworkSet.size === 0 && Array.isArray(item?.과제목록)) {
+                            if (!hasSavedHomeworkForDetail && homeworkSet.size === 0 && Array.isArray(item?.과제목록)) {
                               item.과제목록.forEach((hw) => homeworkSet.add(hw));
                             }
-                            if (progressSet.size === 0) {
+                            if (!hasSavedProgressForDetail && progressSet.size === 0) {
                               if (Array.isArray(item?.진도목록)) {
                                 item.진도목록.forEach((prog) => progressSet.add(prog));
                               } else if (typeof item?.진도상황 === 'string') {
@@ -6224,6 +6838,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                 </h2>
                 <button
                   onClick={() => {
+                    if (dateEntrySaving) return;
                     setSelectedDateForHomework(null);
                     setDateHomeworkInput('');
                     setDateProgressInput('');
@@ -6324,51 +6939,49 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                 </button>
                 <button
                   onClick={async () => {
+                    const targetDate = selectedDateForHomework;
+                    const className = selectedClass;
+                    if (!targetDate || className === 'all') {
+                      alert('저장할 날짜와 반을 다시 확인해주세요.');
+                      return;
+                    }
+
                     // 줄바꿈으로 구분된 과제 목록을 배열로 변환 (비어 있으면 빈 배열로 저장)
                     const homeworkArray = (dateHomeworkInput || '')
                       .split('\n')
                       .map(hw => hw.trim())
                       .filter(hw => hw !== '');
 
-                    // dateHomeworkList 업데이트 (내용 없으면 해당 날짜·반 과제를 비움)
-                    setDateHomeworkList(prev => ({
-                      ...prev,
-                      [selectedDateForHomework]: {
-                        ...(prev[selectedDateForHomework] || {}),
-                        [selectedClass]: homeworkArray,
-                      },
-                    }));
-
                     const progressArray = (dateProgressInput || '')
                       .split('\n')
                       .map(p => p.trim())
                       .filter(p => p !== '');
-                    setDateProgressList(prev => ({
-                      ...prev,
-                      [selectedDateForHomework]: {
-                        ...(prev[selectedDateForHomework] || {}),
-                        [selectedClass]: progressArray,
-                      },
-                    }));
 
-                    alert(`✅ ${selectedDateForHomework} 날짜의 과제·진도가 저장되었습니다. 저장 버튼을 누르면 Firebase에 반영됩니다.`);
-                    setTableDisplayDate(selectedDateForHomework); // 표에 해당 날짜 과제 표시
-                    setSelectedDateForHomework(null);
-                    setDateHomeworkInput('');
-                    setDateProgressInput('');
+                    try {
+                      await saveDateHomeworkProgressToFirebase(targetDate, className, homeworkArray, progressArray);
+                      alert(`✅ ${targetDate} 날짜의 과제·진도가 바로 저장되었습니다.`);
+                      setTableDisplayDate(targetDate); // 표에 해당 날짜 과제 표시
+                      setSelectedDateForHomework(null);
+                      setDateHomeworkInput('');
+                      setDateProgressInput('');
+                    } catch (error) {
+                      console.error('날짜별 과제·진도 저장 실패:', error);
+                      alert(`❌ 날짜별 과제·진도 저장에 실패했습니다: ${error?.message || error}`);
+                    }
                   }}
+                  disabled={dateEntrySaving}
                   style={{
                     padding: '12px 24px',
-                    backgroundColor: '#10b981',
+                    backgroundColor: dateEntrySaving ? '#9ca3af' : '#10b981',
                     color: '#fff',
                     border: 'none',
                     borderRadius: '6px',
-                    cursor: 'pointer',
+                    cursor: dateEntrySaving ? 'not-allowed' : 'pointer',
                     fontSize: '1rem',
                     fontWeight: '600',
                   }}
                 >
-                  저장
+                  {dateEntrySaving ? '저장 중...' : '저장'}
                 </button>
               </div>
             </div>
@@ -6377,15 +6990,11 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
 
         {/* 카톡 전송 미리보기 모달 */}
         {showPreview && (
-          <div className="preview-modal-overlay" onClick={() => setShowPreview(false)}>
+          <div className="preview-modal-overlay" onClick={closePreviewModal}>
             <div className="preview-modal-content" onClick={(e) => e.stopPropagation()}>
               <div className="preview-modal-header">
                 <h3>📱 카카오톡 전송 미리보기</h3>
-                <button className="close-btn" onClick={() => {
-                  setShowPreview(false);
-                  setPreviewSendType(null);
-                  sessionStorage.removeItem('previewSendStudent');
-                }}>닫기</button>
+                <button className="close-btn" onClick={closePreviewModal}>닫기</button>
               </div>
               
               <div className="preview-template-section">
@@ -6395,7 +7004,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                 <input
                   id="template-code"
                   type="text"
-                  value={previewSendType === 'notice' ? 'KA01TP260318145508902GuVLeuxXXlc' : 'KA01TP260119030638192BnlwNmKPy78'}
+                  value={previewTemplateCode}
                   readOnly
                   style={{
                     padding: '8px 15px',
@@ -6408,6 +7017,19 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                     maxWidth: '400px',
                   }}
                 />
+              </div>
+
+              <div className="preview-schedule-section">
+                <label htmlFor="scheduled-send-at">
+                  예약 발송 시간
+                </label>
+                <input
+                  id="scheduled-send-at"
+                  type="datetime-local"
+                  value={scheduledSendAt}
+                  onChange={(e) => setScheduledSendAt(e.target.value)}
+                />
+                <span>선택한 학생/학부모 대상으로 같은 내용을 예약 접수합니다.</span>
               </div>
 
               <div className="preview-list" style={{ padding: '20px 30px', overflowY: 'auto', flex: 1 }}>
@@ -6486,13 +7108,11 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                   <button
                     className="send-kakao-btn"
                     onClick={async () => {
-                      setShowPreview(false);
+                      closePreviewModal();
                       // 과제 알림장은 항상 단체 전송
                       await sendHomeworkNotices(previewRecipientSelections);
-                      setPreviewSendType(null);
-                      sessionStorage.removeItem('previewSendStudent');
                     }}
-                    disabled={sending || !hasSelectedPreviewRecipients}
+                    disabled={sending || scheduleSending || !hasSelectedPreviewRecipients}
                     style={{
                       padding: '12px 30px',
                       background: '#10b981',
@@ -6511,26 +7131,22 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                   <button
                     className="send-kakao-btn"
                     onClick={async () => {
-                      setShowPreview(false);
+                      closePreviewModal();
                       const previewStudent = sessionStorage.getItem('previewSendStudent');
                       const previewSendDate = sessionStorage.getItem('previewSendDate');
                       
                       if (previewSendDate) {
                         // 날짜별 완료도 전송
                         await sendDateCompletionMessages(previewSendDate, previewRecipientSelections);
-                        sessionStorage.removeItem('previewSendDate');
-                        sessionStorage.removeItem('previewSendHomework');
                       } else if (previewStudent) {
                         // 개별 전송
                         await sendKakaoToStudent(previewStudent, previewRecipientSelections[previewStudent]);
-                        sessionStorage.removeItem('previewSendStudent');
                       } else {
                         // 전체 전송
                         await sendKakaoMessages(previewRecipientSelections);
                       }
-                      setPreviewSendType(null);
                     }}
-                    disabled={sending || !hasSelectedPreviewRecipients}
+                    disabled={sending || scheduleSending || !hasSelectedPreviewRecipients}
                     style={{
                       padding: '12px 30px',
                       background: '#9b59b6',
@@ -6549,10 +7165,10 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                   <button
                     className="send-kakao-btn"
                     onClick={() => {
-                      setShowPreview(false);
+                      closePreviewModal();
                       sendKakaoMessages(previewRecipientSelections);
                     }}
-                    disabled={sending || !hasSelectedPreviewRecipients}
+                    disabled={sending || scheduleSending || !hasSelectedPreviewRecipients}
                     style={{
                       padding: '12px 30px',
                       background: '#9b59b6',
@@ -6568,11 +7184,15 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet }) {
                   </button>
                 )}
                 <button
-                  onClick={() => {
-                    setShowPreview(false);
-                    setPreviewSendType(null);
-                    sessionStorage.removeItem('previewSendStudent');
-                  }}
+                  type="button"
+                  className="send-kakao-btn preview-schedule-btn"
+                  onClick={handleSchedulePreviewSend}
+                  disabled={sending || scheduleSending || !hasSelectedPreviewRecipients}
+                >
+                  {scheduleSending ? '예약 접수 중...' : '⏰ 예약발송'}
+                </button>
+                <button
+                  onClick={closePreviewModal}
                   style={{
                     padding: '12px 30px',
                     background: '#6b7280',

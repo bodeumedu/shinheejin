@@ -1,5 +1,5 @@
 import { findTopicLabel, passageForMcqDisplay } from './grammarWorkbookUtils.js'
-import { isEssayMode } from './grammarWorkbookModes.js'
+import { isEssayMode, isSingleColumnMode, isWritingMode } from './grammarWorkbookModes.js'
 
 let jsPDF
 let html2canvas
@@ -22,6 +22,18 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;')
 }
 
+function formatSafeInlineMarkup(text) {
+  const escaped = escapeHtml(text)
+  return escaped
+    .replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/&lt;(?:b|strong)&gt;([\s\S]*?)&lt;\/(?:b|strong)&gt;/gi, '<strong>$1</strong>')
+    .replace(/&lt;u&gt;([\s\S]*?)&lt;\/u&gt;/gi, '<u>$1</u>')
+}
+
+function formatDisplayHtml(text) {
+  return formatSafeInlineMarkup(text).replace(/\n/g, '<br/>')
+}
+
 function pad2(n) {
   const x = Number(n) || 0
   return String(x).padStart(2, '0')
@@ -37,32 +49,33 @@ function stripLeadingCircledMarks(text) {
   return s.length ? s : ' '
 }
 
+const WORKBOOK_WRITE_LINE_COUNT = 5
 const ESSAY_WRITE_LINE_COUNT = 10
 
-function renderEssayWritingPadHtml() {
+function renderEssayWritingPadHtml(lineCount = ESSAY_WRITE_LINE_COUNT) {
   const lines = Array.from(
-    { length: ESSAY_WRITE_LINE_COUNT },
+    { length: lineCount },
     () => '<div class="mock-essay-line"></div>'
   ).join('')
   return `<div class="mock-essay-pad" aria-label="답안 작성란">${lines}</div>`
 }
 
 /** 시험지 본문 — 정답·해설은 포함하지 않음(해설지 섹션으로 분리) */
-function renderQuestionBlockHtml(p, sections, essay) {
+function renderQuestionBlockHtml(p, sections, writingMode, essayMode) {
   const no = p.no ?? p.number ?? 0
   const label = findTopicLabel(sections, p.topicId || '')
-  const passageRaw = passageForMcqDisplay(p.passage || p.question || '', essay)
-  const passage = escapeHtml(passageRaw).replace(/\n/g, '<br/>')
+  const passageRaw = passageForMcqDisplay(p.passage || p.question || '', writingMode)
+  const passage = formatDisplayHtml(passageRaw)
 
   let choicesHtml = ''
-  if (!essay) {
+  if (!writingMode) {
     const choices = Array.isArray(p.choices) ? p.choices : []
     if (choices.length) {
       const marks = ['①', '②', '③', '④', '⑤']
       const cells = choices
         .slice(0, 5)
         .map((c, i) => {
-          const body = escapeHtml(stripLeadingCircledMarks(c)).replace(/\n/g, '<br/>')
+          const body = formatDisplayHtml(stripLeadingCircledMarks(c))
           return `<div class="mock-choice"><span class="mock-choice-mark">${marks[i]}</span><span class="mock-choice-body">${body}</span></div>`
         })
         .join('')
@@ -70,7 +83,9 @@ function renderQuestionBlockHtml(p, sections, essay) {
     }
   }
 
-  const essayPad = essay ? renderEssayWritingPadHtml() : ''
+  const essayPad = writingMode
+    ? renderEssayWritingPadHtml(essayMode ? ESSAY_WRITE_LINE_COUNT : WORKBOOK_WRITE_LINE_COUNT)
+    : ''
 
   return `<article class="mock-q">
     <div class="mock-q-head">
@@ -110,25 +125,25 @@ function getModelAnswerText(p) {
 }
 
 /** 해설지용 — 문항별 정답·해설만 */
-function renderAnswerBlockHtml(p, sections, essay) {
+function renderAnswerBlockHtml(p, sections, writingMode) {
   const no = p.no ?? p.number ?? 0
   const label = findTopicLabel(sections, p.topicId || '')
   let body = ''
   const idx = getAnswerChoiceIndex(p)
-  if (!essay && idx != null) {
+  if (!writingMode && idx != null) {
     const mark = ['①', '②', '③', '④', '⑤'][idx]
     body += `<div class="mock-answer">정답: ${mark}</div>`
-  } else if (!essay && Array.isArray(p.choices) && p.choices.length > 0) {
+  } else if (!writingMode && Array.isArray(p.choices) && p.choices.length > 0) {
     body += `<div class="mock-answer mock-answer-missing">정답: (저장된 번호 없음 — 문제를 다시 생성하거나 JSON에 correctIndex를 확인하세요)</div>`
   }
   const expl = p.explanation != null ? String(p.explanation).trim() : ''
   if (expl) {
-    body += `<div class="mock-expl">${escapeHtml(expl).replace(/\n/g, '<br/>')}</div>`
+    body += `<div class="mock-expl">${formatDisplayHtml(expl)}</div>`
   }
   const modelAns = getModelAnswerText(p)
-  if (essay && modelAns) {
-    body += `<div class="mock-model"><strong>【모범 답안 예시】</strong><br/>${escapeHtml(modelAns).replace(/\n/g, '<br/>')}</div>`
-  } else if (essay) {
+  if (writingMode && modelAns) {
+    body += `<div class="mock-model"><strong>【모범 답안 예시】</strong><br/>${formatDisplayHtml(modelAns)}</div>`
+  } else if (writingMode) {
     body += `<div class="mock-model mock-answer-missing">【모범 답안 예시】 저장값 없음</div>`
   }
   if (!body.trim()) return ''
@@ -216,10 +231,16 @@ const MOCK_EXAM_CSS = `
   flex: 1 1 auto;
   min-height: 220mm;
 }
+.mock-pdf-page-single .mock-body-columns {
+  display: block;
+}
 .mock-col {
   flex: 1;
   width: 0;
   min-width: 0;
+}
+.mock-pdf-page-single .mock-col {
+  width: 100%;
 }
 .mock-gutter {
   width: 1px;
@@ -227,6 +248,9 @@ const MOCK_EXAM_CSS = `
   background: #cbd5e1;
   flex-shrink: 0;
   margin: 0 3.5mm;
+}
+.mock-pdf-page-single .mock-gutter {
+  display: none;
 }
 .mock-footer {
   margin-top: auto;
@@ -355,6 +379,9 @@ const MOCK_EXAM_CSS = `
 .mock-measure-col {
   width: calc((210mm - 22mm - 7mm) / 2);
 }
+.mock-pdf-root[data-single-column="1"] .mock-measure-col {
+  width: calc(210mm - 22mm);
+}
 `
 
 function formatBadgeNumber(testNumber) {
@@ -411,23 +438,31 @@ export async function exportGrammarWorkbookMockExamPdf(opts) {
 
   await loadPdfLibraries()
 
-  const blocksHtml = problems.map((p) =>
-    renderQuestionBlockHtml(p, sections, isEssayMode(p.grammarWorkbookModeId || modeId))
-  )
+  const blocksHtml = problems.map((p) => {
+    const itemModeId = p.grammarWorkbookModeId || modeId
+    return renderQuestionBlockHtml(
+      p,
+      sections,
+      isWritingMode(itemModeId),
+      isEssayMode(itemModeId)
+    )
+  })
   const answerBlocks = [
     renderAnswerSheetHeaderHtml(),
     ...problems.map((p) =>
-      renderAnswerBlockHtml(p, sections, isEssayMode(p.grammarWorkbookModeId || modeId))
+      renderAnswerBlockHtml(p, sections, isWritingMode(p.grammarWorkbookModeId || modeId))
     ),
   ].filter((html) => html != null && String(html).trim() !== '')
   const allBlocks = [...blocksHtml, ...answerBlocks]
   /** 해설지(answerBlocks)는 항상 새 PDF 페이지부터 (문항 본문과 같은 페이지에 붙지 않음) */
   const answerStartIndex = blocksHtml.length
   const badgeDisplay = formatBadgeNumber(testNumber)
+  const singleColumnLayout = problems.every((p) => isSingleColumnMode(p.grammarWorkbookModeId || modeId))
 
   const root = document.createElement('div')
   root.className = 'mock-pdf-root'
   root.setAttribute('data-grammar-mock-pdf', '1')
+  if (singleColumnLayout) root.setAttribute('data-single-column', '1')
 
   const styleEl = document.createElement('style')
   styleEl.textContent = MOCK_EXAM_CSS
@@ -442,6 +477,7 @@ export async function exportGrammarWorkbookMockExamPdf(opts) {
   const buildPageDom = (pageIndex, leftHtml, rightHtml) => {
     const page = document.createElement('div')
     page.className = 'mock-pdf-page'
+    if (singleColumnLayout) page.classList.add('mock-pdf-page-single')
     page.innerHTML = `
       <header class="mock-header">
         <div class="mock-badge">
@@ -453,15 +489,14 @@ export async function exportGrammarWorkbookMockExamPdf(opts) {
       </header>
       <div class="mock-body-columns">
         <div class="mock-col">${leftHtml.join('')}</div>
-        <div class="mock-gutter"></div>
-        <div class="mock-col">${rightHtml.join('')}</div>
+        ${singleColumnLayout ? '' : '<div class="mock-gutter"></div><div class="mock-col">' + rightHtml.join('') + '</div>'}
       </div>
       <footer class="mock-footer"><strong>${pageIndex + 1}</strong> ${escapeHtml(footerLabel)}</footer>
     `
     return page
   }
 
-  const gapPx = 6
+  const gapPx = 16
   const heights = allBlocks.map((html) => {
     const col = document.createElement('div')
     col.className = 'mock-measure-col'
@@ -476,8 +511,8 @@ export async function exportGrammarWorkbookMockExamPdf(opts) {
   probePage.style.visibility = 'hidden'
   root.appendChild(probePage)
   const bodyCol = probePage.querySelector('.mock-body-columns')
-  let bodyBudget = bodyCol ? bodyCol.clientHeight - 16 : 920
-  if (bodyBudget < 320) bodyBudget = 920
+  let bodyBudget = bodyCol ? bodyCol.clientHeight - 48 : 900
+  if (bodyBudget < 320) bodyBudget = 900
   root.removeChild(probePage)
 
   const pages = []
@@ -516,7 +551,7 @@ export async function exportGrammarWorkbookMockExamPdf(opts) {
       leftH += h
       continue
     }
-    if (rightH + h <= bodyBudget) {
+    if (!singleColumnLayout && rightH + h <= bodyBudget) {
       right.push(html)
       rightH += h
       continue

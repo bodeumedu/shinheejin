@@ -362,7 +362,7 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
   const generateBlockedReason = useMemo(() => {
     if (loading) return null
     if (!apiKey?.trim()) {
-      return '메인 화면 상단에서 OpenAI API 키를 입력하면 생성할 수 있습니다.'
+      return '메인 화면 상단에서 Gemini API 키를 입력하면 생성할 수 있습니다.'
     }
     if (generationModes.length === 0) {
       return '이 문법에 출제할 세부 주제가 없습니다.'
@@ -376,7 +376,7 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
   const handleGenerate = useCallback(async () => {
     setError(null)
     if (!apiKey?.trim()) {
-      setError('상단에서 OpenAI API 키를 입력해 주세요.')
+      setError('상단에서 Gemini API 키를 입력해 주세요.')
       return
     }
     if (generationModes.length === 0) {
@@ -425,7 +425,7 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
     } catch (e) {
       let msg = e?.message || String(e)
       if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
-        msg += ' 브라우저에서 api.openai.com 접속이 막혔을 수 있습니다. 네트워크·VPN·확장 프로그램을 확인해 주세요.'
+        msg += ' 브라우저에서 generativelanguage.googleapis.com 접속이 막혔을 수 있습니다. 네트워크·VPN·확장 프로그램을 확인해 주세요.'
       }
       setError(msg)
     } finally {
@@ -452,7 +452,7 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
   const handleReview = useCallback(async () => {
     setError(null)
     if (!apiKey?.trim()) {
-      setError('상단에서 OpenAI API 키를 입력해 주세요.')
+      setError('상단에서 Gemini API 키를 입력해 주세요.')
       return
     }
     const draft = resultText.trim()
@@ -464,11 +464,10 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
     try {
       const out = await reviewGrammarWorkbookDraft(apiKey, difficulty, grammarConfig.label, draft)
       setResultText(out)
-      setGeneratedProblems(null)
     } catch (e) {
       let msg = e?.message || String(e)
       if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
-        msg += ' 브라우저에서 api.openai.com 접속이 막혔을 수 있습니다. 네트워크·VPN·확장 프로그램을 확인해 주세요.'
+        msg += ' 브라우저에서 generativelanguage.googleapis.com 접속이 막혔을 수 있습니다. 네트워크·VPN·확장 프로그램을 확인해 주세요.'
       }
       setError(msg)
     } finally {
@@ -517,7 +516,7 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
           문법 영역을 고른 뒤, <strong>문제 유형 탭(개념·워크북·객관식·서술형)</strong>을 바꿔 가며 대단원 아래{' '}
           <strong>세부 주제를 체크</strong>하면, 그 탭에만 선택이 저장됩니다.{' '}
           <strong>한 탭에서도 아무 것도 체크하지 않은 상태</strong>로 생성하면, 그때는 <strong>현재 탭 유형</strong>으로{' '}
-          전체 세부 주제 풀에서 <strong>무작위</strong> 출제됩니다.{' '}
+          전체 챕터 풀에서 <strong>무작위</strong> 출제됩니다.{' '}
           <strong>두 탭 이상에서 하나라도 체크</strong>해 두면, 생성 시 유형마다 맞는 프롬프트로 나누어 출제한 뒤{' '}
           <strong>한 텍스트·한 PDF</strong>로 이어 붙입니다. 문항 수(25/50/100)는 전체 합계이며, 탭별 체크 개수 비율로 유형별 문항 수를 나눕니다.
         </p>
@@ -602,10 +601,10 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
           </div>
           <div className="grammar-wb-toolbar-actions">
             <button type="button" className="btn-gwb btn-gwb-ghost" onClick={selectAll}>
-              세부 주제 전체 선택
+              챕터 전체 선택
             </button>
             <button type="button" className="btn-gwb btn-gwb-ghost" onClick={deselectAll}>
-              세부 주제 전체 해제
+              챕터 전체 해제
             </button>
           </div>
         </div>
@@ -614,7 +613,7 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
             탭별 선택:{' '}
             {selectionSummary.parts.length > 0 ? (
               <>
-                <strong>{selectionSummary.parts.join(', ')}</strong> (합계 {selectionSummary.total}체크)
+                <strong>{selectionSummary.parts.join(', ')}</strong> (합계 {selectionSummary.total}개)
               </>
             ) : (
               <span className="grammar-wb-random-hint">없음 → 생성 시 현재 탭·전체 풀 랜덤</span>
@@ -628,7 +627,7 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
 
       <div className="grammar-wb-topics-wrap">
         <h3 className="grammar-wb-topics-title">
-          출제 범위 — {grammarConfig.label} · <strong>{questionMode.shortTitle}</strong> 탭 전용 체크
+          출제 범위 — {grammarConfig.label} · <strong>{questionMode.shortTitle}</strong> 탭 전용 챕터 선택
         </h3>
         {grammarConfig.sections.map((section) => (
           <section key={section.id} className="grammar-wb-section">
@@ -636,10 +635,10 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
               <h4 className="grammar-wb-section-title">{section.title}</h4>
               <div className="grammar-wb-section-btns">
                 <button type="button" className="btn-gwb btn-gwb-mini" onClick={() => selectSectionTopics(section)}>
-                  이 단원만 전체 선택
+                  이 챕터 선택
                 </button>
                 <button type="button" className="btn-gwb btn-gwb-mini" onClick={() => deselectSectionTopics(section)}>
-                  이 단원만 전체 해제
+                  이 챕터 해제
                 </button>
               </div>
             </div>
@@ -663,10 +662,10 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
 
       <div className="grammar-wb-cart-panel">
         <div className="grammar-wb-cart">
-          <h3 className="grammar-wb-cart-title">선택한 출제 항목 (유형 탭별)</h3>
+          <h3 className="grammar-wb-cart-title">선택한 출제 챕터 (유형 탭별)</h3>
           {cartByMode.length === 0 ? (
             <p className="grammar-wb-cart-empty">
-              어느 탭에도 체크 없음 — 생성 시 <strong>현재 탭 유형</strong>으로 전체 풀에서 무작위 출제됩니다.
+              어느 탭에도 체크 없음 — 생성 시 <strong>현재 탭 유형</strong>으로 전체 챕터 풀에서 무작위 출제됩니다.
             </p>
           ) : (
             <ul className="grammar-wb-cart-list">
@@ -695,7 +694,7 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
 
         <div className="grammar-wb-quota">
           <div className="grammar-wb-quota-head">
-            <h3 className="grammar-wb-quota-title">문항 배분 — 유형·세부 주제별 (숫자 직접 수정 가능)</h3>
+            <h3 className="grammar-wb-quota-title">문항 배분 — 유형·챕터별 (숫자 직접 수정 가능)</h3>
             <div className="grammar-wb-quota-actions">
               <button
                 type="button"
@@ -781,7 +780,7 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
 
       {loading ? (
         <p className="grammar-wb-loading-hint" role="status" aria-live="polite">
-          OpenAI 서버 응답까지 <strong>{loadingSeconds}</strong>초 경과 · 보통 1~6분 걸릴 수 있습니다.{' '}
+          Gemini 서버 응답까지 <strong>{loadingSeconds}</strong>초 경과 · 보통 1~6분 걸릴 수 있습니다.{' '}
           {grammarApiRoundCount > 1
             ? `내부적으로 총 ${grammarApiRoundCount}회(유형·문항 수에 따라 분할)로 API를 호출합니다. `
             : ''}
@@ -834,7 +833,9 @@ export default function GrammarWorkbookInput({ onClose, apiKey }) {
             </div>
           </div>
           <div className="grammar-wb-pdf-panel">
-            <p className="grammar-wb-pdf-panel-title">A4 · 2단 모의고사형 PDF</p>
+            <p className="grammar-wb-pdf-panel-title">
+              {questionModeId === 'concept' ? 'A4 · 1단 개념형 PDF' : 'A4 · 2단 모의고사형 PDF'}
+            </p>
             <div className="grammar-wb-pdf-fields">
               <label className="grammar-wb-pdf-field">
                 <span>시험 번호</span>

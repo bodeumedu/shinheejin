@@ -1,6 +1,12 @@
 import './MainMenu.css'
+import UsageQuestionBot from '../features/help-bot/components/UsageQuestionBot'
 
 function MainMenu({
+  currentUser,
+  onLogout,
+  helpBotApiKey,
+  onSelectCalendar,
+  onSelectAttendanceCheck,
   onSelectPocketbook,
   onSelectBlank,
   onSelectPreprocessor,
@@ -37,14 +43,78 @@ function MainMenu({
   onSelectGwacheonCentralHigh1,
   onSelectStudentData,
   onSelectAdminPage,
+  onSelectHomeworkClassBuilder,
   onSelectGrammarWorkbook,
   onSelectParallelMockExam,
 }) {
+  const isExecutive = currentUser?.role === 'executive'
+
   return (
     <div className="main-menu">
       <div className="main-menu-container">
         <h1 className="main-menu-title">포켓북 만들기</h1>
         <p className="main-menu-subtitle">by 신희진</p>
+        <div className="main-menu-user-bar">
+          <div className="main-menu-user-section">
+            <div className="main-menu-user-info">
+              <strong>{currentUser?.name || '미로그인'}</strong>
+              <span>{currentUser?.role === 'executive' ? '운영진' : currentUser?.role === 'staff' ? '직원' : '선생님'}</span>
+            </div>
+            <button type="button" className="main-menu-suggestion-btn" onClick={onSelectNotes}>
+              수정 제안
+            </button>
+          </div>
+          <button type="button" className="main-menu-logout-btn" onClick={onLogout}>
+            로그아웃
+          </button>
+        </div>
+        <div className="main-menu-top-actions">
+          <UsageQuestionBot apiKey={helpBotApiKey} />
+          <button
+            type="button"
+            className="main-menu-calendar-btn"
+            onClick={onSelectCalendar}
+          >
+            🗓️ 캘린더
+          </button>
+          <button type="button" className="main-menu-attendance-btn" onClick={onSelectAttendanceCheck}>
+            ✅ 출석체크
+          </button>
+          <button
+            type="button"
+            className="main-menu-student-data-btn"
+            onClick={onSelectStudentData}
+            disabled={!isExecutive}
+            title={isExecutive ? '' : '운영진만 사용할 수 있습니다.'}
+          >
+            👥 학생 데이터
+          </button>
+          <button
+            type="button"
+            className="main-menu-class-builder-btn"
+            onClick={onSelectHomeworkClassBuilder}
+            disabled={!isExecutive}
+            title={isExecutive ? '' : '운영진만 사용할 수 있습니다.'}
+          >
+            ➕ 반 만들기
+          </button>
+          <button
+            type="button"
+            className="main-menu-weekly-schedule-btn"
+            onClick={onSelectWeeklySchedule}
+          >
+            📅 주간 시간표
+          </button>
+          <button
+            type="button"
+            className="main-menu-admin-btn"
+            onClick={onSelectAdminPage}
+            disabled={!isExecutive}
+            title={isExecutive ? '' : '운영진만 사용할 수 있습니다.'}
+          >
+            🟣 관리자 페이지
+          </button>
+        </div>
         
         <div className="main-menu-layout">
           <div className="main-menu-left">
@@ -121,7 +191,7 @@ function MainMenu({
                 📷 OCR
               </button>
               <button className="main-menu-btn main-menu-btn-secondary" onClick={onSelectEnglishHomeworkDashboard}>
-                📚 영어 과제 관리
+                📚 전체 완성도와 테스트관리
               </button>
               <button className="main-menu-btn main-menu-btn-secondary" onClick={onSelectMathHomeworkDashboard}>
                 📐 수학 클리닉 대장
@@ -135,12 +205,6 @@ function MainMenu({
               <button className="main-menu-btn main-menu-btn-secondary" onClick={onSelectWinterSchool}>
                 ❄️ 윈터스쿨 관리
               </button>
-              <button className="main-menu-btn main-menu-btn-secondary" onClick={onSelectWeeklySchedule}>
-                📅 주간 일정표
-              </button>
-              <button className="main-menu-btn main-menu-btn-secondary" onClick={onSelectNotes}>
-                📝 노트
-              </button>
               <button className="main-menu-btn main-menu-btn-secondary" onClick={onSelectWordShuffler}>
                 🔀 단어 섞기
               </button>
@@ -150,20 +214,6 @@ function MainMenu({
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          className="main-menu-student-data-btn"
-          onClick={onSelectStudentData}
-        >
-          👥 학생 데이터
-        </button>
-        <button
-          type="button"
-          className="main-menu-admin-btn"
-          onClick={onSelectAdminPage}
-        >
-          🟣 관리자 페이지
-        </button>
       </div>
     </div>
   )

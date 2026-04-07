@@ -111,7 +111,7 @@
 
 .admin-page-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -152,6 +152,18 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.admin-page-class-selector-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-page-class-selector-title span {
+  font-size: 0.85rem;
+  color: #6b7280;
+  font-weight: 600;
 }
 
 .admin-page-class-selector-actions {
@@ -215,7 +227,7 @@
 .admin-page-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 960px;
+  min-width: 1040px;
 }
 
 .admin-page-table th,
@@ -242,8 +254,52 @@
   padding: 28px 16px;
 }
 
+.admin-page-attendance-text-cell {
+  white-space: nowrap;
+}
+
+.admin-page-attendance-text {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.admin-page-attendance-text--present {
+  color: #15803d;
+}
+
+.admin-page-attendance-text--absent {
+  color: #b91c1c;
+}
+
+.admin-page-attendance-text--late {
+  color: #c2410c;
+}
+
+.admin-page-attendance-text--early {
+  color: #0e7490;
+}
+
+.admin-page-attendance-text--makeup {
+  color: #be185d;
+}
+
+.admin-page-attendance-text--none {
+  color: #6b7280;
+}
+
+.admin-page-attendance-text-none {
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
 .admin-page-missing {
   color: #b91c1c;
+  font-weight: 700;
+}
+
+.admin-page-complete {
+  color: #047857;
   font-weight: 700;
 }
 
@@ -255,6 +311,28 @@
   cursor: pointer;
   font-weight: 700;
   text-decoration: underline;
+}
+
+.admin-page-clinic-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-page-clinic-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-page-clinic-summary {
+  font-weight: 700;
+}
+
+.admin-page-clinic-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .admin-page-modal-overlay {
@@ -342,5 +420,10 @@
 
   .admin-page-summary {
     grid-template-columns: 1fr;
+  }
+
+  .admin-page-class-selector-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

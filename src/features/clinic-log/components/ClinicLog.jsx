@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../../../utils/firebase';
 import { loadCentralPhoneNumbers } from '../../../utils/firestoreUtils';
 import './ClinicLog.css';
 
 const dayOrder = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
 const attendanceOptions = ['', 'O', 'X', '결석'];
-const messageOptions = ['', 'O', 'X'];
 
 const defaultRecord = {
   day: '',
@@ -32,8 +31,149 @@ const storageKeys = {
   records: 'clinicRecordValues',
   customs: 'clinicCustomEntries',
 };
+const ACTIVE_ROSTER_STORAGE_KEY = 'clinicActiveRoster';
+const ACTIVE_ROSTER_DOC_ID = 'all';
+const HOMEWORK_PHONE_DOC = 'homeworkCompletionPhoneNumbers';
+const HOMEWORK_PHONE_DOC_ID = 'all';
 
 // 학생 타입: 'repeat' (2회 학생), 'return' (재등원 학생)
+
+function parseClassNameList(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function sanitizeRosterKey(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^0-9A-Za-z가-힣_-]/g, '');
+}
+
+function isKnownMathTeacher(value) {
+  const compact = String(value || '').replace(/\s+/g, '');
+  if (!compact) return false;
+  return compact.includes('이민하') || compact.includes('김지수');
+}
+
+function isMathClassCatalogItem(classKey, item) {
+  const subject = String(item?.subject || '').trim();
+  if (subject === '수학') return true;
+  if (isKnownMathTeacher(item?.teacher)) return true;
+  const haystack = [classKey, item?.className, item?.teacher].join(' ');
+  return /중등수학/.test(haystack);
+}
+
+function readPhoneField(entry, key) {
+  const value = entry?.[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function extractActiveMathClinicStudents(data = {}) {
+  const studentInfo = data?.studentInfo && typeof data.studentInfo === 'object' ? data.studentInfo : {};
+  const classCatalog = data?.classCatalog && typeof data.classCatalog === 'object' ? data.classCatalog : {};
+  const phoneNumbers = data?.phoneNumbers && typeof data.phoneNumbers === 'object' ? data.phoneNumbers : {};
+  const withdrawnNames = new Set(
+    (Array.isArray(data?.withdrawnNames) ? data.withdrawnNames : [])
+      .map((name) => String(name || '').trim())
+      .filter(Boolean)
+  );
+
+  const mathClassKeys = new Set(
+    Object.entries(classCatalog)
+      .filter(([classKey, item]) => isMathClassCatalogItem(classKey, item))
+      .map(([classKey]) => classKey)
+  );
+
+  return Object.entries(studentInfo)
+    .map(([studentName, info]) => {
+      const normalizedName = String(studentName || '').trim();
+      if (!normalizedName || withdrawnNames.has(normalizedName)) return null;
+
+      const classKeys = parseClassNameList(info?.className);
+      const matchedMathClasses = classKeys.filter((classKey) => mathClassKeys.has(classKey));
+      if (matchedMathClasses.length === 0) return null;
+
+      const phoneEntry = phoneNumbers[normalizedName];
+      const studentPhone =
+        typeof phoneEntry === 'string'
+          ? phoneEntry.trim()
+          : readPhoneField(phoneEntry, 'student');
+      const parentPhone = readPhoneField(phoneEntry, 'parent');
+      const parentPhone2 = readPhoneField(phoneEntry, 'parent2') || readPhoneField(phoneEntry, 'parentPhone2');
+
+      const classLabels = matchedMathClasses.map((classKey) => {
+        const catalogItem = classCatalog[classKey] || {};
+        return String(catalogItem.className || classKey || '').trim();
+      }).filter(Boolean);
+
+      return {
+        student: normalizedName,
+        school: String(info?.school || '').trim(),
+        grade: String(info?.grade || '').trim(),
+        className: classLabels.join(', '),
+        phoneNumber: studentPhone || '',
+        parentPhoneNumber: parentPhone || '',
+        parentPhoneNumber2: parentPhone2 || '',
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a.student || '').localeCompare(String(b.student || ''), 'ko'));
+}
+
+function syncMathClinicRecords(prevRecords = {}, roster = []) {
+  const rosterByStudent = new Map(
+    roster.map((entry) => [String(entry.student || '').trim(), entry])
+  );
+  const nextRecords = {};
+  const preservedStudents = new Set();
+
+  Object.entries(prevRecords || {}).forEach(([key, rawRecord]) => {
+    const record = mergeRecord(rawRecord);
+    const student = String(record.student || '').trim();
+
+    if (key.startsWith('manual-')) {
+      nextRecords[key] = record;
+      return;
+    }
+
+    if (!student) return;
+
+    const rosterEntry = rosterByStudent.get(student);
+    if (!rosterEntry) return;
+
+    preservedStudents.add(student);
+    nextRecords[key] = {
+      ...record,
+      school: rosterEntry.school || record.school || '',
+      grade: rosterEntry.grade || record.grade || '',
+      className: rosterEntry.className || record.className || '',
+      student,
+      phoneNumber: rosterEntry.phoneNumber || record.phoneNumber || '',
+      parentPhoneNumber: rosterEntry.parentPhoneNumber || record.parentPhoneNumber || '',
+      parentPhoneNumber2: rosterEntry.parentPhoneNumber2 || record.parentPhoneNumber2 || '',
+    };
+  });
+
+  roster.forEach((entry) => {
+    const student = String(entry.student || '').trim();
+    if (!student || preservedStudents.has(student)) return;
+    const key = `math-roster-${sanitizeRosterKey(student)}`;
+    nextRecords[key] = {
+      ...defaultRecord,
+      ...entry,
+      type: 'repeat',
+    };
+  });
+
+  return nextRecords;
+}
+
+function recordMapsEqual(left = {}, right = {}) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
 // 월요일 기준으로 주차 계산 (연도와 주차 번호)
 // 주의 시작: 월요일, 주의 끝: 일요일
@@ -193,6 +333,35 @@ function mergeRecord(record) {
   return { ...defaultRecord, ...(record || {}) };
 }
 
+function buildActiveRosterFromRecords(recordValues) {
+  const byName = new Map();
+  Object.values(recordValues || {}).forEach((raw) => {
+    const record = mergeRecord(raw);
+    const name = String(record.student || '').trim();
+    if (!name) return;
+
+    const current = byName.get(name) || {
+      name,
+      school: '',
+      grade: '',
+      className: '',
+      studentPhone: '',
+      parentPhone: '',
+      parentPhone2: '',
+    };
+
+    current.name = name;
+    if (String(record.school || '').trim()) current.school = record.school;
+    if (String(record.grade || '').trim()) current.grade = record.grade;
+    if (String(record.className || '').trim()) current.className = record.className;
+    if (String(record.phoneNumber || '').trim()) current.studentPhone = record.phoneNumber;
+    if (String(record.parentPhoneNumber || '').trim()) current.parentPhone = record.parentPhoneNumber;
+    if (String(record.parentPhoneNumber2 || '').trim()) current.parentPhone2 = record.parentPhoneNumber2;
+    byName.set(name, current);
+  });
+  return Array.from(byName.values()).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
+}
+
 // 전화번호 포맷팅 함수 (010-1234-5678 형식)
 function formatPhoneNumber(phone) {
   if (!phone) return '';
@@ -212,22 +381,8 @@ export default function ClinicLog({ subject = 'english' }) {
   // 주차 변경 감지를 위한 ref
   const lastWeekKeyRef = useRef(currentWeekKey);
   
-  // 주차별 기록 불러오기 (localStorage 우선 → 삭제 등 최신 반영 데이터 사용, 없으면 Firestore)
+  // 주차별 기록 불러오기: Firestore 우선, 실패/미설정 시 localStorage 폴백
   const loadWeekRecords = useCallback(async (weekKey) => {
-    // localStorage 먼저 확인 (삭제 후 재진입 시 최신 상태 반영)
-    try {
-      const stored = localStorage.getItem(`${storageKeys.records}_${subject}_${weekKey}`);
-      if (stored) {
-        const records = JSON.parse(stored);
-        const recordCount = Object.keys(records).length;
-        console.log(`💾 [localStorage 로드] 주차: ${weekKey}, 레코드 수: ${recordCount}`);
-        return records;
-      }
-    } catch (error) {
-      console.warn(`⚠️ [localStorage 오류] 주차 ${weekKey} 기록 불러오기 실패:`, error);
-    }
-
-    // localStorage 없을 때만 Firestore에서 로드
     if (isFirebaseConfigured() && db) {
       try {
         const collectionName = `clinicLogRecords_${subject}`;
@@ -250,6 +405,18 @@ export default function ClinicLog({ subject = 'english' }) {
           console.warn(`⚠️ [Firestore 오류] 주차 ${weekKey} 기록 불러오기 실패:`, error);
         }
       }
+    }
+
+    try {
+      const stored = localStorage.getItem(`${storageKeys.records}_${subject}_${weekKey}`);
+      if (stored) {
+        const records = JSON.parse(stored);
+        const recordCount = Object.keys(records).length;
+        console.log(`💾 [localStorage 폴백 로드] 주차: ${weekKey}, 레코드 수: ${recordCount}`);
+        return records;
+      }
+    } catch (error) {
+      console.warn(`⚠️ [localStorage 오류] 주차 ${weekKey} 기록 불러오기 실패:`, error);
     }
 
     console.log(`📭 [로드] 주차 ${weekKey} 데이터 없음`);
@@ -348,6 +515,12 @@ export default function ClinicLog({ subject = 'english' }) {
   const [showHistory, setShowHistory] = useState(false); // 전송 내역 모달 표시 여부
   const [selectedHistoryStudent, setSelectedHistoryStudent] = useState(null); // 전송 내역 볼 학생
 
+  const syncMathRosterIntoRecords = useCallback((homeworkData, baseRecords = {}) => {
+    if (subject !== 'math') return baseRecords;
+    const roster = extractActiveMathClinicStudents(homeworkData);
+    return syncMathClinicRecords(baseRecords, roster);
+  }, [subject]);
+
   // 학생 수동 추가
   const handleAddStudent = useCallback(() => {
     if (!newStudentForm.student.trim()) {
@@ -417,17 +590,8 @@ export default function ClinicLog({ subject = 'english' }) {
     return `${year}_week_${week}`;
   }, []);
 
-  // 주차별 customEntries 불러오기 (localStorage 우선 → 삭제 반영, 없으면 Firestore)
+  // 주차별 customEntries 불러오기: Firestore 우선, 실패/미설정 시 localStorage 폴백
   const loadWeekCustoms = useCallback(async (weekKey) => {
-    try {
-      const stored = localStorage.getItem(`${storageKeys.customs}_${subject}_${weekKey}`);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (error) {
-      console.warn(`주차 ${weekKey} customs 불러오기 실패:`, error);
-    }
-
     if (isFirebaseConfigured() && db) {
       try {
         const collectionName = `clinicLogCustoms_${subject}`;
@@ -450,7 +614,41 @@ export default function ClinicLog({ subject = 'english' }) {
       }
     }
 
+    try {
+      const stored = localStorage.getItem(`${storageKeys.customs}_${subject}_${weekKey}`);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.warn(`주차 ${weekKey} customs 불러오기 실패:`, error);
+    }
+
     return [];
+  }, [db, subject]);
+
+  const saveActiveRoster = useCallback(async (rows) => {
+    const storageKey = `${ACTIVE_ROSTER_STORAGE_KEY}_${subject}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(rows));
+    } catch (error) {
+      console.warn('클리닉 활성 명단 localStorage 저장 실패:', error);
+    }
+
+    if (!isFirebaseConfigured() || !db) return;
+
+    try {
+      const collectionName = `clinicLogRoster_${subject}`;
+      await setDoc(
+        doc(db, collectionName, ACTIVE_ROSTER_DOC_ID),
+        {
+          students: rows,
+          lastUpdated: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.warn('클리닉 활성 명단 Firestore 저장 실패:', error);
+    }
   }, [db, subject]);
   
   // 다음 주 초기화: 일요일 데이터를 다음주 월요일로 복사, 출결/담당 선생님/등원하원시간/시험확인은 지우기
@@ -597,13 +795,22 @@ export default function ClinicLog({ subject = 'english' }) {
               if (result && result.records) {
                 const newRecordsCount = Object.keys(result.records).length;
                 console.log(`✅ [데이터 복사 완료] 복사된 레코드 수: ${newRecordsCount}`);
-                setRecordValues(result.records);
+                let nextRecords = result.records;
+                if (subject === 'math' && isFirebaseConfigured() && db) {
+                  const homeworkSnap = await getDoc(doc(db, HOMEWORK_PHONE_DOC, HOMEWORK_PHONE_DOC_ID));
+                  nextRecords = syncMathRosterIntoRecords(homeworkSnap.exists() ? homeworkSnap.data() : {}, nextRecords);
+                }
+                setRecordValues(nextRecords);
                 setCustomEntries(result.customs || []);
               } else {
                 // 결과가 없으면 localStorage에서 로드 (Firestore 요청 최소화)
                 console.log(`ℹ️ [정보] 저장된 데이터를 localStorage에서 로드합니다.`);
-                const newRecords = await loadWeekRecords(currentWeekKey);
+                let newRecords = await loadWeekRecords(currentWeekKey);
                 const newCustoms = await loadWeekCustoms(currentWeekKey);
+                if (subject === 'math' && isFirebaseConfigured() && db) {
+                  const homeworkSnap = await getDoc(doc(db, HOMEWORK_PHONE_DOC, HOMEWORK_PHONE_DOC_ID));
+                  newRecords = syncMathRosterIntoRecords(homeworkSnap.exists() ? homeworkSnap.data() : {}, newRecords);
+                }
                 setRecordValues(newRecords);
                 setCustomEntries(newCustoms);
               }
@@ -621,12 +828,22 @@ export default function ClinicLog({ subject = 'english' }) {
           }
           
           // 이전 주차에도 데이터가 없으면 빈 상태로 초기화
-          setRecordValues({});
+          let emptyRecords = {};
+          if (subject === 'math' && isFirebaseConfigured() && db) {
+            const homeworkSnap = await getDoc(doc(db, HOMEWORK_PHONE_DOC, HOMEWORK_PHONE_DOC_ID));
+            emptyRecords = syncMathRosterIntoRecords(homeworkSnap.exists() ? homeworkSnap.data() : {}, {});
+          }
+          setRecordValues(emptyRecords);
           setCustomEntries([]);
         } else {
           // 현재 주차에 데이터가 있으면 그대로 로드
           console.log(`✅ [현재 주차 데이터 로드] 레코드 수: ${Object.keys(currentWeekData).length}`);
-          setRecordValues(currentWeekData);
+          let nextRecords = currentWeekData;
+          if (subject === 'math' && isFirebaseConfigured() && db) {
+            const homeworkSnap = await getDoc(doc(db, HOMEWORK_PHONE_DOC, HOMEWORK_PHONE_DOC_ID));
+            nextRecords = syncMathRosterIntoRecords(homeworkSnap.exists() ? homeworkSnap.data() : {}, nextRecords);
+          }
+          setRecordValues(nextRecords);
           const newCustoms = await loadWeekCustoms(currentWeekKey);
           setCustomEntries(newCustoms);
         }
@@ -698,7 +915,33 @@ export default function ClinicLog({ subject = 'english' }) {
     };
     
     loadHistory();
-  }, [loadWeekRecords, loadWeekCustoms, getPreviousWeekKey, initializeNextWeek, db]); // 컴포넌트 마운트 시 한 번만 실행
+  }, [loadWeekRecords, loadWeekCustoms, getPreviousWeekKey, initializeNextWeek, db, subject, syncMathRosterIntoRecords]); // 컴포넌트 마운트 시 한 번만 실행
+
+  useEffect(() => {
+    if (subject !== 'math') return undefined;
+    if (!isFirebaseConfigured() || !db) return undefined;
+    if (selectedWeek !== getWeekKey()) return undefined;
+
+    const homeworkRef = doc(db, HOMEWORK_PHONE_DOC, HOMEWORK_PHONE_DOC_ID);
+    const unsubscribe = onSnapshot(
+      homeworkRef,
+      (snapshot) => {
+        setRecordValues((prev) => {
+          const synced = syncMathRosterIntoRecords(snapshot.exists() ? snapshot.data() : {}, prev);
+          if (!recordMapsEqual(prev, synced)) {
+            console.log(`🔄 [수학 클리닉 명단 동기화] ${Object.keys(synced).length}명 반영`);
+            return synced;
+          }
+          return prev;
+        });
+      },
+      (error) => {
+        console.warn('수학 클리닉 명단 실시간 동기화 실패:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [db, selectedWeek, subject, syncMathRosterIntoRecords]);
 
   // 주차별 기록 저장 (debounce)
   const saveTimeoutRef = useRef(null);
@@ -755,6 +998,27 @@ export default function ClinicLog({ subject = 'english' }) {
       }
     };
   }, [customEntries, selectedWeek, db]);
+
+  const currentWeekRosterSaveRef = useRef(null);
+  useEffect(() => {
+    if (currentWeekRosterSaveRef.current) {
+      clearTimeout(currentWeekRosterSaveRef.current);
+    }
+
+    if (loadingRecords || loadingCustoms) return;
+    if (selectedWeek !== getWeekKey()) return;
+
+    currentWeekRosterSaveRef.current = setTimeout(() => {
+      const activeRoster = buildActiveRosterFromRecords(recordValues);
+      saveActiveRoster(activeRoster);
+    }, 1000);
+
+    return () => {
+      if (currentWeekRosterSaveRef.current) {
+        clearTimeout(currentWeekRosterSaveRef.current);
+      }
+    };
+  }, [recordValues, selectedWeek, loadingRecords, loadingCustoms, saveActiveRoster]);
 
   const combinedEntries = useMemo(() => {
     // recordValues에서 학생 정보 추출
@@ -1814,9 +2078,9 @@ export default function ClinicLog({ subject = 'english' }) {
                   <col style={{ width: '220px' }} />
                   {subject === 'math' ? (
                     <>
-                      <col style={{ width: '50px' }} />
-                      <col style={{ width: '90px' }} />
-                      <col style={{ width: '225px' }} />
+                      <col style={{ width: '120px' }} />
+                      <col style={{ width: '170px' }} />
+                      <col style={{ width: '170px' }} />
                     </>
                   ) : (
                     <>
@@ -1833,11 +2097,7 @@ export default function ClinicLog({ subject = 'english' }) {
                     <th className="grade-name-col">학년/반 · 이름</th>
                     <th>전화번호</th>
                     {subject === 'math' ? (
-                      <>
-                        <th>출결/담당자/등원하원시간</th>
-                        <th>과목/교재</th>
-                        <th>시험 확인</th>
-                      </>
+                      <th colSpan={3} className="merged-four-col">출결 / 담당 / 등원·하원 / 과목·교재 / 시험 확인 / 비고</th>
                     ) : (
                       <>
                         <th colSpan={4} className="merged-four-col">출결 / 담당 / 등원·하원 / 시험 확인 / 비고</th>
@@ -1848,7 +2108,6 @@ export default function ClinicLog({ subject = 'english' }) {
                 <tbody>
                   {combinedEntries.map((entry) => {
                     const record = mergeRecord(recordValues[entry.key]);
-                    const isMath = subject === 'math';
                     const isManual = entry.source === 'manual';
                     const isReturnStudent = isManual && entry.type === 'return';
                     const isKakaoSent = record.messageStatus === '카톡 발신 완료';
@@ -1858,7 +2117,7 @@ export default function ClinicLog({ subject = 'english' }) {
                           className={isReturnStudent ? 'return-student-row' : ''}
                           style={isKakaoSent ? { backgroundColor: '#d1fae5' } : {}}
                         >
-                        <td rowSpan={subject === 'english' ? 1 : 2} className="day-time-cell">
+                        <td className="day-time-cell">
                           <select
                             value={record.day}
                             onChange={(e) => handleRecordChange(entry.key, 'day', e.target.value, entry)}
@@ -1877,7 +2136,7 @@ export default function ClinicLog({ subject = 'english' }) {
                             onChange={(e) => handleRecordChange(entry.key, 'time', e.target.value, entry)}
                           />
                         </td>
-                        <td rowSpan={subject === 'english' ? 1 : 2} className="grade-name-cell">
+                        <td className="grade-name-cell">
                           <div className="grade-class-cell">
                             <div className="grade-row">
                               <strong>{entry.grade || '-'}</strong>
@@ -1966,7 +2225,7 @@ export default function ClinicLog({ subject = 'english' }) {
                             </button>
                           </div>
                         </td>
-                        <td rowSpan={subject === 'english' ? 1 : 2} className="phone-number-cell">
+                        <td className="phone-number-cell">
                           <div className="phone-display">
                             <div className="phone-input-row">
                               <label style={{ fontSize: '0.85rem', fontWeight: '600', marginRight: '5px' }}>학생:</label>
@@ -2039,87 +2298,67 @@ export default function ClinicLog({ subject = 'english' }) {
                           </div>
                         </td>
                         {subject === 'math' ? (
-                          <>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <select
-                                  className="clinic-select"
-                                  value={record.attendance}
-                                  onChange={(e) => handleRecordChange(entry.key, 'attendance', e.target.value, entry)}
-                                  style={{ fontSize: '0.85rem', padding: '4px 6px' }}
-                                >
-                                  <option value="">출결</option>
-                                  {attendanceOptions.slice(1).map((opt) => (
-                                    <option key={opt} value={opt}>
-                                      {opt}
-                                    </option>
-                                  ))}
-                                </select>
-                                <input
-                                  className="clinic-input"
-                                  type="text"
-                                  value={record.assistant}
-                                  placeholder="담당자"
-                                  onChange={(e) => handleRecordChange(entry.key, 'assistant', e.target.value, entry)}
-                                  style={{ fontSize: '0.85rem', padding: '4px 6px' }}
-                                />
-                                <input
-                                  type="text"
-                                  value={record.arrival}
-                                  placeholder="등원시간"
-                                  onChange={(e) => handleRecordChange(entry.key, 'arrival', e.target.value, entry)}
-                                  style={{ fontSize: '0.85rem', padding: '4px 6px' }}
-                                />
-                                <input
-                                  type="text"
-                                  value={record.departure}
-                                  placeholder="하원시간"
-                                  onChange={(e) => handleRecordChange(entry.key, 'departure', e.target.value, entry)}
-                                  style={{ fontSize: '0.85rem', padding: '4px 6px' }}
-                                />
-                              </div>
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {/* 현재 입력 중인 필드 */}
-                                <div style={{ border: '1px solid #d1d5db', borderRadius: '4px', padding: '4px', backgroundColor: '#fff' }}>
+                          <td colSpan={3} className="merged-four-cell merged-four-vertical math-detail-cell">
+                            <div className="merged-four-stack">
+                              <div className="merged-three-in-row">
+                                <div className="merged-four-item">
+                                  <span className="merged-four-label">출결</span>
                                   <select
                                     className="clinic-select"
-                                    value={record.activityType || ''}
-                                    onChange={(e) => handleRecordChange(entry.key, 'activityType', e.target.value, entry)}
-                                    style={{ fontSize: '0.85rem', padding: '4px 6px', width: '100%', marginBottom: '4px' }}
+                                    value={record.attendance}
+                                    onChange={(e) => handleRecordChange(entry.key, 'attendance', e.target.value, entry)}
+                                    style={{ width: '100%', fontSize: '0.85rem', padding: '4px 6px' }}
                                   >
-                                    <option value="">과목 선택</option>
-                                    <option value="과제">과제</option>
-                                    <option value="클리닉">클리닉</option>
-                                    <option value="테스트">테스트</option>
-                                  </select>
-                                  <select
-                                    className="clinic-select"
-                                    value={record.materialType || ''}
-                                    onChange={(e) => handleRecordChange(entry.key, 'materialType', e.target.value, entry)}
-                                    style={{ fontSize: '0.85rem', padding: '4px 6px', width: '100%', marginBottom: '4px' }}
-                                  >
-                                    <option value="">교재 선택</option>
-                                    <option value="교재">교재</option>
-                                    <option value="학습지">학습지</option>
-                                    <option value="실전기출">실전기출</option>
+                                    <option value="">-</option>
+                                    {attendanceOptions.slice(1).map((opt) => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
                                   </select>
                                 </div>
-                                {/* 저장된 세트들 - 각각 입력 필드로 표시 */}
-                                {(record.activitySets || []).map((set, idx) => (
-                                  <div key={idx} style={{ 
-                                    border: '1px solid #d1d5db', 
-                                    borderRadius: '4px', 
-                                    padding: '4px', 
-                                    marginTop: '4px',
-                                    backgroundColor: '#f9fafb'
-                                  }}>
+                                <div className="merged-four-item">
+                                  <span className="merged-four-label">담당 선생님</span>
+                                  <input
+                                    className="clinic-input"
+                                    type="text"
+                                    value={record.assistant}
+                                    placeholder="담당자"
+                                    onChange={(e) => handleRecordChange(entry.key, 'assistant', e.target.value, entry)}
+                                    style={{ width: '100%', fontSize: '0.85rem', padding: '4px 6px' }}
+                                  />
+                                </div>
+                                <div className="merged-four-item">
+                                  <span className="merged-four-label">등원/하원</span>
+                                  <div className="clinic-time-input">
+                                    <input
+                                      type="text"
+                                      value={record.arrival}
+                                      placeholder="등원"
+                                      onChange={(e) => handleRecordChange(entry.key, 'arrival', e.target.value, entry)}
+                                      style={{ fontSize: '0.8rem', padding: '2px 4px' }}
+                                    />
+                                    <span className="time-icon">⏱</span>
+                                  </div>
+                                  <div className="clinic-time-input">
+                                    <input
+                                      type="text"
+                                      value={record.departure}
+                                      placeholder="하원"
+                                      onChange={(e) => handleRecordChange(entry.key, 'departure', e.target.value, entry)}
+                                      style={{ fontSize: '0.8rem', padding: '2px 4px' }}
+                                    />
+                                    <span className="time-icon">⏱</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="merged-four-item">
+                                <span className="merged-four-label">과목 / 교재</span>
+                                <div className="math-activity-card">
+                                  <div className="math-activity-inline-grid">
                                     <select
                                       className="clinic-select"
-                                      value={set.activityType || ''}
-                                      onChange={(e) => handleActivitySetChange(entry.key, idx, 'activityType', e.target.value)}
-                                      style={{ fontSize: '0.85rem', padding: '4px 6px', width: '100%', marginBottom: '4px' }}
+                                      value={record.activityType || ''}
+                                      onChange={(e) => handleRecordChange(entry.key, 'activityType', e.target.value, entry)}
+                                      style={{ fontSize: '0.85rem', padding: '4px 6px', width: '100%' }}
                                     >
                                       <option value="">과목 선택</option>
                                       <option value="과제">과제</option>
@@ -2128,54 +2367,103 @@ export default function ClinicLog({ subject = 'english' }) {
                                     </select>
                                     <select
                                       className="clinic-select"
-                                      value={set.materialType || ''}
-                                      onChange={(e) => handleActivitySetChange(entry.key, idx, 'materialType', e.target.value)}
-                                      style={{ fontSize: '0.85rem', padding: '4px 6px', width: '100%', marginBottom: '4px' }}
+                                      value={record.materialType || ''}
+                                      onChange={(e) => handleRecordChange(entry.key, 'materialType', e.target.value, entry)}
+                                      style={{ fontSize: '0.85rem', padding: '4px 6px', width: '100%' }}
                                     >
                                       <option value="">교재 선택</option>
                                       <option value="교재">교재</option>
                                       <option value="학습지">학습지</option>
                                       <option value="실전기출">실전기출</option>
                                     </select>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteActivitySet(entry.key, idx)}
-                                      style={{
-                                        padding: '2px 6px',
-                                        fontSize: '0.7rem',
-                                        backgroundColor: '#ef4444',
-                                        color: '#fff',
-                                        border: 'none',
-                                        borderRadius: '3px',
-                                        cursor: 'pointer',
-                                        width: '100%'
-                                      }}
-                                    >
-                                      삭제
-                                    </button>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="math-activity-add-btn"
+                                    onClick={() => handleAddActivitySet(entry.key)}
+                                  >
+                                    + 추가
+                                  </button>
+                                </div>
+                                {(record.activitySets || []).map((set, idx) => (
+                                  <div key={idx} className="math-activity-card">
+                                    <div className="math-activity-card-header">
+                                      <span>세트 {idx + 1}</span>
+                                      <button
+                                        type="button"
+                                        className="math-activity-remove-btn"
+                                        onClick={() => handleDeleteActivitySet(entry.key, idx)}
+                                      >
+                                        삭제
+                                      </button>
+                                    </div>
+                                    <div className="math-activity-inline-grid">
+                                      <select
+                                        className="clinic-select"
+                                        value={set.activityType || ''}
+                                        onChange={(e) => handleActivitySetChange(entry.key, idx, 'activityType', e.target.value)}
+                                        style={{ fontSize: '0.85rem', padding: '4px 6px', width: '100%' }}
+                                      >
+                                        <option value="">과목 선택</option>
+                                        <option value="과제">과제</option>
+                                        <option value="클리닉">클리닉</option>
+                                        <option value="테스트">테스트</option>
+                                      </select>
+                                      <select
+                                        className="clinic-select"
+                                        value={set.materialType || ''}
+                                        onChange={(e) => handleActivitySetChange(entry.key, idx, 'materialType', e.target.value)}
+                                        style={{ fontSize: '0.85rem', padding: '4px 6px', width: '100%' }}
+                                      >
+                                        <option value="">교재 선택</option>
+                                        <option value="교재">교재</option>
+                                        <option value="학습지">학습지</option>
+                                        <option value="실전기출">실전기출</option>
+                                      </select>
+                                    </div>
+                                    <textarea
+                                      className="clinic-input"
+                                      value={set.examStatus || ''}
+                                      placeholder="세트 시험 확인"
+                                      onChange={(e) => handleActivitySetChange(entry.key, idx, 'examStatus', e.target.value)}
+                                      rows={2}
+                                      style={{ width: '100%', fontSize: '0.85rem', minHeight: '40px', resize: 'vertical' }}
+                                    />
+                                    <textarea
+                                      className="clinic-input"
+                                      value={set.notes || ''}
+                                      placeholder="세트 비고"
+                                      onChange={(e) => handleActivitySetChange(entry.key, idx, 'notes', e.target.value)}
+                                      rows={2}
+                                      style={{ width: '100%', fontSize: '0.85rem', minHeight: '52px', resize: 'vertical' }}
+                                    />
                                   </div>
                                 ))}
-                                {/* +추가 버튼 */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddActivitySet(entry.key)}
-                                  style={{
-                                    marginTop: '4px',
-                                    padding: '4px 8px',
-                                    fontSize: '0.75rem',
-                                    backgroundColor: '#10b981',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontWeight: '600'
-                                  }}
-                                >
-                                  + 추가
-                                </button>
                               </div>
-                            </td>
-                          </>
+                              <div className="merged-four-item">
+                                <span className="merged-four-label">시험 확인</span>
+                                <textarea
+                                  className="clinic-input"
+                                  value={record.examStatus || ''}
+                                  placeholder="시험 확인"
+                                  onChange={(e) => handleRecordChange(entry.key, 'examStatus', e.target.value, entry)}
+                                  rows={2}
+                                  style={{ width: '100%', fontSize: '0.85rem', minHeight: '40px', resize: 'vertical' }}
+                                />
+                              </div>
+                              <div className="merged-four-item merged-notes-item">
+                                <span className="merged-four-label">📝 비고</span>
+                                <textarea
+                                  className="clinic-input"
+                                  value={record.notes || ''}
+                                  placeholder="비고를 입력하세요"
+                                  onChange={(e) => handleRecordChange(entry.key, 'notes', e.target.value, entry)}
+                                  rows={3}
+                                  style={{ width: '100%', fontSize: '0.85rem', minHeight: '60px', resize: 'vertical', padding: '8px' }}
+                                />
+                              </div>
+                            </div>
+                          </td>
                         ) : (
                           <td colSpan={4} className="merged-four-cell merged-four-vertical">
                             <div className="merged-four-stack">
@@ -2227,18 +2515,6 @@ export default function ClinicLog({ subject = 'english' }) {
                                     />
                                     <span className="time-icon">⏱</span>
                                   </div>
-                                  <select
-                                    className="clinic-select"
-                                    value={record.messageStatus}
-                                    onChange={(e) => handleRecordChange(entry.key, 'messageStatus', e.target.value, entry)}
-                                    style={{ width: '100%', fontSize: '0.75rem', padding: '2px 4px', marginTop: '2px' }}
-                                  >
-                                    <option value="">-</option>
-                                    <option value="카톡 발신 완료">카톡 발신 완료</option>
-                                    {messageOptions.slice(1).map((opt) => (
-                                      <option key={opt} value={opt}>{opt}</option>
-                                    ))}
-                                  </select>
                                 </div>
                               </div>
                               <div className="merged-four-item">
@@ -2266,86 +2542,7 @@ export default function ClinicLog({ subject = 'english' }) {
                             </div>
                           </td>
                         )}
-                        {subject === 'math' ? (
-                          <>
-                            {/* 수학 클리닉 대장: 시험 확인과 비고는 현재 입력 중인 값과 저장된 세트들 모두 표시 */}
-                            <td className="exam-status-cell">
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {/* 현재 입력 중인 필드 */}
-                                <textarea
-                                  className="clinic-input"
-                                  value={record.examStatus || ''}
-                                  placeholder="시험 확인"
-                                  onChange={(e) => handleRecordChange(entry.key, 'examStatus', e.target.value, entry)}
-                                  rows={2}
-                                />
-                                {/* 저장된 세트들의 시험 확인 */}
-                                {(record.activitySets || []).map((set, idx) => (
-                                  <textarea
-                                    key={idx}
-                                    className="clinic-input"
-                                    value={set.examStatus || ''}
-                                    placeholder="시험 확인"
-                                    onChange={(e) => handleActivitySetChange(entry.key, idx, 'examStatus', e.target.value)}
-                                    rows={2}
-                                    style={{ fontSize: '0.85rem', marginTop: '4px' }}
-                                  />
-                                ))}
-                              </div>
-                            </td>
-                          </>
-                        ) : null}
                       </tr>
-                      {isMath && (
-                        <tr key={`${entry.key}-notes`}>
-                          <td colSpan={subject === 'math' ? 3 : 4} className="notes-row-content">
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <label style={{ fontWeight: '600', fontSize: '0.9rem', color: '#374151', marginBottom: '4px' }}>
-                                📝 비고
-                              </label>
-                              <textarea
-                                className="clinic-input"
-                                value={record.notes || ''}
-                                placeholder="비고를 입력하세요"
-                                onChange={(e) => handleRecordChange(entry.key, 'notes', e.target.value, entry)}
-                                rows={4}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px',
-                                  fontSize: '0.9rem',
-                                  border: '2px solid #d1d5db',
-                                  borderRadius: '6px',
-                                  resize: 'vertical',
-                                  minHeight: '100px'
-                                }}
-                              />
-                              {(record.activitySets || []).map((set, idx) => (
-                                <div key={idx} style={{ marginTop: '8px' }}>
-                                  <label style={{ fontWeight: '500', fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px', display: 'block' }}>
-                                    세트 {idx + 1} 비고
-                                  </label>
-                                  <textarea
-                                    className="clinic-input"
-                                    value={set.notes || ''}
-                                    placeholder="세트 비고를 입력하세요"
-                                    onChange={(e) => handleActivitySetChange(entry.key, idx, 'notes', e.target.value)}
-                                    rows={3}
-                                    style={{
-                                      width: '100%',
-                                      padding: '8px',
-                                      fontSize: '0.85rem',
-                                      border: '1px solid #d1d5db',
-                                      borderRadius: '4px',
-                                      resize: 'vertical',
-                                      backgroundColor: '#fff'
-                                    }}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          </td>
-                          </tr>
-                        )}
                         </React.Fragment>
                       );
                     })}

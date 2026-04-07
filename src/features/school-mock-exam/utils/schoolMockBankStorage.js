@@ -41,11 +41,11 @@ export function listSchoolNames(data) {
 
 /**
  * @param {string} schoolName
- * @returns {{ items: SchoolMockItem[], analysisText: string, referencePdfMeta: SchoolReferencePdfMeta | null, lastParallelResult: string, templateProfile: unknown | null }}
+ * @returns {{ items: SchoolMockItem[], analysisText: string, referencePdfMeta: SchoolReferencePdfMeta | null, lastParallelResult: string, templateProfile: unknown | null, examTable: { rows: object[] } | null }}
  */
 export function getSchoolEntry(data, schoolName) {
   const key = String(schoolName ?? '').trim()
-  if (!key) return { items: [], analysisText: '', referencePdfMeta: null, lastParallelResult: '', templateProfile: null }
+  if (!key) return { items: [], analysisText: '', referencePdfMeta: null, lastParallelResult: '', templateProfile: null, examTable: null }
   const e = getRawSchoolEntry(data, key)
   const meta = e.referencePdfMeta
   const hasDims =
@@ -70,6 +70,10 @@ export function getSchoolEntry(data, schoolName) {
     templateProfile:
       e.templateProfile && typeof e.templateProfile === 'object' && !Array.isArray(e.templateProfile)
         ? e.templateProfile
+        : null,
+    examTable:
+      e.examTable && typeof e.examTable === 'object' && Array.isArray(e.examTable.rows)
+        ? e.examTable
         : null,
   }
 }
@@ -109,6 +113,7 @@ export function appendSchoolItems(data, schoolName, parsed) {
         referencePdfMeta: prev.referencePdfMeta,
         lastParallelResult: prev.lastParallelResult,
         templateProfile: prev.templateProfile,
+        examTable: prev.examTable,
       },
     },
   }
@@ -134,6 +139,7 @@ export function setSchoolParallelMockResult(data, schoolName, text) {
         referencePdfMeta: prev.referencePdfMeta,
         lastParallelResult: String(text ?? ''),
         templateProfile: prev.templateProfile,
+        examTable: prev.examTable,
       },
     },
   }
@@ -157,6 +163,7 @@ export function setSchoolAnalysis(data, schoolName, analysisText) {
         referencePdfMeta: prev.referencePdfMeta,
         lastParallelResult: prev.lastParallelResult,
         templateProfile: prev.templateProfile,
+        examTable: prev.examTable,
       },
     },
   }
@@ -185,6 +192,7 @@ export function setSchoolTemplateProfile(data, schoolName, templateProfile) {
           templateProfile && typeof templateProfile === 'object' && !Array.isArray(templateProfile)
             ? templateProfile
             : null,
+        examTable: prev.examTable,
       },
     },
   }
@@ -210,6 +218,35 @@ export function setSchoolReferencePdfMeta(data, schoolName, meta) {
         referencePdfMeta: meta == null ? null : meta,
         lastParallelResult: prev.lastParallelResult,
         templateProfile: prev.templateProfile,
+        examTable: prev.examTable,
+      },
+    },
+  }
+}
+
+/**
+ * 시험 분석표(유형별 세부분석) 저장
+ * @param {{ schools: Record<string, unknown> }} data
+ * @param {string} schoolName
+ * @param {{ rows: object[] } | null} examTable
+ */
+export function setSchoolExamTable(data, schoolName, examTable) {
+  const key = String(schoolName ?? '').trim()
+  if (!key) return data
+  const prev = getSchoolEntry(data, key)
+  return {
+    ...data,
+    schools: {
+      ...data.schools,
+      [key]: {
+        items: prev.items,
+        analysisText: prev.analysisText,
+        referencePdfMeta: prev.referencePdfMeta,
+        lastParallelResult: prev.lastParallelResult,
+        templateProfile: prev.templateProfile,
+        examTable: examTable && typeof examTable === 'object' && Array.isArray(examTable.rows)
+          ? examTable
+          : null,
       },
     },
   }
@@ -234,6 +271,7 @@ export function removeSchoolItem(data, schoolName, itemId) {
         referencePdfMeta: items.length === 0 ? null : prev.referencePdfMeta,
         lastParallelResult: prev.lastParallelResult,
         templateProfile: prev.templateProfile,
+        examTable: prev.examTable,
       },
     },
   }
@@ -256,6 +294,7 @@ export function clearSchoolItems(data, schoolName) {
         referencePdfMeta: null,
         lastParallelResult: prev.lastParallelResult,
         templateProfile: prev.templateProfile,
+        examTable: prev.examTable,
       },
     },
   }

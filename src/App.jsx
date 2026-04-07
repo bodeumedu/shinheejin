@@ -2,10 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import TextInput from './features/pocketbook/components/TextInput'
 import TextOrganizer from './features/pocketbook/components/TextOrganizer'
 import ApiKeyInput from './components/ApiKeyInput'
-import PasswordProtection from './components/PasswordProtection'
 import MainMenu from './components/MainMenu'
 import StudentDataModal from './components/StudentDataModal'
 import AdminPage from './components/AdminPage'
+import AuthScreen from './features/auth/components/AuthScreen'
+import ExamCalendarPage from './features/calendar/components/ExamCalendarPage'
+import AttendanceCheckPage from './features/attendance/components/AttendanceCheckPage'
+import { clearStoredSessionUser, getStoredSessionUser } from './features/auth/utils/userAuth'
 import BlankMaker from './features/blank/components/BlankMaker'
 import BlankGenerator from './features/blank/components/BlankGenerator'
 import PreprocessorInput from './features/preprocessor/components/PreprocessorInput'
@@ -47,10 +50,10 @@ import GrammarAnalysisDesignViewer from './features/grammar-analysis/components/
 import HomeworkDashboard from './features/homeworkdashboard/components/HomeworkDashboard'
 import HomeworkProgress from './features/homeworkdashboard/components/HomeworkProgress'
 import ClinicLog from './features/clinic-log/components/ClinicLog'
-import WeeklyScheduleInput from './features/weekly-schedule/components/WeeklyScheduleInput'
 import WeeklyScheduleViewer from './features/weekly-schedule/components/WeeklyScheduleViewer'
 import Notes from './features/notes/components/Notes'
 import HomeworkCompletion from './features/homework-completion/components/HomeworkCompletion'
+import HomeworkClassBuilder from './features/homework-completion/components/HomeworkClassBuilder'
 import WinterSchoolManager from './features/winter-school/components/WinterSchoolManager'
 import WordShuffler from './features/word-shuffler/components/WordShuffler'
 import SentenceInsertionProblemMaker from './features/sentence-insertion/components/SentenceInsertionProblemMaker'
@@ -148,8 +151,10 @@ function ProcessedTextEditor({ value, onChange }) {
 }
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [currentUser, setCurrentUser] = useState(() => getStoredSessionUser())
   const [mode, setMode] = useState('main') // 'main', 'pocketbook', 'blank', 'preprocessor', 'complex-description', 'paraphrasing', 'sum15', 'clinic-log', 'winter-school'
+  const [managementReturnMode, setManagementReturnMode] = useState('main')
+  const [homeworkCompletionEntryAction, setHomeworkCompletionEntryAction] = useState('default')
   const [text, setText] = useState('')
   const [organizedData, setOrganizedData] = useState(null) // 배열로 관리: [{title,korean,english,analyzed}]
   const [parsedTexts, setParsedTexts] = useState(null) // 지문 나누기 결과 [{title,english,korean}]
@@ -212,11 +217,56 @@ function App() {
   const [homeworkProgressData, setHomeworkProgressData] = useState(null) // 과제 진행 데이터
   const [gwacheonAnalysisData, setGwacheonAnalysisData] = useState(null) // 과천중앙고 내신 분석 결과
   const [apiKey, setApiKey] = useState('')
+  const [geminiApiKey, setGeminiApiKey] = useState('')
   const [isSavingPdf, setIsSavingPdf] = useState(false)
+  const isHistoryNavigationRef = useRef(false)
+  const hasHistoryInitializedRef = useRef(false)
 
   useEffect(() => {
     if (!englishEnglishWordData) setEnglishWordTestOpen(false)
   }, [englishEnglishWordData])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const currentState = window.history.state
+    if (!currentState || currentState.app !== 'pocketbook') {
+      window.history.replaceState({ app: 'pocketbook', mode: 'main' }, '', window.location.href)
+    } else if (currentState.mode && currentState.mode !== mode) {
+      isHistoryNavigationRef.current = true
+      setMode(currentState.mode)
+    }
+
+    hasHistoryInitializedRef.current = true
+
+    const handlePopState = (event) => {
+      const nextMode = event.state?.app === 'pocketbook' ? event.state.mode || 'main' : 'main'
+      isHistoryNavigationRef.current = true
+      setMode(nextMode)
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !hasHistoryInitializedRef.current) return
+
+    if (isHistoryNavigationRef.current) {
+      isHistoryNavigationRef.current = false
+      return
+    }
+
+    const currentHistoryMode = window.history.state?.app === 'pocketbook'
+      ? window.history.state.mode
+      : null
+
+    if (currentHistoryMode === mode) return
+
+    window.history.pushState({ app: 'pocketbook', mode }, '', window.location.href)
+  }, [mode])
 
   const handleAnalyze = (data) => {
     // data: 분석 결과 배열 [{title,korean,english,analyzed}]
@@ -477,6 +527,33 @@ function App() {
     setMode('main')
   }
   
+  const isExecutive = currentUser?.role === 'executive'
+
+  const requireExecutiveAccess = (featureLabel) => {
+    if (isExecutive) return true
+    alert(`${featureLabel}은(는) 운영진만 사용할 수 있습니다.`)
+    return false
+  }
+
+  const handleAuthenticated = (user) => {
+    setCurrentUser(user)
+    setMode('main')
+  }
+
+  const handleLogout = () => {
+    clearStoredSessionUser()
+    setCurrentUser(null)
+    setMode('main')
+  }
+
+  const handleSelectCalendar = () => {
+    setMode('calendar')
+  }
+
+  const handleSelectAttendanceCheck = () => {
+    setMode('attendance-check')
+  }
+
   const handleBackToMain = () => {
     // 모든 상태 완전 초기화
     setText('')
@@ -919,7 +996,16 @@ function App() {
   }
 
   const handleSelectHomeworkCompletion = () => {
+    setManagementReturnMode('main')
+    setHomeworkCompletionEntryAction('default')
     setMode('homework-completion')
+  }
+
+  const handleSelectHomeworkClassBuilder = () => {
+    if (!requireExecutiveAccess('반 만들기')) return
+    setManagementReturnMode('main')
+    setHomeworkCompletionEntryAction('default')
+    setMode('homework-class-builder')
   }
 
   const handleSelectWinterSchool = () => {
@@ -946,11 +1032,39 @@ function App() {
   }
 
   const handleSelectStudentData = () => {
+    if (!requireExecutiveAccess('학생 데이터')) return
+    setManagementReturnMode('main')
     setMode('student-data')
   }
 
   const handleSelectAdminPage = () => {
+    if (!requireExecutiveAccess('관리자 페이지')) return
+    setManagementReturnMode('main')
     setMode('admin-page')
+  }
+
+  const handleOpenStudentDataFromHomework = () => {
+    if (!requireExecutiveAccess('학생 데이터')) return
+    setManagementReturnMode('homework-completion')
+    setMode('student-data')
+  }
+
+  const handleOpenAdminPageFromHomework = () => {
+    if (!requireExecutiveAccess('관리자 페이지')) return
+    setManagementReturnMode('homework-completion')
+    setMode('admin-page')
+  }
+
+  const handleOpenClassBuilderFromHomework = () => {
+    if (!requireExecutiveAccess('반 만들기')) return
+    setManagementReturnMode('homework-completion')
+    setHomeworkCompletionEntryAction('default')
+    setMode('homework-class-builder')
+  }
+
+  const handleOpenWeeklyScheduleFromHomework = () => {
+    setManagementReturnMode('homework-completion')
+    setMode('weekly-schedule')
   }
 
   const handleGwacheonAnalysisProcess = (data) => {
@@ -1022,6 +1136,10 @@ function App() {
     setApiKey(key)
   }
 
+  const handleGeminiApiKeySet = (key) => {
+    setGeminiApiKey(key)
+  }
+
   const handleSavePdf = async () => {
     setIsSavingPdf(true)
     try {
@@ -1043,9 +1161,8 @@ function App() {
     }
   }
 
-  // 비밀번호 확인 전에는 비밀번호 화면만 표시
-  if (!isAuthenticated) {
-    return <PasswordProtection onPasswordCorrect={() => setIsAuthenticated(true)} />
+  if (!currentUser) {
+    return <AuthScreen onAuthenticated={handleAuthenticated} />
   }
 
   // 메인 메뉴 표시
@@ -1053,6 +1170,11 @@ function App() {
     return (
       <div className="app">
         <MainMenu 
+          currentUser={currentUser}
+          onLogout={handleLogout}
+          helpBotApiKey={geminiApiKey || apiKey}
+          onSelectCalendar={handleSelectCalendar}
+          onSelectAttendanceCheck={handleSelectAttendanceCheck}
           onSelectPocketbook={handleSelectPocketbook}
           onSelectBlank={handleSelectBlank}
           onSelectPreprocessor={handleSelectPreprocessor}
@@ -1091,7 +1213,34 @@ function App() {
           onSelectGwacheonCentralHigh1={handleSelectGwacheonCentralHigh1}
           onSelectStudentData={handleSelectStudentData}
           onSelectAdminPage={handleSelectAdminPage}
+          onSelectHomeworkClassBuilder={handleSelectHomeworkClassBuilder}
         />
+      </div>
+    )
+  }
+
+  if (mode === 'calendar') {
+    return (
+      <div className="app">
+        <ApiKeyInput
+          onApiKeySet={handleApiKeySet}
+          title="캘린더 OCR API 키 설정"
+          description="시험 일정표 이미지를 올리면 바로 OCR할 때 사용합니다."
+          statusText="✓ 캘린더 OCR용 API 키가 설정되었습니다"
+        />
+        <ExamCalendarPage
+          onClose={handleBackToMain}
+          currentUser={currentUser}
+          apiKey={apiKey}
+        />
+      </div>
+    )
+  }
+
+  if (mode === 'attendance-check') {
+    return (
+      <div className="app">
+        <AttendanceCheckPage onClose={handleBackToMain} />
       </div>
     )
   }
@@ -1099,7 +1248,7 @@ function App() {
   if (mode === 'student-data') {
     return (
       <div className="app">
-        <StudentDataModal onClose={handleBackToMain} fullScreen />
+        <StudentDataModal onClose={() => setMode(managementReturnMode || 'main')} fullScreen />
       </div>
     )
   }
@@ -1107,7 +1256,15 @@ function App() {
   if (mode === 'admin-page') {
     return (
       <div className="app">
-        <AdminPage onClose={handleBackToMain} />
+        <AdminPage currentUser={currentUser} onClose={() => setMode(managementReturnMode || 'main')} />
+      </div>
+    )
+  }
+
+  if (mode === 'homework-class-builder') {
+    return (
+      <div className="app">
+        <HomeworkClassBuilder onClose={() => setMode(managementReturnMode || 'main')} />
       </div>
     )
   }
@@ -1116,7 +1273,16 @@ function App() {
   if (mode === 'homework-completion') {
     return (
       <div className="app">
-        <HomeworkCompletion onClose={handleBackToMain} apiKey={apiKey} onApiKeySet={handleApiKeySet} />
+        <HomeworkCompletion
+          onClose={handleBackToMain}
+          apiKey={apiKey}
+          onApiKeySet={handleApiKeySet}
+          onOpenStudentData={handleOpenStudentDataFromHomework}
+          onOpenAdminPage={handleOpenAdminPageFromHomework}
+          onOpenClassBuilder={handleOpenClassBuilderFromHomework}
+          onOpenWeeklySchedule={handleOpenWeeklyScheduleFromHomework}
+          initialEntryAction={homeworkCompletionEntryAction}
+        />
       </div>
     )
   }
@@ -1170,24 +1336,9 @@ function App() {
         </header>
 
         <div className="main-content">
-          {!weeklyScheduleData ? (
-            <WeeklyScheduleInput onProcess={handleWeeklyScheduleProcess} />
-          ) : (
-            <div className="result-container">
-              <div className="result-actions">
-                <button 
-                  onClick={() => { 
-                    setWeeklyScheduleData(null)
-                    setWeeklyScheduleWeek(null)
-                  }} 
-                  className="btn btn-secondary"
-                >
-                  다시 입력하기
-                </button>
-              </div>
-              <WeeklyScheduleViewer scheduleData={weeklyScheduleData} weekKey={weeklyScheduleWeek} />
-            </div>
-          )}
+          <div className="result-container">
+            <WeeklyScheduleViewer scheduleData={weeklyScheduleData} weekKey={weeklyScheduleWeek} liveClassSync />
+          </div>
         </div>
       </div>
     )
@@ -1198,7 +1349,7 @@ function App() {
     return (
       <div className="app">
         <header className="app-header">
-          <h1>📝 노트</h1>
+          <h1>📝 수정 제안</h1>
           <p>by 신희진</p>
           <button 
             onClick={handleBackToMain} 
@@ -1289,7 +1440,7 @@ function App() {
     return (
       <div className="app">
         <header className="app-header">
-          <h1>📚 영어 과제관리 대시보드</h1>
+          <h1>📚 전체 완성도와 테스트관리</h1>
           <p>by 신희진</p>
           <button 
             onClick={handleBackToMain} 
@@ -4250,10 +4401,20 @@ function App() {
             메인 메뉴로 돌아가기
           </button>
         </header>
-        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+        <ApiKeyInput
+          onApiKeySet={handleGeminiApiKeySet}
+          storageKey="gemini_api_key"
+          defaultEnvKeyName="VITE_DEFAULT_GEMINI_API_KEY"
+          title="Gemini API 키 설정"
+          description="문법 워크북 생성기에 Gemini API 키가 필요합니다."
+          docsUrl="https://aistudio.google.com/app/apikey"
+          label="Gemini API Key *"
+          placeholder="AIza..."
+          statusText="✓ Gemini API 키가 설정되었습니다"
+        />
 
         <div className="main-content">
-          <GrammarWorkbookInput onClose={handleBackToMain} apiKey={apiKey} />
+          <GrammarWorkbookInput onClose={handleBackToMain} apiKey={geminiApiKey} />
         </div>
       </div>
     )
@@ -4273,9 +4434,19 @@ function App() {
             메인 메뉴로 돌아가기
           </button>
         </header>
-        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+        <ApiKeyInput
+          onApiKeySet={handleGeminiApiKeySet}
+          storageKey="gemini_api_key"
+          defaultEnvKeyName="VITE_DEFAULT_GEMINI_API_KEY"
+          title="Gemini API 키 설정"
+          description="동형 모의고사 만들기에 Gemini API 키가 필요합니다."
+          docsUrl="https://aistudio.google.com/app/apikey"
+          label="Gemini API Key *"
+          placeholder="AIza..."
+          statusText="✓ Gemini API 키가 설정되었습니다"
+        />
         <div className="main-content">
-          <SchoolParallelMockExamInput onClose={handleBackToMain} apiKey={apiKey} />
+          <SchoolParallelMockExamInput onClose={handleBackToMain} apiKey={geminiApiKey} />
         </div>
       </div>
     )

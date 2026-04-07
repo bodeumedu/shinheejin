@@ -29,11 +29,16 @@ export async function exportSum15ToPdf(options = {}) {
       return aIdx - bIdx
     })
   
-  const answerPage = document.getElementById('sum15-answer-page')
+  const answerPages = Array.from(document.querySelectorAll('[id^="sum15-answer-page-"]'))
+    .sort((a, b) => {
+      const aIdx = parseInt(a.id.replace('sum15-answer-page-', ''), 10)
+      const bIdx = parseInt(b.id.replace('sum15-answer-page-', ''), 10)
+      return aIdx - bIdx
+    })
 
   const pages = [...questionPages]
-  if (answerPage) {
-    pages.push(answerPage)
+  if (answerPages.length > 0) {
+    pages.push(...answerPages)
   }
 
   if (pages.length === 0) {

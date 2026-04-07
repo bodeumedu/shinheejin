@@ -148,6 +148,167 @@
   transform: scale(0.98);
 }
 
+.homework-sync-panel {
+  grid-column: 1 / -1;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #fef3c7;
+  border-radius: 8px;
+  border: 2px solid #f59e0b;
+}
+
+.homework-sync-title {
+  margin: 0 0 10px 0;
+  color: #92400e;
+}
+
+.homework-sync-desc {
+  margin: 0 0 12px 0;
+  font-size: 0.95rem;
+  color: #78350f;
+  line-height: 1.5;
+}
+
+.homework-sync-btn {
+  padding: 10px 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.homework-sync-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.homework-filter-panel {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(180, 83, 9, 0.18);
+}
+
+.homework-filter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.homework-filter-label {
+  font-weight: 700;
+  color: #78350f;
+}
+
+.homework-filter-count {
+  font-size: 0.9rem;
+  color: #92400e;
+}
+
+.homework-filter-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.homework-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.homework-filter-chip {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.homework-filter-chip.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.homework-filter-search {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  background: #fff;
+}
+
+.homework-linked-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.homework-linked-group-title {
+  margin-bottom: 6px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #92400e;
+}
+
+.homework-linked-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.homework-linked-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  min-width: 0;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  background: #fef9c3;
+  color: #78350f;
+  cursor: pointer;
+}
+
+.homework-linked-card strong,
+.homework-linked-card span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.homework-linked-card strong {
+  font-size: 0.95rem;
+}
+
+.homework-linked-card span {
+  font-size: 0.82rem;
+}
+
+.homework-linked-empty {
+  padding: 16px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.92rem;
+}
+
 /* 명단 영역 */
 .homework-roster-section {
   margin-top: 32px;

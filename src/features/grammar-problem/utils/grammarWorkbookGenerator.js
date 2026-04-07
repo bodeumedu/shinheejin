@@ -4,13 +4,24 @@ import {
   findTopicLabel,
   passageForMcqDisplay,
 } from './grammarWorkbookUtils.js'
-import { isEssayMode } from './grammarWorkbookModes.js'
+import { isWritingMode } from './grammarWorkbookModes.js'
 import {
   formatQuotaForPrompt,
   assertQuotaMatch,
   splitQuotaIntoParts,
   sumQuota,
 } from './grammarWorkbookQuota.js'
+import {
+  buildOpenAiLikeChatResponse,
+  cleanGeminiTextOutput,
+  extractJsonObjectText,
+  geminiGenerateFromOpenAiChatBody,
+} from '../../../utils/geminiClient.js'
+import {
+  buildTemplateCatalogPromptBlock,
+  buildTemplatePlan,
+  buildTemplatePlanPromptBlock,
+} from './grammarWorkbookTemplates.js'
 
 /** 객관식은 PDF·UI에서 ①~⑤ 고정 — 모델이 3~4개만 줄 때 자동 보정 */
 const MCQ_TARGET_CHOICE_COUNT = 5
@@ -19,16 +30,8 @@ const MCQ_CHOICE_PAD_TEXT =
   '※ [자동 보정] AI 응답에 선택지가 부족합니다. 필요하면 문제를 다시 생성해 주세요.'
 const ENABLE_BATCH_AI_REVIEW = true
 const MCQ_NEAR_DUPLICATE_SIMILARITY = 0.96
-
-const MCQ_SUBTYPE_POOL = [
-  '밑줄 친 ①~⑤ 중 어법상 어색한 것',
-  '밑줄 친 ①~⑤ 중 어법상 옳은 것',
-  '문장 5개 중 어법상 옳은 것',
-  '문장 5개 중 어법상 틀린 것',
-  '같은 문법 포인트의 서로 다른 쓰임 구분',
-  '빈칸에 들어갈 가장 알맞은 표현',
-  '어법상 고쳐 써야 할 부분 찾기',
-]
+const GRAMMAR_MODEL_MAIN = 'gemini-3.1-pro-preview'
+const GRAMMAR_MODEL_REVIEW = 'gemini-3-flash-preview'
 
 /**
  * 모델이 choices를 배열이 아닌 객체로 주거나 options 키를 쓰는 경우 보정
@@ -82,34 +85,6 @@ function toChoiceNumberedLines(choices) {
   return choices.map((c, i) => `${marks[i] || `${i + 1}.`} ${normalizeChoiceText(c)}`)
 }
 
-function randomShuffle(list) {
-  const a = [...list]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
-}
-
-function buildSubtypePlan(modeId, n) {
-  const size = Math.max(0, Number(n) || 0)
-  if (size <= 0) return []
-  if (!['workbook', 'mcq'].includes(modeId)) return []
-  const pool = randomShuffle(MCQ_SUBTYPE_POOL)
-  if (size <= pool.length) return pool.slice(0, size)
-  const out = []
-  while (out.length < size) out.push(...randomShuffle(MCQ_SUBTYPE_POOL))
-  return out.slice(0, size)
-}
-
-function buildSubtypePlanPromptBlock(modeId, subtypePlan) {
-  if (!['workbook', 'mcq'].includes(modeId) || !subtypePlan.length) return ''
-  return `\nMANDATORY ITEM TYPE DIVERSITY PLAN (use as "format" and actual item design):
-- 문제 유형을 단조롭게 반복하지 말고 아래 배정을 따른다.
-${subtypePlan.map((t, i) => `- no ${i + 1}: ${t}`).join('\n')}
-- 각 문항은 위 배정과 실제 내용(지시문·지문·보기 구조)이 일치해야 한다.`
-}
-
 function compactTextSignature(s) {
   return String(s ?? '')
     .toLowerCase()
@@ -136,7 +111,7 @@ function jaccardBigramSimilarity(a, b) {
   return uni > 0 ? inter / uni : 0
 }
 
-function validateProblemDiversity(problems, essay) {
+function validateProblemDiversity(problems, writingMode) {
   const byPassage = new Set()
   const byChoiceSet = new Set()
   for (let i = 0; i < problems.length; i++) {
@@ -148,7 +123,7 @@ function validateProblemDiversity(problems, essay) {
       }
       byPassage.add(pSig)
     }
-    if (essay) continue
+    if (writingMode) continue
     const ch = Array.isArray(p.choices) ? p.choices : []
     const chNorm = ch.map((x) => compactTextSignature(x))
     if (new Set(chNorm).size !== chNorm.length) {
@@ -172,9 +147,9 @@ function validateProblemDiversity(problems, essay) {
 /**
  * 문제집·내신 톤 + 학년 맞춤 (프롬프트용)
  * @param {string} difficulty
- * @param {boolean} essay
+ * @param {string} modeId
  */
-function buildPedagogyStyleBlock(difficulty, essay) {
+function buildPedagogyStyleBlock(difficulty, modeId) {
   const gradeHint =
     difficulty.startsWith('초')
       ? '초등 고학년~중학 준비 수준의 쉬운 어휘·짧은 문장.'
@@ -187,9 +162,23 @@ function buildPedagogyStyleBlock(difficulty, essay) {
 - TARGET LEARNER LEVEL "${difficulty}"에 맞출 것: ${gradeHint}
 - 지시문(passage 첫 줄 Q.)은 내신에서 자주 쓰는 한국어 표현을 쓸 것(예: 다음 중 옳은 것, 어법상 알맞은 것, 밑줄 친 부분 중 틀린 것, 본문의 주제로 가장 적절한 것).`
 
-  if (essay) {
+  if (modeId === 'essay') {
     return `${base}
 - 서술형은 해당 학년 단원 평가·영작에서 요구하는 수준과 채점 포인트(문법 적용·필수 어휘)를 반영할 것.`
+  }
+
+  if (modeId === 'concept') {
+    return `${base}
+- 개념형은 개념 설명, 규칙 비교, 용법 매칭, 성분 분석처럼 "이해 확인" 성격이 드러나게 만들 것.
+- 객관식처럼 억지 5지선다로 바꾸지 말고, 학생이 직접 판단·서술·연결·분석하도록 구성할 것.
+- modelAnswer와 explanation은 교사용 해설로 분명하게 적을 것.`
+  }
+
+  if (modeId === 'workbook') {
+    return `${base}
+- 워크북은 같은 문법 구조를 반복해서 직접 써 보는 연습지처럼 만들 것.
+- 보기 고르기보다 짧은 변환·영작·재배열·반복 쓰기 연습에 가깝게 구성할 것.
+- 학생이 직접 답을 써 보게 하고, modelAnswer와 간단한 채점 포인트를 함께 제공할 것.`
   }
 
   return `${base}
@@ -218,14 +207,14 @@ function normalizeTopicIdForBatch(rawId, allowedIds) {
 }
 
 /** 본문 첫 줄이 "Q. "로 시작하지 않으면 시험지 형식용 질문 행을 덧붙임 (API 누락 대비) */
-function ensurePassageHasQLine(passage, essay) {
+function ensurePassageHasQLine(passage, writingMode) {
   const s = String(passage ?? '')
     .replace(/^\uFEFF/, '')
     .trim()
   if (!s) return s
   const firstLine = (s.split(/\r?\n/)[0] || '').trim()
   if (/^Q\.\s/.test(firstLine)) return s
-  const fallback = essay ? 'Q. 다음 요구에 따라 답하시오.' : 'Q. 다음 중 알맞은 것을 고르시오.'
+  const fallback = writingMode ? 'Q. 다음 요구에 따라 직접 써 보시오.' : 'Q. 다음 중 알맞은 것을 고르시오.'
   return `${fallback}\n\n${s}`
 }
 
@@ -246,14 +235,14 @@ function shuffleChoicesWithAnswer(choices, correctIndex) {
   return { choices: nextChoices, correctIndex: nextCorrectIndex }
 }
 
-function formatOneProblemBlock(p, sections, essay) {
+function formatOneProblemBlock(p, sections, writingMode) {
   const no = p.no ?? p.number
   const tid = p.topicId || ''
   const label = findTopicLabel(sections, tid)
   const fmt = p.format || p.type || '문제'
   const passage = passageForMcqDisplay(
-    ensurePassageHasQLine(p.passage || p.question || '', essay),
-    essay
+    ensurePassageHasQLine(p.passage || p.question || '', writingMode),
+    writingMode
   )
 
   const choices = Array.isArray(p.choices) ? toChoiceNumberedLines(p.choices) : []
@@ -262,11 +251,11 @@ function formatOneProblemBlock(p, sections, essay) {
   const expl = p.explanation || p.explain || ''
   const modelAns = p.modelAnswer || p.model_answer || ''
 
-  if (essay) {
+  if (writingMode) {
     return [
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `[${no}] ${label}`,
-      `형식: ${fmt} (서술형)`,
+      `형식: ${fmt}`,
       '',
       passage,
       '',
@@ -298,8 +287,8 @@ export const PROBLEM_COUNT_OPTIONS = [25, 50, 100]
 
 export function formatProblemsAsText(problems, sections, modeId) {
   if (!Array.isArray(problems)) return ''
-  const essay = isEssayMode(modeId)
-  return problems.map((p) => formatOneProblemBlock(p, sections, essay)).join('\n\n')
+  const writingMode = isWritingMode(modeId)
+  return problems.map((p) => formatOneProblemBlock(p, sections, writingMode)).join('\n\n')
 }
 
 /** 유형이 섞인 배열 — 각 문항의 grammarWorkbookModeId(없으면 fallbackMode)로 서술형 여부 판별 */
@@ -307,56 +296,57 @@ export function formatProblemsAsTextMixed(problems, sections, fallbackMode = 'mc
   if (!Array.isArray(problems)) return ''
   return problems
     .map((p) =>
-      formatOneProblemBlock(p, sections, isEssayMode(p.grammarWorkbookModeId || fallbackMode))
+      formatOneProblemBlock(p, sections, isWritingMode(p.grammarWorkbookModeId || fallbackMode))
     )
     .join('\n\n')
 }
 
 const PASSAGE_Q_RULE = `MANDATORY "Q." QUESTION LINE (every problem, all modes):
 - The JSON field "passage" MUST start with ONE Korean line beginning exactly with "Q. " (capital Q, ASCII period, space).
-- That line must clearly state the task (e.g. "Q. 다음 중 옳은 문장을 고르시오.", "Q. 어법상 옳은 것을 고르시오.", "Q. 밑줄에 알맞는 말을 고르시오.").
-- For multiple-choice (non-essay): if every option in "choices" is already a full English sentence or standalone fragment, put ALL English ONLY in "choices" — do NOT add a duplicate example English sentence in "passage" after the Q. line. Exception: you MUST add a shared English stem in "passage" after Q. only when the item needs one (e.g. one passage with a blank/underline, or numbered sentences to judge, or a short dialogue stem all choices refer to).
+- That line must clearly state the task and should fit the chosen item style naturally.
+- For multiple-choice items: if every option in "choices" is already a full English sentence or standalone fragment, put ALL English ONLY in "choices" — do NOT add a duplicate example English sentence in "passage" after the Q. line. Exception: add a shared English stem in "passage" after Q. only when the item really needs one.
 - When a shared stem IS needed, use "\\n\\n" after the Q. line, then the stem (may include ____ or (1)(2) etc.).
 - Never put only bare English without a preceding Q. line inside "passage".
-- 서술형(essay): after "Q. ", the passage is Korean-led with required markers "【한글 해석】" and "【영작에 사용할 단어】" (see QUESTION MODE — 서술형).`
+- Open-response items (concept/workbook/essay): keep passage Korean-led when appropriate, and place blanks, source sentences, 조건, 제시어, 지문, 요약문 등 the template requires inside "passage".`
 
 function buildModeBlock(n, modeId) {
   switch (modeId) {
     case 'concept':
-      return `QUESTION MODE — "개념" (문법 개념 확인, 전부 한글)
-- passage: FIRST line MUST be "Q. " + 한국어 질문/지시 (옳은 설명 고르기, 용어 구별 등). Then optional extra Korean context on following lines.
-- choices: ①~⑤ 모두 한국어 문장이나 짧은 구.
-- explanation: 정답 근거를 한국어로 1~3문장.
-- Each of the ${n} items: exactly ONE topicId from the MANDATORY QUOTA below, exactly 5 choices, correctAnswerIndex 0..4.`
+      return `QUESTION MODE — "개념" (개념 확인형 서답)
+- use the concept template catalog as recommendations, not as a rigid checklist.
+- choices: 반드시 빈 배열 [].
+- correctAnswerIndex: null.
+- modelAnswer: 정답 또는 모범 답안을 짧고 분명하게 제시.
+- explanation: 한국어 해설.
+- Each of the ${n} items: exactly ONE topicId from the MANDATORY QUOTA below.`
 
     case 'workbook':
-      return `QUESTION MODE — "워크북" (기초)
-- passage: Line 1 = "Q. " + 한국어 지시문만 두는 것이 기본. 보기(choices)만으로 문장이 완결되면 passage에 영어 예시 문장을 넣지 말 것(중복·혼선 방지). 공통 지문이 필요한 빈칸·밑줄·짧은 대화만 passage에 "\\n\\n" 뒤에 넣을 것.
-- Mix across items: 용법·형태 고르기, 쉬운 빈칸, 짧은 완성, 어색한 것 고르기 등.
-- choices: 항상 ①~⑤ 다섯 개.
-- explanation: 한국어.
-- Each of the ${n} items: exactly ONE topicId from the MANDATORY QUOTA, exactly 5 choices, correctAnswerIndex 0..4.`
+      return `QUESTION MODE — "워크북" (반복 연습형 서답)
+- use the workbook template catalog as recommendations, not as a rigid checklist.
+- blanks, bracket choices, combining prompts, transformation cues, chunk lists 등 템플릿에 필요한 자료는 모두 "passage" 안에 넣는다.
+- choices: 반드시 빈 배열 [].
+- correctAnswerIndex: null.
+- modelAnswer: 학생이 실제로 써야 할 정답 문장/정답 표현.
+- explanation: 짧은 채점 포인트 또는 해설.
+- Each of the ${n} items: exactly ONE topicId from the MANDATORY QUOTA.`
 
     case 'mcq':
       return `QUESTION MODE — "객관식" (어법·판별 심화)
-- passage: Line 1 = "Q. " + 한국어 지시문이 기본. "옳은 문장 고르기"처럼 보기가 각각 완전한 영어 문장이면 passage는 Q. 한 줄(또는 Q. + 한국어 보조 한 줄)로 끝내고, 영어는 전부 choices에만 둘 것. 한 지문을 보고 고르는 유형만 "\\n\\n" 뒤에 영어 지문(밑줄·번호·빈칸 포함)을 넣을 것.
-- Mix item types: 틀린 어법 / 다른 용법 / 옳은 문장 개수 / 옳은 문장 모두 고르기 등.
+- use the multiple-choice template catalog as recommendations, not as a rigid checklist.
+- passage: Line 1 = "Q. " + 한국어 지시문. 한 지문을 보고 고르는 유형만 "\\n\\n" 뒤에 공통 지문/문장/보기 자료를 넣을 것.
 - choices: 항상 ①~⑤.
 - explanation: 한국어.
 - Each of the ${n} items: exactly ONE topicId from the MANDATORY QUOTA, exactly 5 choices, correctAnswerIndex 0..4.`
 
     case 'essay':
-      return `QUESTION MODE — "서술형" (영작·보기 없음)
-- passage MUST follow this structure (all inside the single "passage" string, use \\n for newlines):
-  (1) Line 1: "Q. " + 한국어 지시 — 반드시 "아래 한글 뜻을 (해당 topic의 문법 포인트)를 써서 영어로 쓰시오" 류로, 문법을 명시해 요구할 것.
-  (2) Blank line, then a line starting exactly with "【한글 해석】" — 그 문법 포인트가 자연스럽게 쓰일 만한 의미의 한국어 문장(또는 짧은 연결된 두 문장). 단순 번역 틀이 아니라, 학습자가 그 문법으로만 표현하기 쉬운 뉘앙스로 쓸 것.
-  (3) Next line starting exactly with "【영작에 사용할 단어】" — 영작에 반드시 포함해야 할 영어 단어·구 3~8개를 쉼표 또는 · 로 제시 (모범 답에도 모두 쓸 것).
-  (4) 선택: "【힌트】" 줄에 한국어로 짧은 힌트 가능.
+      return `QUESTION MODE — "서술형" (내신 서답·영작)
+- use the essay template catalog as recommendations, not as a rigid checklist.
+- 지문, 조건, 제시어, 전환 문장, 요약문, 해석 대상 문장 등 템플릿 요소를 "passage" 안에 자연스럽게 구성할 것.
 - choices: 반드시 빈 배열 [].
 - correctAnswerIndex: null.
-- modelAnswer: 위 한글 뜻을 담은 자연스러운 영어 문장(들). 반드시 해당 topic 문법을 올바르게 쓰고, "【영작에 사용할 단어】"에 적은 단어·구를 모두 포함할 것.
-- explanation: 한국어로 채점 포인트(문법 적용 여부, 필수 단어 포함 여부, 의미 일치 여부).
-- Each of the ${n} items: exactly ONE topicId from the MANDATORY QUOTA. NO multiple-choice.`
+- modelAnswer: 채점 가능한 모범 답안.
+- explanation: 한국어 채점 포인트와 해설.
+- Each of the ${n} items: exactly ONE topicId from the MANDATORY QUOTA.`
 
     default:
       return buildModeBlock(n, 'mcq')
@@ -371,7 +361,6 @@ function isGrammarBatchRetryable(err) {
     m.includes('잘렸') ||
     m.includes('비어 있습니다') ||
     m.includes('뿐입니다') ||
-    m.includes('서술형 passage에') ||
     m.includes('객관식 보기가 너무 적') ||
     m.includes('correctAnswerIndex는') ||
     m.includes('중복') ||
@@ -384,7 +373,7 @@ function isGrammarBatchRetryable(err) {
   )
 }
 
-/** OpenAI 호출이 끝없이 대기하지 않도록 (브라우저 기본 타임아웃 없음) */
+/** Gemini 호출이 끝없이 대기하지 않도록 (브라우저 기본 타임아웃 없음) */
 function grammarRequestTimeoutMs(batchSize, essay) {
   const base = essay ? 3600 : 2600
   const linear = batchSize * base
@@ -392,30 +381,27 @@ function grammarRequestTimeoutMs(batchSize, essay) {
   return Math.min(420000, Math.max(floor, linear))
 }
 
-async function openAiChatCompletionsFetch(body, apiKey, timeoutMs) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+function parseGeminiJsonText(raw, fallbackMessage) {
+  const jsonText = extractJsonObjectText(raw)
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey.trim()}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-    return response
+    return JSON.parse(jsonText)
+  } catch {
+    throw new Error(fallbackMessage)
+  }
+}
+
+async function openAiChatCompletionsFetch(body, apiKey, timeoutMs) {
+  try {
+    const out = await geminiGenerateFromOpenAiChatBody(body, apiKey, timeoutMs)
+    return buildOpenAiLikeChatResponse(out.text, out.finishReason)
   } catch (e) {
-    if (e?.name === 'AbortError') {
+    if (String(e?.message || '').includes('요청 시간 초과')) {
       const sec = Math.round(timeoutMs / 1000)
       throw new Error(
         `요청 시간 초과(${sec}초) — 서버 응답이 없습니다. 네트워크·VPN·방화벽을 확인하거나, 잠시 후 다시 시도해 주세요.`
       )
     }
     throw e
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -436,8 +422,10 @@ async function fetchGrammarBatchOnce(
 ) {
   const { sections, promptSubject, promptFocus, label } = typeConfig
   const n = batchSize
-  const subtypePlan = buildSubtypePlan(modeId, n)
-  const subtypePlanBlock = buildSubtypePlanPromptBlock(modeId, subtypePlan)
+  const writingMode = isWritingMode(modeId)
+  const templatePlan = buildTemplatePlan(modeId, n)
+  const templateCatalogBlock = buildTemplateCatalogPromptBlock(modeId, label, difficulty)
+  const templatePlanBlock = buildTemplatePlanPromptBlock(templatePlan, label, difficulty)
   const quotaLines = formatQuotaForPrompt(quotaObject, sections)
   const refCatalog = buildFullTopicLinesForPrompt(sections)
   const modeBlock = buildModeBlock(n, modeId)
@@ -449,18 +437,18 @@ async function fetchGrammarBatchOnce(
       ? `\nEXACT topicId STRINGS — use ONLY these in JSON "topicId" (character-for-character, including the first letter e.g. g):\n${quotaTopicIds.map((id) => `- "${id}"`).join('\n')}\n`
       : ''
 
-  const jsonExample = essay
+  const jsonExample = writingMode
     ? `{
   "problems": [
     {
       "no": 1,
-      "topicId": "2-1",
-      "format": "서술형",
-      "passage": "Q. 아래 한글 뜻을 enough to 구문을 사용하여 영어로 쓰시오.\\n\\n【한글 해석】그는 그 상자를 들기에 충분히 힘이 세다.\\n【영작에 사용할 단어】 strong, enough, lift, box",
+      "topicId": "g2-1",
+      "format": "유형 라벨",
+      "passage": "Q. 문법과 난이도에 맞는 자연스러운 형식으로 한국어 지시문과 본문/조건/빈칸/제시어를 구성하시오.",
       "choices": [],
       "correctAnswerIndex": null,
-      "modelAnswer": "He is strong enough to lift the box.",
-      "explanation": "한글 채점 포인트"
+      "modelAnswer": "모범 답안",
+      "explanation": "한글 해설"
     }
   ]
 }`
@@ -468,7 +456,7 @@ async function fetchGrammarBatchOnce(
   "problems": [
     {
       "no": 1,
-      "topicId": "2-1",
+      "topicId": "g2-1",
       "format": "유형 라벨",
       "passage": "Q. 다음 중 옳은 문장을 고르시오.",
       "choices": ["① ...", "② ...", "③ ...", "④ ...", "⑤ ..."],
@@ -480,13 +468,22 @@ async function fetchGrammarBatchOnce(
 
   const retryBlock =
     attemptIndex > 1
-      ? essay
+      ? writingMode
         ? `
 
-RETRY (${attemptIndex}): Validation failed (topicId count mismatch or spelling). Before JSON output, tally per topicId: count objects with that EXACT "topicId" string — each tally MUST equal the quota (not more, not fewer). If quota says 3 for "g5-2", output exactly 3 objects with "g5-2", never 4. Do NOT use shortened ids like "5-2" if the quota says "g5-2".`
+RETRY (${attemptIndex}): Rewrite the ENTIRE JSON from scratch. Validation previously failed. Before final output, silently verify all of the following:
+- each quota line is satisfied exactly,
+- every item is school-appropriate, internally consistent, and has all required fields,
+- the JSON parses as one object with one "problems" array only.
+If quota says 3 for "g5-2", output exactly 3 objects with "topicId":"g5-2". Never shorten it to "5-2".`
         : `
 
-RETRY (${attemptIndex}): Validation failed (topicId mismatch, missing choices, index errors, or overly similar distractors). Before JSON output: (1) tally per topicId — each EXACT "topicId" count MUST equal quota. (2) Every non-essay item MUST have "choices" as a JSON array of exactly 5 non-empty strings (not {}, not omitted). (3) correctAnswerIndex must be 0..4. (4) Within each item, make all five choices meaningfully distinct; do not output two distractors that differ only by one tiny word, punctuation, or tense tweak.`
+RETRY (${attemptIndex}): Rewrite the ENTIRE JSON from scratch. Validation previously failed. Before final output, silently verify all of the following:
+(1) each EXACT "topicId" count equals the quota,
+(2) every non-essay item has "choices" as an array of exactly 5 non-empty strings,
+(3) correctAnswerIndex is 0..4,
+(4) distractors are meaningfully distinct.
+Do not add comments, explanations, markdown, or any text before/after the JSON object.`
       : ''
   const retryIssueBlock =
     attemptIndex > 1 && previousErrorMessage
@@ -500,7 +497,7 @@ TARGET LEARNER LEVEL: ${difficulty} (Korean school grade; adjust difficulty acco
 GRAMMAR THEME: ${label}
 FOCUS: ${promptFocus}
 
-${buildPedagogyStyleBlock(difficulty, essay)}
+${buildPedagogyStyleBlock(difficulty, modeId)}
 
 TASK: Create EXACTLY ${n} separate problems following the QUESTION MODE below.
 
@@ -513,35 +510,55 @@ TOPIC REFERENCE (for understanding labels; topicId strings must match EXACTLY):
 ${refCatalog}
 
 ${modeBlock}
-${subtypePlanBlock}
+${templateCatalogBlock}
+${templatePlanBlock}
 
 ${PASSAGE_Q_RULE}
 ${retryBlock}
 ${retryIssueBlock}
 
+GEMINI OUTPUT DISCIPLINE:
+- Think silently and output only the final JSON object.
+- Do not wrap JSON in markdown fences.
+- Do not apologize or explain.
+- If uncertain, prefer a simple but fully valid school-style item over a fancy risky item.
+- Before output, silently re-count the array length, per-topicId quota, and all required fields.
+
+TEMPLATE POLICY:
+- The catalog and suggested mix are references, not hard assignments.
+- You may choose the most suitable item format yourself for each topic as long as it matches the mode and feels natural for Korean school materials.
+- Avoid mechanically forcing underlines / matching / counts just because a template mentions them; prefer what best fits the grammar point.
+- Add light variety across the batch when natural.
+- Avoid repeating the exact same item style too many times in a row.
+- If the batch is large enough, try to mix 2-3 different item styles, but never force variety when one style is clearly best for the grammar point.
+
 Return ONLY valid JSON (no markdown):
 ${jsonExample}
 
 The "problems" array MUST have length ${n}. Use "no": 1 through ${n} in this batch.
-For non-essay items: every problem MUST have exactly 5 strings in "choices" and correctAnswerIndex 0..4.
-For essay items: every problem MUST have "choices": [], "correctAnswerIndex": null, non-empty "modelAnswer" string.
-For essay items: every "passage" MUST include the exact markers "【한글 해석】" and "【영작에 사용할 단어】" after the Q. line, as in the example.
+For multiple-choice items: every problem MUST have exactly 5 strings in "choices" and correctAnswerIndex 0..4.
+For open-response items (concept/workbook/essay): every problem MUST have "choices": [], "correctAnswerIndex": null, non-empty "modelAnswer" string.
 Every "passage" MUST begin with a line starting with "Q. " as in the example.
 Each problem's topicId must appear in the MANDATORY QUOTA and respect its count.`
 
   const maxTokens = 16384
-  const temperature = Math.min(0.68, 0.38 + (attemptIndex - 1) * 0.1)
+  const baseTemperature = modeId === 'mcq' ? 0.26 : modeId === 'concept' ? 0.2 : 0.24
+  const temperature = Math.max(0.08, baseTemperature - (attemptIndex - 1) * 0.03)
   const timeoutMs = grammarRequestTimeoutMs(n, essay)
 
   const response = await openAiChatCompletionsFetch(
     {
-      model: 'gpt-4o-mini',
+      model: GRAMMAR_MODEL_MAIN,
       messages: [
         {
           role: 'system',
-          content: essay
-            ? 'You create Korean school English grammar 서술형(영작) items in workbook + 내신 style for the given grade: passage gives Korean meaning + required English words; students write English using the target grammar. Return only valid JSON with a "problems" array. No markdown. Follow per-topicId counts exactly.'
-            : 'You create Korean school English grammar items (workbook + 내신-style). Every multiple-choice problem MUST include "choices" as a JSON array of exactly 5 non-empty strings — never omit, null, {}, or []. Return only valid JSON with a "problems" array. No markdown. Follow per-topicId counts exactly.',
+          content: writingMode
+            ? modeId === 'concept'
+              ? 'You create Korean school English grammar concept-check open-response items. Use the template catalog as recommendations, choose the most natural format yourself, keep choices empty, include modelAnswer and explanation, maintain light variety across the batch when natural, and return one valid JSON object only.'
+              : modeId === 'workbook'
+                ? 'You create Korean school English grammar workbook drills. Use the template catalog as recommendations, choose the most natural format yourself, keep choices empty, include modelAnswer and explanation, maintain light variety across the batch when natural, and return one valid JSON object only.'
+                : 'You create Korean school English grammar 서술형 items. Use the template catalog as recommendations, choose the most natural format yourself, keep choices empty, include modelAnswer and explanation, maintain light variety across the batch when natural, and return one valid JSON object only.'
+            : 'You create Korean school English grammar items for workbook + 내신 use. Prioritize valid structure, clear distinction among choices, light variety across the batch when natural, and one valid JSON object only. Every item must have exactly five distinct choices and exact per-topicId counts.',
         },
         { role: 'user', content: prompt },
       ],
@@ -560,13 +577,10 @@ Each problem's topicId must appear in the MANDATORY QUOTA and respect its count.
 
   const data = await response.json()
   const raw = data.choices[0]?.message?.content?.trim() || '{}'
-  const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-  let result
-  try {
-    result = JSON.parse(cleaned)
-  } catch (e) {
-    throw new Error('JSON 파싱 실패. 응답이 잘렸을 수 있습니다. 다시 시도해 주세요.')
-  }
+  const result = parseGeminiJsonText(
+    raw,
+    'JSON 파싱 실패. 응답이 잘렸거나 JSON 앞뒤에 불필요한 텍스트가 섞였습니다. 다시 시도해 주세요.'
+  )
 
   const problems = result.problems
   if (!Array.isArray(problems) || problems.length === 0) {
@@ -584,7 +598,7 @@ Each problem's topicId must appear in the MANDATORY QUOTA and respect its count.
     .map(([id]) => id)
 
   const normalized = problems.slice(0, n).map((p, i) => {
-    const choices = essay ? [] : extractMcqChoicesFromProblem(p)
+    const choices = writingMode ? [] : extractMcqChoicesFromProblem(p)
     const correctIndex =
       p.correctAnswerIndex != null
         ? Number(p.correctAnswerIndex)
@@ -594,11 +608,11 @@ Each problem's topicId must appear in the MANDATORY QUOTA and respect its count.
     return {
       no: numberOffset + i + 1,
       topicId: normalizeTopicIdForBatch(p.topicId, allowedQuotaIds),
-      format: p.format || subtypePlan[i] || (essay ? '서술형' : '객관식'),
-      passage: ensurePassageHasQLine(p.passage || p.question || '', essay),
+      format: p.format || templatePlan[i]?.label || (writingMode ? (modeId === 'concept' ? '개념형' : modeId === 'workbook' ? '워크북형' : '서술형') : '객관식'),
+      passage: ensurePassageHasQLine(p.passage || p.question || '', writingMode),
       choices,
       correctIndex:
-        essay || choices.length === 0
+        writingMode || choices.length === 0
           ? null
           : correctIndex != null && !Number.isNaN(correctIndex)
             ? correctIndex
@@ -612,23 +626,12 @@ Each problem's topicId must appear in the MANDATORY QUOTA and respect its count.
 
   for (let i = 0; i < normalized.length; i++) {
     const p = normalized[i]
-    if (essay) {
+    if (writingMode) {
       if (p.choices.length !== 0) {
-        throw new Error(`문항 ${i + 1}: 서술형 탭은 choices를 빈 배열 []로 두어야 합니다.`)
+        throw new Error(`문항 ${i + 1}: 개념/워크북/서술형 문항은 choices를 빈 배열 []로 두어야 합니다.`)
       }
       if (!p.modelAnswer || !String(p.modelAnswer).trim()) {
-        throw new Error(`문항 ${i + 1}: 서술형은 modelAnswer(모범 답안)가 필요합니다.`)
-      }
-      const pv = String(p.passage || '')
-      if (!pv.includes('【한글 해석】')) {
-        throw new Error(
-          `문항 ${i + 1}: 서술형 passage에 「【한글 해석】」이 포함되어야 합니다(문법 포인트가 드러나는 한글 뜻).`
-        )
-      }
-      if (!pv.includes('【영작에 사용할 단어】')) {
-        throw new Error(
-          `문항 ${i + 1}: 서술형 passage에 「【영작에 사용할 단어】」가 포함되어야 합니다(필수 영단어·구 제시).`
-        )
+        throw new Error(`문항 ${i + 1}: 개념/워크북/서술형 문항에는 modelAnswer(모범 답안)가 필요합니다.`)
       }
       continue
     }
@@ -655,17 +658,21 @@ Each problem's topicId must appear in the MANDATORY QUOTA and respect its count.
     p.correctIndex = shuffled.correctIndex
   }
 
-  validateProblemDiversity(normalized, essay)
+  validateProblemDiversity(normalized, writingMode)
 
   if (ENABLE_BATCH_AI_REVIEW) {
-    await verifyGeneratedBatchWithAi({
-      apiKey,
-      difficulty,
-      grammarLabel: label,
-      modeId,
-      essay,
-      problems: normalized,
-    })
+    try {
+      await verifyGeneratedBatchWithAi({
+        apiKey,
+        difficulty,
+        grammarLabel: label,
+        modeId,
+        essay: writingMode,
+        problems: normalized,
+      })
+    } catch {
+      // Gemini 검수 오탐은 생성 자체를 막지 않으므로 조용히 무시합니다.
+    }
   }
 
   return normalized
@@ -691,7 +698,7 @@ async function verifyGeneratedBatchWithAi({
     essay,
     problems,
   }
-  const prompt = `You are a strict QA verifier for Korean grammar workbook problems.
+  const prompt = `You are a conservative QA verifier for Korean grammar workbook problems.
 Check these rules and return ONLY JSON:
 {
   "ok": true|false,
@@ -705,10 +712,11 @@ Rules:
    Only flag this rule when two items are nearly interchangeable in stem/task/micro-skill/choice pattern, not when they merely test related subtopics from the same unit.
 2) Non-essay: choices must be five, distinct, and not near-duplicate.
 3) Non-essay: answer index must align with best choice.
-4) Essay feasibility: instruction, Korean meaning, required words, and modelAnswer must be mutually consistent and actually solvable with the requested grammar.
+4) Open-response feasibility: instruction, passage 자료, 조건, 빈칸/제시어/지문, and modelAnswer must be mutually consistent and actually solvable with the requested grammar.
 5) No obvious contradiction like asking "for+목적격+to부정사" but giving Korean meaning that cannot naturally realize that structure.
 
 If any violation exists, ok=false and include concrete issue messages referencing item number.
+If the issue is vague, subjective, or not tied to a specific item number, return ok=true.
 Be conservative: if uncertain, return ok=true.
 
 DATA:
@@ -716,12 +724,12 @@ ${JSON.stringify(payload)}`
 
   const response = await openAiChatCompletionsFetch(
     {
-      model: 'gpt-4o-mini',
+      model: GRAMMAR_MODEL_REVIEW,
       messages: [
         {
           role: 'system',
           content:
-            'You are a strict worksheet QA validator. Return only JSON with ok/issues/fixHints.',
+            'You are a conservative worksheet QA validator. Return only JSON. Only fail on clear, item-specific violations.',
         },
         { role: 'user', content: prompt },
       ],
@@ -738,40 +746,40 @@ ${JSON.stringify(payload)}`
   }
   const data = await response.json()
   const raw = data.choices?.[0]?.message?.content?.trim() || '{}'
-  let parsed = {}
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    throw new Error('검수 JSON 파싱 실패')
-  }
+  const parsed = parseGeminiJsonText(raw, '검수 JSON 파싱 실패')
   if (parsed?.ok === true) return
   const issues = Array.isArray(parsed?.issues) ? parsed.issues.filter(Boolean) : []
-  const msg = issues[0] || '검수 단계에서 규칙 위반이 감지되었습니다.'
+  const concreteIssues = issues.filter((issue) => /문항\s*\d+|item\s*\d+/i.test(String(issue)))
+  if (concreteIssues.length === 0) return
+  const msg = concreteIssues[0] || issues[0] || '검수 단계에서 규칙 위반이 감지되었습니다.'
   throw new Error(`검수 실패: ${msg}`)
 }
 
 /**
- * 한 번에 10·20문항씩 여러 topicId를 섞으면 할당(3)보다 많이(4) 찍는 등 불일치가 잦음.
- * 개념·워크북·객관식·서술형 공통으로 최대 5문항 단위 API 호출 (25문항도 5×5).
+ * 한 번에 너무 많은 문항을 요청하면 할당 불일치가 늘어나고, 너무 잘게 쪼개면 API 호출 횟수가 과도해진다.
+ * 개념/워크북/서술형은 4문항 단위, 객관식은 8문항 단위로 균형을 맞춘다.
  */
-const GRAMMAR_CHUNK_CAP = 5
+function getGrammarChunkCap(modeId) {
+  return isWritingMode(modeId) ? 4 : 8
+}
 
 /** @param {number} n */
-function buildChunkSizesForCount(n) {
+function buildChunkSizesForCount(n, modeId = 'mcq') {
   if (!Number.isFinite(n) || n <= 0) return []
+  const chunkCap = getGrammarChunkCap(modeId)
   const out = []
   let left = n
   while (left > 0) {
-    const sz = Math.min(GRAMMAR_CHUNK_CAP, left)
+    const sz = Math.min(chunkCap, left)
     out.push(sz)
     left -= sz
   }
   return out
 }
 
-/** API 분할 호출 횟수 (로딩 문구용). modeId는 호환용 */
-export function countGrammarApiRoundsForProblemCount(n, _modeId) {
-  return buildChunkSizesForCount(n).length
+/** API 분할 호출 횟수 (로딩 문구용) */
+export function countGrammarApiRoundsForProblemCount(n, modeId = 'mcq') {
+  return buildChunkSizesForCount(n, modeId).length
 }
 
 async function fetchGrammarBatchesSequentially(
@@ -875,9 +883,9 @@ export async function generateGrammarWorkbookProblems(
     }
   }
 
-  const essay = isEssayMode(modeId)
+  const essay = isWritingMode(modeId)
 
-  const chunkSizes = buildChunkSizesForCount(n)
+  const chunkSizes = buildChunkSizesForCount(n, modeId)
   if (!chunkSizes.length) {
     throw new Error('지원하지 않는 문항 수입니다.')
   }
@@ -936,7 +944,7 @@ TASK: Read the ENTIRE draft between DRAFT START/END. Fix wrong answers vs explan
 RULES:
 - Preserve structure: line breaks, ━━━ separators, lines like [n]..., 형식:, passage, choices, 정답:, 해설: (and essay model answers if present).
 - 각 문항 본문(영어 지문 앞)에는 반드시 한 줄로 "Q. "로 시작하는 한국어 질문·지시가 있어야 합니다. 없으면 알맞은 지시문을 넣고, 영어 지문 전에 빈 줄을 둡니다.
-- 서술형 문항에는 「【한글 해석】」(문법 포인트가 드러나는 한글 뜻)과 「【영작에 사용할 단어】」(필수 영단어·구)가 있어야 합니다. 빠졌으면 채워 넣고, modelAnswer가 그 단어들을 모두 쓰도록 맞춥니다.
+- 개념/워크북/서술형 문항은 각 형식에 맞는 자료(빈칸, 연결 대상, 제시어, 조건, 전환 문장, 요약문, 지문 등)가 passage에 자연스럽게 들어 있어야 하며, modelAnswer·해설과 서로 맞아야 합니다.
 - Do NOT add chatty meta text (no "검토했습니다"). Output ONLY the corrected full worksheet text.
 - If one item is badly broken, rewrite that item in the same format.
 - Plain text only — no markdown code fences.
@@ -947,7 +955,7 @@ ${raw}
 
   const response = await openAiChatCompletionsFetch(
     {
-      model: 'gpt-4o-mini',
+      model: GRAMMAR_MODEL_MAIN,
       messages: [
         {
           role: 'system',
@@ -969,11 +977,7 @@ ${raw}
   }
 
   const data = await response.json()
-  let out = data.choices[0]?.message?.content?.trim() || ''
-  out = out
-    .replace(/^```(?:text|plaintext)?\s*\n?/i, '')
-    .replace(/\n?```\s*$/i, '')
-    .trim()
+  let out = cleanGeminiTextOutput(data.choices[0]?.message?.content?.trim() || '')
   if (!out)
     throw new Error(
       '검토 결과가 비어 있습니다. 출력 한도(약 2만 토큰)에 걸려 잘렸을 수 있으니 문항 수를 줄이거나 다시 시도해 주세요.'

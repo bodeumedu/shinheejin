@@ -1,9 +1,47 @@
+import crypto from 'node:crypto';
+
 /**
  * Vercel Serverless Function
  * POST /api/send-kakao
- * 
+ *
  * 솔라피 SDK를 통한 카카오톡 알림톡 발송
  */
+function normalizeSenderNumber(value) {
+  return String(value || '').replace(/[^0-9]/g, '').trim();
+}
+
+async function fetchActiveSenderNumber(apiKey, apiSecret) {
+  if (!apiKey || !apiSecret) return '';
+
+  const date = new Date().toISOString();
+  const salt = crypto.randomBytes(16).toString('hex');
+  const signature = crypto
+    .createHmac('sha256', apiSecret)
+    .update(date + salt)
+    .digest('hex');
+
+  const response = await fetch('https://api.solapi.com/senderid/v1/numbers/active', {
+    method: 'GET',
+    headers: {
+      Authorization: `HMAC-SHA256 apiKey=${apiKey}, date=${date}, salt=${salt}, signature=${signature}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`활성 발신번호 조회 실패 (${response.status})`);
+  }
+
+  const data = await response.json();
+  if (Array.isArray(data)) {
+    return normalizeSenderNumber(data[0]);
+  }
+  if (Array.isArray(data?.numberList)) {
+    return normalizeSenderNumber(data.numberList[0]);
+  }
+  return '';
+}
+
 export default async function handler(req, res) {
   // CORS 헤더 설정
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -21,7 +59,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { phoneNumber, templateCode, message, variables } = req.body;
+    const { phoneNumber, templateCode, message, variables, scheduleDate } = req.body;
 
     // 필수 파라미터 검증
     if (!phoneNumber || !templateCode) {
@@ -34,14 +72,19 @@ export default async function handler(req, res) {
     const apiKey = process.env.SOLAPI_API_KEY;
     const apiSecret = process.env.SOLAPI_API_SECRET;
     const pfId = process.env.SOLAPI_PF_ID;
-    const senderNumber = process.env.SOLAPI_SENDER_NUMBER;
+    const configuredSenderNumber = normalizeSenderNumber(
+      process.env.SOLAPI_SENDER_NUMBER ||
+      process.env.SENDER_NUMBER ||
+      process.env.SOLAPI_FROM ||
+      process.env.SOLAPI_FROM_NUMBER
+    );
 
     // 환경 변수 존재 여부 확인 (값은 로그하지 않음 - 보안)
     const envVarsStatus = {
       SOLAPI_API_KEY: apiKey ? '설정됨' : '미설정',
       SOLAPI_API_SECRET: apiSecret ? '설정됨' : '미설정',
       SOLAPI_PF_ID: pfId ? '설정됨' : '미설정',
-      SOLAPI_SENDER_NUMBER: senderNumber ? '설정됨' : '미설정',
+      SOLAPI_SENDER_NUMBER: configuredSenderNumber ? '설정됨' : '미설정',
     };
     console.log('환경 변수 상태:', envVarsStatus);
 
@@ -66,6 +109,24 @@ export default async function handler(req, res) {
       });
     }
 
+    let senderNumber = configuredSenderNumber;
+    if (!senderNumber) {
+      try {
+        senderNumber = await fetchActiveSenderNumber(apiKey, apiSecret);
+        console.log('활성 발신번호 자동 조회 결과:', senderNumber ? '조회 성공' : '조회 실패');
+      } catch (senderLookupError) {
+        console.error('활성 발신번호 자동 조회 실패:', senderLookupError);
+      }
+    }
+
+    if (!senderNumber) {
+      console.error('발신자 번호가 설정되지 않았습니다.');
+      return res.status(500).json({
+        error: '서버 설정 오류: 사용 가능한 발신번호를 찾지 못했습니다.\n' +
+               'Vercel Dashboard에서 SOLAPI_SENDER_NUMBER를 설정하거나 솔라피에 발신번호가 활성화되어 있는지 확인해주세요.'
+      });
+    }
+
     // 전화번호 정리 (하이픈 제거, 숫자만 추출)
     const cleanPhoneNumber = phoneNumber.replace(/[^0-9]/g, '').trim();
     
@@ -83,6 +144,18 @@ export default async function handler(req, res) {
         길이: cleanPhoneNumber.length
       });
       throw new Error(`유효하지 않은 전화번호입니다: ${phoneNumber} (길이: ${cleanPhoneNumber.length})`);
+    }
+
+    let normalizedScheduleDate = '';
+    if (scheduleDate) {
+      const parsedScheduleDate = new Date(scheduleDate);
+      if (Number.isNaN(parsedScheduleDate.getTime())) {
+        throw new Error('예약 발송 시간이 올바르지 않습니다.');
+      }
+      if (parsedScheduleDate.getTime() <= Date.now() + 60 * 1000) {
+        throw new Error('예약 발송 시간은 현재보다 1분 이상 이후여야 합니다.');
+      }
+      normalizedScheduleDate = parsedScheduleDate.toISOString();
     }
     
     // 한국 전화번호를 14자리 memberId 형식으로 변환
@@ -156,17 +229,24 @@ export default async function handler(req, res) {
     });
     
     try {
-      result = await messageService.send({
-        to: cleanPhoneNumber,
-        from: senderNumber || cleanPhoneNumber,
-        kakaoOptions: {
-          pfId: pfId,
-          templateId: templateCode,
-          memberId: memberId, // 14자리 memberId 형식 (필수)
-          variables: variables || {},
-          disableSms: false, // SMS 대체 발송 허용
+      result = await messageService.send(
+        {
+          to: cleanPhoneNumber,
+          from: senderNumber,
+          kakaoOptions: {
+            pfId: pfId,
+            templateId: templateCode,
+            memberId: memberId, // 14자리 memberId 형식 (필수)
+            variables: variables || {},
+            disableSms: false, // SMS 대체 발송 허용
+          },
         },
-      });
+        normalizedScheduleDate
+          ? {
+              scheduledDate: normalizedScheduleDate,
+            }
+          : undefined,
+      );
       
       // 솔라피 응답 확인
       console.log('📥 [API] 솔라피 응답:', JSON.stringify(result, null, 2));
@@ -213,8 +293,11 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      message: '카카오톡 메시지가 성공적으로 발송되었습니다.',
+      message: normalizedScheduleDate
+        ? '카카오톡 예약발송이 성공적으로 접수되었습니다.'
+        : '카카오톡 메시지가 성공적으로 발송되었습니다.',
       data: result,
+      scheduledDate: normalizedScheduleDate || undefined,
     });
 
   } catch (error) {

@@ -25,9 +25,14 @@ export async function exportSum40ToPdf(options = {}) {
       return aIdx - bIdx
     })
 
-  const answerPage = document.getElementById('sum40-answer-page')
+  const answerPages = Array.from(document.querySelectorAll('[id^="sum40-answer-page-"]'))
+    .sort((a, b) => {
+      const aIdx = parseInt(a.id.replace('sum40-answer-page-', ''), 10)
+      const bIdx = parseInt(b.id.replace('sum40-answer-page-', ''), 10)
+      return aIdx - bIdx
+    })
   const pages = [...questionPages]
-  if (answerPage) pages.push(answerPage)
+  if (answerPages.length > 0) pages.push(...answerPages)
 
   if (pages.length === 0) {
     throw new Error('PDF로 변환할 페이지를 찾을 수 없습니다.')

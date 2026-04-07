@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../utils/firebase';
+import {
+  approvePocketbookSignupRequest,
+  isPrimaryAdminUser,
+  listPocketbookUsers,
+  loadPocketbookAccessControl,
+  normalizePhoneNumber,
+  rejectPocketbookSignupRequest,
+  savePocketbookAccessControl,
+  setPocketbookUserActive,
+} from '../features/auth/utils/userAuth';
 import './AdminPage.css';
 
 const PHONE_DOC = 'homeworkCompletionPhoneNumbers';
@@ -8,9 +18,19 @@ const PHONE_DOC_ID = 'all';
 const DATE_DATA_DOC = 'homeworkCompletionDateData';
 const SEND_HISTORY_COLLECTION = 'homeworkCompletionSendHistory';
 const SENT_COUNTS_DOC = 'homeworkCompletionSentCounts';
+const CLINIC_SUBJECTS = [
+  { id: 'english', label: '영어' },
+  { id: 'math', label: '수학' },
+];
 const INDIVIDUAL_HOMEWORK_KEY = '__individual_homework_text__';
 const INDIVIDUAL_PROGRESS_KEY = '__individual_progress_text__';
 const COMMENT_KEY = '__comment__';
+const ATTENDANCE_STATUS_OPTIONS = ['출석', '결석', '지각', '조퇴', '보강'];
+
+function attendanceStatusTextClass(status) {
+  const map = { 출석: 'present', 결석: 'absent', 지각: 'late', 조퇴: 'early', 보강: 'makeup' };
+  return map[status] || 'none';
+}
 const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 const WEEKDAY_INDEX = { 일: 0, 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6 };
 
@@ -27,6 +47,69 @@ function formatLocalYMD(d = new Date()) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function getWeekNumber(date = new Date()) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(d.setDate(diff));
+  const year = monday.getFullYear();
+  const startOfYear = new Date(year, 0, 1);
+  const days = Math.floor((monday - startOfYear) / (24 * 60 * 60 * 1000));
+  const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7);
+  return { year, week: weekNumber };
+}
+
+function getClinicWeekKey(dateText) {
+  const baseDate = dateText ? new Date(`${dateText}T00:00:00`) : new Date();
+  const safeDate = Number.isNaN(baseDate.getTime()) ? new Date() : baseDate;
+  const { year, week } = getWeekNumber(safeDate);
+  return `${year}_week_${week}`;
+}
+
+function getClinicWeekKeys(dateText) {
+  const currentWeekKey = getClinicWeekKey(dateText);
+  const previousWeekKey = getClinicWeekKey(shiftDateText(dateText || formatLocalYMD(), -7));
+  return [...new Set([currentWeekKey, previousWeekKey].filter(Boolean))];
+}
+
+function mergeClinicRecordDocs(...docs) {
+  const merged = {};
+  docs.forEach((docData, docIndex) => {
+    const records = docData && typeof docData === 'object' ? docData : {};
+    Object.entries(records).forEach(([key, value], recordIndex) => {
+      merged[`${docIndex}_${key}_${recordIndex}`] = value;
+    });
+  });
+  return merged;
+}
+
+function mergeClinicHistoryDocs(...docs) {
+  const merged = {};
+  docs.forEach((docData) => {
+    const history = docData && typeof docData === 'object' ? docData : {};
+    Object.entries(history).forEach(([studentName, entries]) => {
+      if (!Array.isArray(entries) || entries.length === 0) return;
+      merged[studentName] = [...(merged[studentName] || []), ...entries];
+    });
+  });
+  return merged;
+}
+
+function normalizeMatchText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s()_\-]+/g, '');
+}
+
+function classNamesLikelyMatch(a, b) {
+  const left = normalizeMatchText(a);
+  const right = normalizeMatchText(b);
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
 }
 
 function parseClassNames(classNameStr) {
@@ -114,6 +197,13 @@ function formatShortDate(dateText) {
   return `${month}-${day}`;
 }
 
+function formatDateTimeText(dateText) {
+  if (!dateText) return '-';
+  const date = new Date(dateText);
+  if (Number.isNaN(date.getTime())) return String(dateText);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
 function classMatchesWeekday(className, weekday) {
   if (!weekday) return false;
   const meta = parseClassMeta(className);
@@ -139,7 +229,7 @@ function extractStudentName(item) {
   return '';
 }
 
-export default function AdminPage({ onClose }) {
+export default function AdminPage({ currentUser, onClose }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [students, setStudents] = useState([]);
@@ -150,12 +240,25 @@ export default function AdminPage({ onClose }) {
     homeworkList: {},
     progressList: {},
     progressData: {},
+    attendanceData: {},
   });
   const [sendHistory, setSendHistory] = useState({});
   const [sentCounts, setSentCounts] = useState({});
   const [selectedDate, setSelectedDate] = useState(formatLocalYMD());
   const [selectedClasses, setSelectedClasses] = useState([]);
+  const [isClassSelectorCollapsed, setIsClassSelectorCollapsed] = useState(true);
   const [sendDetailModal, setSendDetailModal] = useState(null);
+  const [clinicRecords, setClinicRecords] = useState({ english: {}, math: {} });
+  const [clinicHistory, setClinicHistory] = useState({ english: {}, math: {} });
+  const [clinicDetailModal, setClinicDetailModal] = useState(null);
+  const [registeredUsers, setRegisteredUsers] = useState([]);
+  const [approvedMembers, setApprovedMembers] = useState([]);
+  const [signupRequests, setSignupRequests] = useState([]);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountError, setAccountError] = useState('');
+  const [approvalForm, setApprovalForm] = useState({ name: '', phoneNumber: '', role: 'teacher', note: '' });
+  const isPrimaryAdmin = isPrimaryAdminUser(currentUser);
 
   const loadAdminData = useCallback(async () => {
     if (!isFirebaseConfigured() || !db) {
@@ -166,17 +269,35 @@ export default function AdminPage({ onClose }) {
     setLoading(true);
     setError('');
     try {
-      const [phoneSnap, dateSnap, historySnap, countsSnap] = await Promise.all([
+      const clinicWeekKeys = getClinicWeekKeys(selectedDate);
+      const [phoneSnap, dateSnap, historySnap, countsSnap, ...clinicSnaps] = await Promise.all([
         getDoc(doc(db, PHONE_DOC, PHONE_DOC_ID)),
         getDoc(doc(db, DATE_DATA_DOC, 'all')),
         getDoc(doc(db, SEND_HISTORY_COLLECTION, 'all')),
         getDoc(doc(db, SENT_COUNTS_DOC, 'all')),
+        ...clinicWeekKeys.flatMap((weekKey) => [
+          getDoc(doc(db, 'clinicLogRecords_english', weekKey)),
+          getDoc(doc(db, 'clinicLogRecords_math', weekKey)),
+          getDoc(doc(db, 'clinicKakaoHistory_english', weekKey)),
+          getDoc(doc(db, 'clinicKakaoHistory_math', weekKey)),
+        ]),
       ]);
 
       const phoneData = phoneSnap.exists() ? phoneSnap.data() : {};
       const dateBlob = dateSnap.exists() ? dateSnap.data() : {};
       const historyData = historySnap.exists() ? historySnap.data() : {};
       const countsData = countsSnap.exists() ? countsSnap.data() : {};
+
+      const clinicDocsByWeek = clinicWeekKeys.map((weekKey, index) => {
+        const baseIndex = index * 4;
+        return {
+          weekKey,
+          englishRecords: clinicSnaps[baseIndex],
+          mathRecords: clinicSnaps[baseIndex + 1],
+          englishHistory: clinicSnaps[baseIndex + 2],
+          mathHistory: clinicSnaps[baseIndex + 3],
+        };
+      });
 
       setStudents(Array.isArray(phoneData.students) ? phoneData.students : []);
       setStudentInfo(phoneData.studentInfo && typeof phoneData.studentInfo === 'object' ? phoneData.studentInfo : {});
@@ -186,20 +307,160 @@ export default function AdminPage({ onClose }) {
         homeworkList: dateBlob.homeworkList && typeof dateBlob.homeworkList === 'object' ? dateBlob.homeworkList : {},
         progressList: dateBlob.progressList && typeof dateBlob.progressList === 'object' ? dateBlob.progressList : {},
         progressData: dateBlob.progressData && typeof dateBlob.progressData === 'object' ? dateBlob.progressData : {},
+        attendanceData: dateBlob.attendanceData && typeof dateBlob.attendanceData === 'object' ? dateBlob.attendanceData : {},
       });
       setSendHistory(historyData.history && typeof historyData.history === 'object' ? historyData.history : {});
       setSentCounts(countsData.counts && typeof countsData.counts === 'object' ? countsData.counts : {});
+      setClinicRecords({
+        english: mergeClinicRecordDocs(
+          ...clinicDocsByWeek.map((item) => (item.englishRecords?.exists() ? (item.englishRecords.data()?.records || {}) : {}))
+        ),
+        math: mergeClinicRecordDocs(
+          ...clinicDocsByWeek.map((item) => (item.mathRecords?.exists() ? (item.mathRecords.data()?.records || {}) : {}))
+        ),
+      });
+      setClinicHistory({
+        english: mergeClinicHistoryDocs(
+          ...clinicDocsByWeek.map((item) => (item.englishHistory?.exists() ? (item.englishHistory.data()?.history || {}) : {}))
+        ),
+        math: mergeClinicHistoryDocs(
+          ...clinicDocsByWeek.map((item) => (item.mathHistory?.exists() ? (item.mathHistory.data()?.history || {}) : {}))
+        ),
+      });
     } catch (e) {
       console.error('관리자 페이지 로드 실패:', e);
       setError(e?.message || '관리자 데이터를 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     loadAdminData();
   }, [loadAdminData]);
+
+  const loadAccountAdminData = useCallback(async () => {
+    if (!isPrimaryAdmin) return;
+    setAccountLoading(true);
+    setAccountError('');
+    try {
+      const [users, accessControl] = await Promise.all([
+        listPocketbookUsers(),
+        loadPocketbookAccessControl(),
+      ]);
+      setRegisteredUsers(users);
+      setApprovedMembers(accessControl.approvedMembers || []);
+      setSignupRequests(accessControl.signupRequests || []);
+    } catch (e) {
+      console.error('계정 관리 데이터 로드 실패:', e);
+      setAccountError(e?.message || '계정 관리 데이터를 불러오지 못했습니다.');
+    } finally {
+      setAccountLoading(false);
+    }
+  }, [isPrimaryAdmin]);
+
+  useEffect(() => {
+    loadAccountAdminData();
+  }, [loadAccountAdminData]);
+
+  const handleApprovalFormChange = useCallback((field, value) => {
+    setApprovalForm((prev) => ({
+      ...prev,
+      [field]: field === 'phoneNumber' ? normalizePhoneNumber(value) : value,
+    }));
+  }, []);
+
+  const handleAddApprovedMember = useCallback(() => {
+    const nextName = String(approvalForm.name || '').trim();
+    const nextPhone = normalizePhoneNumber(approvalForm.phoneNumber || '');
+    if (!nextName || !nextPhone) {
+      alert('이름과 전화번호를 입력해주세요.');
+      return;
+    }
+    const alreadyExists = approvedMembers.some((item) =>
+      normalizePhoneNumber(item.phoneNumber) === nextPhone && String(item.name || '').trim() === nextName,
+    );
+    if (alreadyExists) {
+      alert('이미 등록된 승인 대상입니다.');
+      return;
+    }
+    setApprovedMembers((prev) => [
+      ...prev,
+      {
+        name: nextName,
+        phoneNumber: nextPhone,
+        role: approvalForm.role || 'teacher',
+        note: String(approvalForm.note || '').trim(),
+        linkedTeacherNames: [nextName],
+      },
+    ].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko')));
+    setApprovalForm({ name: '', phoneNumber: '', role: 'teacher', note: '' });
+  }, [approvalForm, approvedMembers]);
+
+  const handleRemoveApprovedMember = useCallback((phoneNumber) => {
+    setApprovedMembers((prev) => prev.filter((item) => normalizePhoneNumber(item.phoneNumber) !== normalizePhoneNumber(phoneNumber)));
+  }, []);
+
+  const handleSaveApprovedMembers = useCallback(async () => {
+    setAccountSaving(true);
+    setAccountError('');
+    try {
+      await savePocketbookAccessControl({ approvedMembers, signupRequests });
+      await loadAccountAdminData();
+      alert('승인 대상 목록이 저장되었습니다.');
+    } catch (e) {
+      console.error('승인 대상 저장 실패:', e);
+      setAccountError(e?.message || '승인 대상 목록 저장에 실패했습니다.');
+    } finally {
+      setAccountSaving(false);
+    }
+  }, [approvedMembers, signupRequests, loadAccountAdminData]);
+
+  const handleToggleAccountActive = useCallback(async (phoneNumber, nextIsActive) => {
+    const question = nextIsActive ? '이 계정을 다시 활성화할까요?' : '이 계정을 비활성화할까요?';
+    if (!window.confirm(question)) return;
+    setAccountSaving(true);
+    setAccountError('');
+    try {
+      await setPocketbookUserActive(phoneNumber, nextIsActive);
+      await loadAccountAdminData();
+    } catch (e) {
+      console.error('계정 상태 변경 실패:', e);
+      setAccountError(e?.message || '계정 상태 변경에 실패했습니다.');
+    } finally {
+      setAccountSaving(false);
+    }
+  }, [loadAccountAdminData]);
+
+  const handleApproveSignupRequest = useCallback(async (phoneNumber) => {
+    if (!window.confirm('이 가입 요청을 승인할까요? 승인되면 바로 로그인할 수 있습니다.')) return;
+    setAccountSaving(true);
+    setAccountError('');
+    try {
+      await approvePocketbookSignupRequest(phoneNumber);
+      await loadAccountAdminData();
+    } catch (e) {
+      console.error('가입 요청 승인 실패:', e);
+      setAccountError(e?.message || '가입 요청 승인에 실패했습니다.');
+    } finally {
+      setAccountSaving(false);
+    }
+  }, [loadAccountAdminData]);
+
+  const handleRejectSignupRequest = useCallback(async (phoneNumber) => {
+    if (!window.confirm('이 가입 요청을 반려할까요?')) return;
+    setAccountSaving(true);
+    setAccountError('');
+    try {
+      await rejectPocketbookSignupRequest(phoneNumber);
+      await loadAccountAdminData();
+    } catch (e) {
+      console.error('가입 요청 반려 실패:', e);
+      setAccountError(e?.message || '가입 요청 반려에 실패했습니다.');
+    } finally {
+      setAccountSaving(false);
+    }
+  }, [loadAccountAdminData]);
 
   const activeStudents = useMemo(
     () => [...new Set((Array.isArray(students) ? students : []).map(extractStudentName).filter(Boolean))],
@@ -248,6 +509,14 @@ export default function AdminPage({ onClose }) {
 
   const reportClassGroups = useMemo(() => {
     const dayHistory = Array.isArray(sendHistory[selectedDate]) ? sendHistory[selectedDate] : [];
+    const clinicEntries = CLINIC_SUBJECTS.flatMap(({ id, label }) =>
+      Object.values(clinicRecords[id] || {}).map((raw) => ({
+        student: extractStudentName(raw),
+        className: String(raw?.className || '').trim(),
+        subjectLabel: label,
+        sent: String(raw?.messageStatus || '').trim() === '카톡 발신 완료',
+      }))
+    ).filter((entry) => entry.student);
 
     return [...selectedClasses]
       .map((className) => {
@@ -300,11 +569,61 @@ export default function AdminPage({ onClose }) {
           const noticeHistory = matchedHistory.filter((entry) => entry?.타입 === '알림장');
           const completionHistory = matchedHistory.filter((entry) => entry?.타입 === '완료도');
           const counts = sentCounts?.[selectedDate]?.[className]?.[student] || {};
+          const clinicEntriesForStudent = clinicEntries.filter((entry) => entry.student === student);
+          const clinicEntriesMatchedByClass = clinicEntriesForStudent.filter((entry) =>
+            classNamesLikelyMatch(entry.className, className)
+          );
+          const matchedClinicEntries = clinicEntriesMatchedByClass.length > 0
+            ? clinicEntriesMatchedByClass
+            : clinicEntriesForStudent;
+          const clinicSentEntries = matchedClinicEntries.filter((entry) => entry.sent);
+          const clinicSubjectLabels = [...new Set(
+            (clinicSentEntries.length > 0 ? clinicSentEntries : matchedClinicEntries).map((entry) => entry.subjectLabel)
+          )];
+          const clinicHistoryBySubject = CLINIC_SUBJECTS.map(({ id, label }) => {
+            const rawEntries = Array.isArray(clinicHistory[id]?.[student]) ? clinicHistory[id][student] : [];
+            const normalizedEntries = rawEntries
+              .filter((entry) => entry && typeof entry === 'object')
+              .map((entry) => ({
+                date: String(entry.date || '').trim(),
+                content: String(entry.content || '').trim(),
+                weekLabel: String(entry.weekLabel || '').trim(),
+                recipients: Array.isArray(entry.recipients) ? entry.recipients : [],
+              }))
+              .filter((entry) => entry.date || entry.content || entry.recipients.length > 0)
+              .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+            const dateGroupsMap = new Map();
+            normalizedEntries.forEach((entry) => {
+              const key = String(entry.date || '').slice(0, 10) || '날짜 미상';
+              const current = dateGroupsMap.get(key) || [];
+              current.push(entry);
+              dateGroupsMap.set(key, current);
+            });
+            const dateGroups = Array.from(dateGroupsMap.entries())
+              .map(([dateKey, entries]) => ({
+                dateKey,
+                count: entries.length,
+                entries,
+              }))
+              .sort((a, b) => String(b.dateKey).localeCompare(String(a.dateKey)));
+            return {
+              id,
+              label,
+              entries: normalizedEntries,
+              dateGroups,
+            };
+          }).filter((item) => item.entries.length > 0);
+          const clinicSentCount = clinicHistoryBySubject.reduce((sum, item) => sum + item.entries.length, 0);
+
+          const attendanceRaw = dateData.attendanceData?.[noticeDate]?.[className]?.[student];
+          const attendanceStatus =
+            typeof attendanceRaw === 'string' && ATTENDANCE_STATUS_OPTIONS.includes(attendanceRaw) ? attendanceRaw : '';
 
           return {
             student,
             shouldSendNotice,
             shouldSendCompletion,
+            attendanceStatus,
             noticeSent: noticeHistory.length > 0 || (counts.notice || 0) > 0,
             completionSent: completionHistory.length > 0 || (counts.completion || 0) > 0,
             noticeCount: counts.notice || 0,
@@ -316,6 +635,11 @@ export default function AdminPage({ onClose }) {
             comment,
             homeworkChecksCount: homeworkChecks.length,
             progressValuesCount: progressValues.length,
+            clinicTracked: matchedClinicEntries.length > 0,
+            clinicSent: clinicSentEntries.length > 0 || clinicSentCount > 0,
+            clinicSubjectLabels,
+            clinicSentCount,
+            clinicHistoryBySubject,
           };
         });
 
@@ -331,7 +655,7 @@ export default function AdminPage({ onClose }) {
         };
       })
       .sort((a, b) => a.teacher.localeCompare(b.teacher, 'ko') || a.displayClassName.localeCompare(b.displayClassName, 'ko'));
-  }, [selectedClasses, selectedDate, sendHistory, activeStudents, studentInfo, dateData, sentCounts]);
+  }, [selectedClasses, selectedDate, sendHistory, activeStudents, studentInfo, dateData, sentCounts, clinicRecords, clinicHistory]);
 
   const teacherGroups = useMemo(() => {
     const groups = [];
@@ -359,11 +683,14 @@ export default function AdminPage({ onClose }) {
   const summary = useMemo(() => {
     const noticeTargets = reportRows.filter((row) => row.shouldSendNotice);
     const completionTargets = reportRows.filter((row) => row.shouldSendCompletion);
+    const clinicTargets = reportRows.filter((row) => row.clinicTracked);
     return {
       noticeTargetCount: noticeTargets.length,
       noticeMissingCount: noticeTargets.filter((row) => !row.noticeSent).length,
       completionTargetCount: completionTargets.length,
       completionMissingCount: completionTargets.filter((row) => !row.completionSent).length,
+      clinicTargetCount: clinicTargets.length,
+      clinicMissingCount: clinicTargets.filter((row) => !row.clinicSent).length,
     };
   }, [reportRows]);
 
@@ -433,6 +760,16 @@ export default function AdminPage({ onClose }) {
     });
   }, [buildSendPreviewText, sendHistory]);
 
+  const openClinicDetailModal = useCallback((className, studentName, subjectLabel, dateKey, entries) => {
+    setClinicDetailModal({
+      className,
+      studentName,
+      subjectLabel,
+      dateKey,
+      entries: Array.isArray(entries) ? entries : [],
+    });
+  }, []);
+
   return (
     <div className="admin-page">
       <div className="admin-page-card">
@@ -456,6 +793,120 @@ export default function AdminPage({ onClose }) {
 
         {!loading && !error ? (
           <>
+            {isPrimaryAdmin ? (
+              <div style={{ marginBottom: '20px', padding: '20px', border: '1px solid #d8b4fe', borderRadius: '14px', background: '#faf5ff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '1rem', color: '#581c87' }}>신희진 전용 계정 관리</strong>
+                    <span style={{ fontSize: '0.88rem', color: '#6b7280' }}>승인된 학원 구성원만 회원가입할 수 있고, 가입된 계정 상태도 여기서 관리합니다.</span>
+                  </div>
+                  <button type="button" className="admin-page-refresh" onClick={loadAccountAdminData} disabled={accountLoading || accountSaving}>
+                    계정 새로고침
+                  </button>
+                </div>
+
+                {accountError ? (
+                  <div style={{ marginBottom: '12px', color: '#b91c1c', fontSize: '0.9rem', fontWeight: 600 }}>{accountError}</div>
+                ) : null}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(320px, 1.4fr)', gap: '16px' }}>
+                  <section style={{ background: '#fff', border: '1px solid #e9d5ff', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '10px', color: '#4c1d95' }}>가입 요청 대기</div>
+                    {signupRequests.length === 0 ? (
+                      <div className="admin-page-empty" style={{ marginBottom: '16px' }}>현재 대기 중인 가입 요청이 없습니다.</div>
+                    ) : (
+                      <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'grid', gap: '8px', marginBottom: '16px' }}>
+                        {signupRequests.map((item) => (
+                          <div key={`request-${item.phoneNumber}-${item.name}`} style={{ padding: '10px 12px', border: '1px solid #ede9fe', borderRadius: '10px', background: '#fff' }}>
+                            <div style={{ fontWeight: 700 }}>{item.name}</div>
+                            <div style={{ fontSize: '0.84rem', color: '#6b7280' }}>{item.phoneNumber} · {item.role === 'executive' ? '운영진' : item.role === 'staff' ? '직원' : '선생님'}</div>
+                            <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '4px' }}>
+                              요청 시각: {item.requestedAt ? new Date(item.requestedAt).toLocaleString() : '-'}
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                              <button type="button" className="admin-page-refresh" onClick={() => handleApproveSignupRequest(item.phoneNumber)} disabled={accountSaving}>
+                                승인
+                              </button>
+                              <button type="button" className="admin-page-close" onClick={() => handleRejectSignupRequest(item.phoneNumber)} disabled={accountSaving}>
+                                반려
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ fontWeight: 700, marginBottom: '10px', color: '#4c1d95' }}>회원가입 승인 대상</div>
+                    <div style={{ display: 'grid', gap: '8px', marginBottom: '12px' }}>
+                      <input type="text" value={approvalForm.name} onChange={(e) => handleApprovalFormChange('name', e.target.value)} placeholder="이름" className="week-selector" style={{ minWidth: 0 }} />
+                      <input type="text" value={approvalForm.phoneNumber} onChange={(e) => handleApprovalFormChange('phoneNumber', e.target.value)} placeholder="전화번호 (숫자만)" className="week-selector" style={{ minWidth: 0 }} />
+                      <select value={approvalForm.role} onChange={(e) => handleApprovalFormChange('role', e.target.value)} className="week-selector" style={{ minWidth: 0 }}>
+                        <option value="teacher">선생님</option>
+                        <option value="staff">직원</option>
+                        <option value="executive">운영진</option>
+                      </select>
+                      <input type="text" value={approvalForm.note} onChange={(e) => handleApprovalFormChange('note', e.target.value)} placeholder="메모 (선택)" className="week-selector" style={{ minWidth: 0 }} />
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button type="button" className="admin-page-refresh" onClick={handleAddApprovedMember} disabled={accountSaving}>승인 대상 추가</button>
+                        <button type="button" className="admin-page-close" onClick={handleSaveApprovedMembers} disabled={accountSaving}>
+                          {accountSaving ? '저장 중...' : '승인 목록 저장'}
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ maxHeight: '320px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
+                      {approvedMembers.length === 0 ? (
+                        <div className="admin-page-empty">아직 승인된 사람이 없습니다.</div>
+                      ) : (
+                        approvedMembers.map((item) => (
+                          <div key={`${item.phoneNumber}-${item.name}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', padding: '10px 12px', border: '1px solid #ede9fe', borderRadius: '10px', background: '#fafafa' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700 }}>{item.name}</div>
+                              <div style={{ fontSize: '0.84rem', color: '#6b7280' }}>{item.phoneNumber} · {item.role === 'executive' ? '운영진' : item.role === 'staff' ? '직원' : '선생님'}</div>
+                              {item.note ? <div style={{ fontSize: '0.82rem', color: '#6b7280' }}>{item.note}</div> : null}
+                            </div>
+                            <button type="button" className="admin-page-close" onClick={() => handleRemoveApprovedMember(item.phoneNumber)} disabled={accountSaving}>
+                              제거
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </section>
+
+                  <section style={{ background: '#fff', border: '1px solid #e9d5ff', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '10px', color: '#4c1d95' }}>가입된 계정 목록</div>
+                    {accountLoading ? (
+                      <div className="admin-page-state">계정 불러오는 중...</div>
+                    ) : registeredUsers.length === 0 ? (
+                      <div className="admin-page-empty">가입된 계정이 없습니다.</div>
+                    ) : (
+                      <div style={{ maxHeight: '420px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
+                        {registeredUsers.map((user) => (
+                          <div key={`${user.phoneNumber}-${user.name}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', padding: '12px', border: '1px solid #ede9fe', borderRadius: '10px', background: '#fff' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700 }}>{user.name}</div>
+                              <div style={{ fontSize: '0.84rem', color: '#6b7280' }}>{user.phoneNumber}</div>
+                              <div style={{ fontSize: '0.82rem', color: user.isActive === false ? '#b91c1c' : '#047857' }}>
+                                {user.role === 'executive' ? '운영진' : user.role === 'staff' ? '직원' : '선생님'} · {user.isActive === false ? '비활성화' : '활성'}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="admin-page-refresh"
+                              onClick={() => handleToggleAccountActive(user.phoneNumber, user.isActive === false)}
+                              disabled={accountSaving}
+                            >
+                              {user.isActive === false ? '활성화' : '비활성화'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </div>
+            ) : null}
+
             <div className="admin-page-filters">
               <label>
                 날짜
@@ -469,8 +920,14 @@ export default function AdminPage({ onClose }) {
 
             <div className="admin-page-class-selector">
               <div className="admin-page-class-selector-header">
-                <strong>등원 반 선택</strong>
+                <div className="admin-page-class-selector-title">
+                  <strong>등원 반 선택</strong>
+                  <span>{selectedClasses.length}개 선택</span>
+                </div>
                 <div className="admin-page-class-selector-actions">
+                  <button type="button" onClick={() => setIsClassSelectorCollapsed((prev) => !prev)}>
+                    {isClassSelectorCollapsed ? '펼치기' : '접기'}
+                  </button>
                   <button type="button" onClick={() => setSelectedClasses(suggestedClasses)}>
                     요일 반 다시 선택
                   </button>
@@ -479,24 +936,26 @@ export default function AdminPage({ onClose }) {
                   </button>
                 </div>
               </div>
-              <div className="admin-page-class-grid">
-                {classOptionsWithMeta.map((item) => (
-                  <label key={item.className} className={`admin-page-class-option ${selectedClasses.includes(item.className) ? 'admin-page-class-option-selected' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={selectedClasses.includes(item.className)}
-                      onChange={() => toggleClassSelection(item.className)}
-                    />
-                    <div>
-                      <div className="admin-page-class-option-title">{item.displayClassName}</div>
-                      <div className="admin-page-class-option-meta">
-                        {item.teacher || '-'}{item.day ? ` · ${item.day}` : ''}
-                        {item.matchesSelectedWeekday ? ' · 자동 선택' : ''}
+              {!isClassSelectorCollapsed ? (
+                <div className="admin-page-class-grid">
+                  {classOptionsWithMeta.map((item) => (
+                    <label key={item.className} className={`admin-page-class-option ${selectedClasses.includes(item.className) ? 'admin-page-class-option-selected' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={selectedClasses.includes(item.className)}
+                        onChange={() => toggleClassSelection(item.className)}
+                      />
+                      <div>
+                        <div className="admin-page-class-option-title">{item.displayClassName}</div>
+                        <div className="admin-page-class-option-meta">
+                          {item.teacher || '-'}{item.day ? ` · ${item.day}` : ''}
+                          {item.matchesSelectedWeekday ? ' · 자동 선택' : ''}
+                        </div>
                       </div>
-                    </div>
-                  </label>
-                ))}
-              </div>
+                    </label>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className="admin-page-summary">
@@ -509,6 +968,11 @@ export default function AdminPage({ onClose }) {
                 <strong>완료도</strong>
                 <span>완료 {summary.completionTargetCount - summary.completionMissingCount}명</span>
                 <span>누락 {summary.completionMissingCount}명</span>
+              </div>
+              <div className="admin-page-summary-card">
+                <strong>클리닉 발송</strong>
+                <span>완료 {summary.clinicTargetCount - summary.clinicMissingCount}명</span>
+                <span>누락 {summary.clinicMissingCount}명</span>
               </div>
               <div className="admin-page-summary-card">
                 <strong>선택 반</strong>
@@ -540,15 +1004,16 @@ export default function AdminPage({ onClose }) {
                     <th>선생님</th>
                     <th>반명</th>
                     <th>학생</th>
+                    <th>출결</th>
                     <th>알림장 발송</th>
                     <th>완료도 발송</th>
-                    <th>입력 현황</th>
+                    <th>클리닉 발송</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reportRows.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="admin-page-empty">
+                      <td colSpan={7} className="admin-page-empty">
                         선택된 반이 없거나, 선택한 반에 학생이 없습니다.
                       </td>
                     </tr>
@@ -568,16 +1033,33 @@ export default function AdminPage({ onClose }) {
                               </td>
                             ) : null}
                             <td>{row.student}</td>
+                            <td className="admin-page-attendance-text-cell">
+                              {row.attendanceStatus ? (
+                                <span
+                                  className={`admin-page-attendance-text admin-page-attendance-text--${attendanceStatusTextClass(row.attendanceStatus)}`}
+                                >
+                                  {row.attendanceStatus}
+                                </span>
+                              ) : (
+                                <span className="admin-page-attendance-text-none">—</span>
+                              )}
+                            </td>
                             <td className={row.shouldSendNotice && !row.noticeSent ? 'admin-page-missing' : ''}>
                               {row.noticeSent ? (
                                 <button
                                   type="button"
                                   className="admin-page-link-button"
-                                  onClick={() => openSendDetailModal(classGroup.className, row.student, '알림장', row.noticeDate, selectedDate)}
+                                  onClick={() =>
+                                    openSendDetailModal(classGroup.className, row.student, '알림장', row.noticeDate, selectedDate)
+                                  }
                                 >
                                   {`${formatShortDate(row.noticeDate)} 완료 (${row.noticeCount})`}
                                 </button>
-                              ) : row.shouldSendNotice ? '누락' : '-'}
+                              ) : row.shouldSendNotice ? (
+                                '누락'
+                              ) : (
+                                '-'
+                              )}
                             </td>
                             <td className={row.shouldSendCompletion && !row.completionSent ? 'admin-page-missing' : ''}>
                               {row.completionSent ? (
@@ -590,14 +1072,36 @@ export default function AdminPage({ onClose }) {
                                 </button>
                               ) : row.shouldSendCompletion ? '누락' : '-'}
                             </td>
-                            <td>
-                              {[
-                                row.homeworkChecksCount > 0 ? `완료도 ${row.homeworkChecksCount}개` : null,
-                                row.progressValuesCount > 0 ? `진도 ${row.progressValuesCount}개` : null,
-                                row.individualHomework ? '개별 숙제' : null,
-                                row.individualProgress ? '개별 진도' : null,
-                                row.comment ? '코멘트' : null,
-                              ].filter(Boolean).join(' / ') || '-'}
+                            <td className={row.clinicTracked && !row.clinicSent ? 'admin-page-missing' : row.clinicSent ? 'admin-page-complete' : ''}>
+                              {row.clinicTracked ? (
+                                row.clinicHistoryBySubject.length > 0 ? (
+                                  <div className="admin-page-clinic-cell">
+                                    {row.clinicHistoryBySubject.map((subjectItem) => (
+                                      <div key={subjectItem.id} className="admin-page-clinic-block">
+                                        <div className="admin-page-clinic-summary">
+                                          {subjectItem.label} 완료 ({subjectItem.entries.length}건)
+                                        </div>
+                                        <div className="admin-page-clinic-dates">
+                                          {subjectItem.dateGroups.map((group) => (
+                                            <button
+                                              key={`${subjectItem.id}-${group.dateKey}`}
+                                              type="button"
+                                              className="admin-page-link-button"
+                                              onClick={() => openClinicDetailModal(classGroup.className, row.student, subjectItem.label, group.dateKey, group.entries)}
+                                            >
+                                              {`${formatShortDate(group.dateKey)} (${group.count}건)`}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  `${row.clinicSubjectLabels.join('/')} 미발송`
+                                )
+                              ) : (
+                                '-'
+                              )}
                             </td>
                           </tr>
                         ))
@@ -644,6 +1148,45 @@ export default function AdminPage({ onClose }) {
                             <div>학생: {entry.학생명 || '-'}</div>
                             <div>과제: {Array.isArray(entry.과제목록) ? entry.과제목록.join(', ') : '-'}</div>
                             <div>진도: {Array.isArray(entry.진도목록) ? entry.진도목록.join(', ') : (entry.진도상황 || '-')}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {clinicDetailModal ? (
+              <div className="admin-page-modal-overlay" onClick={() => setClinicDetailModal(null)}>
+                <div className="admin-page-modal-card" onClick={(e) => e.stopPropagation()}>
+                  <div className="admin-page-modal-header">
+                    <div>
+                      <h3>{clinicDetailModal.studentName} · {clinicDetailModal.subjectLabel} 클리닉</h3>
+                      <p>
+                        {formatClassName(clinicDetailModal.className)} · {clinicDetailModal.dateKey || '-'}
+                      </p>
+                    </div>
+                    <button type="button" className="admin-page-close" onClick={() => setClinicDetailModal(null)}>
+                      닫기
+                    </button>
+                  </div>
+
+                  <div className="admin-page-modal-section">
+                    <strong>전송 이력</strong>
+                    {clinicDetailModal.entries.length === 0 ? (
+                      <div className="admin-page-modal-empty">저장된 전송 이력이 없습니다.</div>
+                    ) : (
+                      <div className="admin-page-modal-entry-list">
+                        {clinicDetailModal.entries.map((entry, index) => (
+                          <div key={`${entry.date || 'no-date'}-${index}`} className="admin-page-modal-entry">
+                            <div className="admin-page-modal-entry-time">{formatDateTimeText(entry.date)}</div>
+                            <div>주차: {entry.weekLabel || '-'}</div>
+                            <div style={{ marginTop: '8px' }}>
+                              수신자: {entry.recipients.length > 0
+                                ? entry.recipients.map((recipient) => `${recipient.type || '-'} ${recipient.status || '-'}`).join(', ')
+                                : '-'}
+                            </div>
+                            <pre className="admin-page-modal-pre">{entry.content || '저장된 내용이 없습니다.'}</pre>
                           </div>
                         ))}
                       </div>

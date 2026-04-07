@@ -278,6 +278,18 @@ const parseTimeRange = (timeStr) => {
       end: `${match[3].padStart(2, '0')}:${match[4]}`
     }
   }
+  const singleTimeMatch = timeStr.match(/(\d{1,2}):(\d{2})/)
+  if (singleTimeMatch) {
+    const startHour = parseInt(singleTimeMatch[1], 10)
+    const startMinute = parseInt(singleTimeMatch[2], 10)
+    const endTotalMinutes = (startHour * 60) + startMinute + 120
+    const endHour = Math.floor(endTotalMinutes / 60)
+    const endMinute = endTotalMinutes % 60
+    return {
+      start: `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`,
+      end: `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`,
+    }
+  }
   return null
 }
 
@@ -310,8 +322,50 @@ const parseTimeRanges = (timeStr) => {
   return times
 }
 
+const normalizeLiveClassroom = (classroomText) => {
+  const raw = String(classroomText || '').trim()
+  if (!raw) return { classroom: '', classroomNum: null, displayClassroom: null }
+  if (raw.includes('컨설팅')) return { classroom: '컨설팅룸', classroomNum: null, displayClassroom: '컨설팅룸' }
+  if (raw.includes('상담')) return { classroom: '상담실', classroomNum: null, displayClassroom: '상담실' }
+  const match = raw.match(/\d+/)
+  const classroomNum = match ? parseInt(match[0], 10) : null
+  if (classroomNum && classroomNum >= 1 && classroomNum <= 22) {
+    return { classroom: raw, classroomNum, displayClassroom: classroomNum }
+  }
+  return { classroom: raw, classroomNum: null, displayClassroom: null }
+}
 
-function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey }) {
+const buildLiveScheduleDataFromClassCatalog = (classCatalog) => {
+  if (!classCatalog || typeof classCatalog !== 'object' || Array.isArray(classCatalog)) return []
+  const out = []
+  Object.entries(classCatalog).forEach(([classKey, raw], index) => {
+    const days = parseDays(String(raw?.day || ''))
+    const timeRange = parseTimeRange(String(raw?.time || ''))
+    const classroomInfo = normalizeLiveClassroom(raw?.room || raw?.classroom || '')
+    const displayClassroom = classroomInfo.displayClassroom
+    if (!days.length || !timeRange || displayClassroom == null) return
+    out.push({
+      classId: classKey || `live_${index}`,
+      subject: String(raw?.subject || raw?.className || '').trim(),
+      courseName: String(raw?.className || raw?.subject || '').trim(),
+      grade: String(raw?.className || '').trim(),
+      instructor: String(raw?.teacher || '').trim(),
+      campus: String(raw?.hall || '').trim(),
+      days,
+      time: String(raw?.time || '').trim(),
+      timeRange,
+      classroom: classroomInfo.classroom,
+      classroomNum: classroomInfo.classroomNum,
+      displayClassroom,
+      note: String(raw?.newStudentNotice || '').trim(),
+      tuition: String(raw?.tuition || '').trim(),
+    })
+  })
+  return out
+}
+
+
+function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey, liveClassSync = false }) {
   const [selectedDay, setSelectedDay] = useState(1) // 월요일부터 시작
   const [hoveredClass, setHoveredClass] = useState(null) // 호버된 수업 정보
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 }) // 툴팁 위치
@@ -337,23 +391,26 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey }) {
   
   // 주차 옵션 업데이트 (localStorage 변경 시)
   useEffect(() => {
+    if (liveClassSync) return undefined;
     updateWeekOptions();
     const interval = setInterval(updateWeekOptions, 3000); // 3초마다 업데이트
     return () => clearInterval(interval);
-  }, []);
+  }, [liveClassSync]);
   
   // 카카오톡 템플릿 코드 불러오기
   useEffect(() => {
+    if (liveClassSync) return;
     const stored = localStorage.getItem('weeklyScheduleKakaoTemplateCode') || '';
     setTemplateCode(stored);
-  }, []);
+  }, [liveClassSync]);
   
   // 주차 변경 시 초기 weekKey 업데이트
   useEffect(() => {
+    if (liveClassSync) return;
     if (initialWeekKey) {
       setSelectedWeekKey(initialWeekKey);
     }
-  }, [initialWeekKey]);
+  }, [initialWeekKey, liveClassSync]);
   
   // 카카오톡 템플릿 코드 저장
   const handleSaveTemplateCode = () => {
@@ -364,6 +421,7 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey }) {
   
   // 학생 정보 불러오기
   useEffect(() => {
+    if (liveClassSync) return;
     try {
       const stored = localStorage.getItem('weeklyScheduleStudents');
       if (stored) {
@@ -374,10 +432,11 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey }) {
     } catch (error) {
       console.warn('학생 정보 불러오기 실패:', error);
     }
-  }, []);
+  }, [liveClassSync]);
   
   // 휴강 데이터 실시간 동기화
   useEffect(() => {
+    if (liveClassSync) return undefined;
     if (selectedWeekKey === currentWeekKey) {
       // 먼저 로컬 스토리지에서 불러오기
       try {
@@ -425,10 +484,36 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey }) {
         };
       }
     }
-  }, [selectedWeekKey, currentWeekKey]);
+  }, [selectedWeekKey, currentWeekKey, liveClassSync]);
 
   // 주차별 모든 학년 데이터 불러오기 및 합치기 (실시간 동기화)
   useEffect(() => {
+    if (liveClassSync) {
+      if (scheduleData && scheduleData.length > 0) {
+        setAllScheduleData(scheduleData)
+        return undefined
+      }
+
+      if (!isFirebaseConfigured() || !db) {
+        setAllScheduleData([])
+        return undefined
+      }
+
+      const phoneRef = doc(db, 'homeworkCompletionPhoneNumbers', 'all')
+      const unsubscribe = onSnapshot(
+        phoneRef,
+        (docSnap) => {
+          const data = docSnap.exists() ? docSnap.data() : {}
+          setAllScheduleData(buildLiveScheduleDataFromClassCatalog(data?.classCatalog || {}))
+        },
+        (error) => {
+          console.warn('반 만들기 연동 주간시간표 로드 실패:', error)
+          setAllScheduleData([])
+        }
+      )
+      return () => unsubscribe()
+    }
+
     if (!selectedWeekKey) {
       // weekKey가 없으면 기존 scheduleData만 사용
       setAllScheduleData(scheduleData || [])
@@ -724,7 +809,7 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey }) {
     return () => {
       unsubscribes.forEach(unsubscribe => unsubscribe());
     };
-  }, [selectedWeekKey, scheduleData]);
+  }, [selectedWeekKey, scheduleData, liveClassSync]);
   
   // 강의실 번호 및 특수 공간 (1-4, 컨설팅룸, 5-7, 상담실, 8-22)
   const classrooms = useMemo(() => {
@@ -752,7 +837,6 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey }) {
   useEffect(() => {
     if (allScheduleData.length > 0) {
       const totalDisplayed = classrooms.reduce((sum, room) => {
-        if (typeof room === 'string') return sum;
         return sum + getClassesForDayAndRoom(selectedDay, room).length;
       }, 0);
       
@@ -783,13 +867,10 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey }) {
 
   // 특정 요일과 강의실의 수업 찾기 및 겹침 처리
   const getClassesForDayAndRoom = (day, room) => {
-    // 특수 공간(컨설팅룸, 상담실)은 수업이 없음
-    if (typeof room === 'string') {
-      return []
-    }
     const classes = allScheduleData.filter(cls => {
       if (!cls.days || !cls.days.includes(day)) return false
-      if (!cls.classroomNum || cls.classroomNum !== room) return false
+      const targetRoom = cls.displayClassroom ?? cls.classroomNum ?? cls.classroom
+      if (targetRoom !== room) return false
       return true
     })
     
@@ -1031,42 +1112,50 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey }) {
       <div className="viewer-header">
         <h2>주간시간표</h2>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <label style={{ fontSize: '0.9rem', fontWeight: '500' }}>주차 선택:</label>
-            <select
-              value={selectedWeekKey}
-              onChange={(e) => setSelectedWeekKey(e.target.value)}
-              style={{
-                padding: '6px 12px',
-                fontSize: '0.9rem',
-                border: '1px solid #ddd',
-                borderRadius: '6px',
-                backgroundColor: 'white',
-                cursor: 'pointer',
-                minWidth: '200px'
-              }}
-            >
-              {weekOptions.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            className="day-btn"
-            onClick={() => setShowTemplateCodeModal(true)}
-            style={{ background: '#3498db', color: 'white', border: 'none' }}
-          >
-            카카오톡 템플릿 코드 설정
-          </button>
-          <button
-            className="day-btn"
-            onClick={() => setShowStudentUploadModal(true)}
-            style={{ background: '#27ae60', color: 'white', border: 'none' }}
-          >
-            학생 정보 업로드
-          </button>
+          {liveClassSync ? (
+            <div style={{ padding: '6px 12px', borderRadius: '999px', background: '#ecfeff', color: '#0f766e', fontWeight: '700', fontSize: '0.9rem' }}>
+              반 만들기 실시간 연동
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: '500' }}>주차 선택:</label>
+                <select
+                  value={selectedWeekKey}
+                  onChange={(e) => setSelectedWeekKey(e.target.value)}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '0.9rem',
+                    border: '1px solid #ddd',
+                    borderRadius: '6px',
+                    backgroundColor: 'white',
+                    cursor: 'pointer',
+                    minWidth: '200px'
+                  }}
+                >
+                  {weekOptions.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="day-btn"
+                onClick={() => setShowTemplateCodeModal(true)}
+                style={{ background: '#3498db', color: 'white', border: 'none' }}
+              >
+                카카오톡 템플릿 코드 설정
+              </button>
+              <button
+                className="day-btn"
+                onClick={() => setShowStudentUploadModal(true)}
+                style={{ background: '#27ae60', color: 'white', border: 'none' }}
+              >
+                학생 정보 업로드
+              </button>
+            </>
+          )}
           <div className="day-selector">
             {WEEKDAY_NUMBERS.map((dayNum) => (
               <button

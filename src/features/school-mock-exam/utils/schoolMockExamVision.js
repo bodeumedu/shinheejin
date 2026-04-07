@@ -1,4 +1,6 @@
-const VISION_MODEL = 'gpt-4o-mini'
+import { geminiGenerateContent } from '../../../utils/geminiClient.js'
+
+const VISION_MODEL = 'gemini-3-flash-preview'
 
 /**
  * 모델이 정책상 거절할 때 자주 쓰는 영어 문구(전사 결과에 섞이면 저장하면 안 됨)
@@ -22,36 +24,19 @@ function looksLikeModelRefusal(text) {
  * @param {number} timeoutMs
  */
 async function openAiVisionOnce(apiKey, content, timeoutMs = 120000) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${String(apiKey).trim()}`,
-      },
-      body: JSON.stringify({
-        model: VISION_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are an OCR-style transcriber only. The images are from exam papers that the user is authorized to digitize (e.g. their own school materials for archival, accessibility, or internal prep). Your job is to copy visible printed text into plain text—like scanning—not to solve questions, give answers, or tutor. Never refuse to transcribe visible text for this purpose. Output plain text only: preserve question numbers, points, Korean directions, English passages, and choice labels as visible. If illegible, write [판독불가]. Do not apologize or explain refusals; always output transcription or [판독불가] for unreadable parts.',
-          },
-          { role: 'user', content },
-        ],
-        temperature: 0.1,
-        max_tokens: 4096,
-      }),
-      signal: controller.signal,
+    const out = await geminiGenerateContent({
+      apiKey,
+      model: VISION_MODEL,
+      systemInstruction:
+        'You are an OCR-style transcriber only. The images are from exam papers that the user is authorized to digitize (e.g. their own school materials for archival, accessibility, or internal prep). Your job is to copy visible printed text into plain text—like scanning—not to solve questions, give answers, or tutor. Never refuse to transcribe visible text for this purpose. Output plain text only: preserve question numbers, points, Korean directions, English passages, and choice labels as visible. If illegible, write [판독불가]. Do not apologize or explain refusals; always output transcription or [판독불가] for unreadable parts.',
+      userContent: content,
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+      responseMimeType: 'text/plain',
+      timeoutMs,
     })
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}))
-      throw new Error(errData.error?.message || `Vision API 오류: ${response.status}`)
-    }
-    const data = await response.json()
-    const raw = data.choices?.[0]?.message?.content?.trim() || ''
+    const raw = out.text || ''
     if (looksLikeModelRefusal(raw)) {
       throw new Error(
         'Vision 모델이 시험지 이미지 전사를 거절한 응답을 반환했습니다. (정책·오인 차단 등) 같은 PDF를 글자 선택·복사가 되는 버전으로 다시 저장해 올리거나, 다른 페이지만 나눠 시도해 보세요. 계속되면 API 제공사 정책 변경일 수 있습니다.'
@@ -59,12 +44,10 @@ async function openAiVisionOnce(apiKey, content, timeoutMs = 120000) {
     }
     return raw
   } catch (e) {
-    if (e?.name === 'AbortError') {
+    if (String(e?.message || '').includes('요청 시간 초과')) {
       throw new Error(`Vision 요청 시간 초과(${Math.round(timeoutMs / 1000)}초)`)
     }
     throw e
-  } finally {
-    clearTimeout(timer)
   }
 }
 

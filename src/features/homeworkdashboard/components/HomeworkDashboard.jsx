@@ -5,6 +5,12 @@ import { db, isFirebaseConfigured } from '../../../utils/firebase';
 const HOMEWORK_COMPLETION_PHONE_DOC = 'homeworkCompletionPhoneNumbers';
 const HOMEWORK_COMPLETION_PHONE_DOC_ID = 'all';
 const ENGLISH_PROGRESS_COLLECTION = 'englishHomeworkProgress';
+const HALL_OPTIONS = ['전체', '중앙관', '별양관'];
+const SCHOOL_LEVEL_OPTIONS = ['전체', '중등', '고등'];
+const SUBJECT_FILTER_OPTIONS = ['전체', '영어', '수학', '국어', '일본어', '중국어'];
+const SUBJECT_OPTIONS_BY_LENGTH = SUBJECT_FILTER_OPTIONS.filter((item) => item !== '전체').sort(
+  (a, b) => b.length - a.length
+);
 
 function parseClassNames(classNameStr) {
   if (!classNameStr || typeof classNameStr !== 'string') return [];
@@ -30,6 +36,124 @@ function normalizeDashboardPhoneEntry(entry) {
   if (student) normalized.student = student;
   if (parent) normalized.parent = parent;
   return Object.keys(normalized).length ? normalized : null;
+}
+
+function inferSchoolLevel(className) {
+  const raw = String(className || '').replace(/\s+/g, '');
+  if (!raw) return '';
+  if (/중\d|중등|중학|중학생|초6/.test(raw)) return '중등';
+  if (/고\d|고등|고교|고등부|수능/.test(raw)) return '고등';
+  return '';
+}
+
+function isHighMathTeacherClass(teacherName = '') {
+  const compact = String(teacherName || '').replace(/\s+/g, '');
+  if (!compact) return false;
+  return compact.includes('이민하') || compact.includes('김지수');
+}
+
+function resolveClassSubject({ subject = '', teacher = '' }) {
+  const normalizedSubject = String(subject || '').trim();
+  if (normalizedSubject) return normalizedSubject;
+  if (isHighMathTeacherClass(teacher)) return '수학';
+  return '';
+}
+
+function resolveSchoolLevelForEntry(entry) {
+  if (isHighMathTeacherClass(entry?.teacher)) return '고등';
+  return inferSchoolLevel(entry?.className || entry?.classKey || '');
+}
+
+function parseClassMetaFromKey(classKey) {
+  const parts = String(classKey || '')
+    .split('_')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const year = parts[0] || '';
+  const teacher = parts[1] || '';
+
+  if (parts.length === 5) {
+    const fourth = parts[3] || '';
+    const fifth = parts[4] || '';
+    const directSubject = SUBJECT_OPTIONS_BY_LENGTH.find((candidate) => fourth === candidate);
+    const fifthCompact = fifth.replace(/\s+/g, ' ').trim();
+    const fifthDayTimeMatch = fifthCompact.match(/^([월화수목금토일]{1,7})\s+(.+)$/);
+    if (directSubject && fifthDayTimeMatch) {
+      return {
+        year,
+        teacher,
+        className: parts[2] || '',
+        subject: directSubject,
+        day: fifthDayTimeMatch[1] || '',
+        time: fifthDayTimeMatch[2] || '',
+      };
+    }
+
+    const mixedSubject = SUBJECT_OPTIONS_BY_LENGTH.find((candidate) => fourth.includes(candidate));
+    const mixedDay = mixedSubject ? fourth.replace(mixedSubject, '').replace(/\s+/g, '') : '';
+    if (mixedSubject && /^[월화수목금토일]{1,7}$/.test(mixedDay)) {
+      return {
+        year,
+        teacher,
+        className: parts[2] || '',
+        subject: mixedSubject,
+        day: mixedDay,
+        time: fifth || '',
+      };
+    }
+    return {
+      year,
+      teacher,
+      className: parts[2] || '',
+      subject: '',
+      day: fourth || '',
+      time: fifth || '',
+    };
+  }
+
+  if (parts.length === 6) {
+    if (SUBJECT_OPTIONS_BY_LENGTH.includes(parts[3] || '') && /^[월화수목금토일]{1,7}$/.test(parts[4] || '')) {
+      return {
+        year,
+        teacher,
+        className: parts[2] || '',
+        subject: parts[3] || '',
+        day: parts[4] || '',
+        time: parts[5] || '',
+      };
+    }
+    return {
+      year,
+      teacher,
+      className: [parts[2] || '', parts[3] || ''].filter(Boolean).join(' ').trim(),
+      subject: '',
+      day: parts[4] || '',
+      time: parts[5] || '',
+    };
+  }
+
+  const tail = parts.slice(2);
+  return {
+    year,
+    teacher,
+    className: tail.slice(0, -2).join(' ').trim(),
+    subject: '',
+    day: tail[tail.length - 2] || '',
+    time: tail[tail.length - 1] || '',
+  };
+}
+
+function formatClassDisplay(classKey, catalogItem = null) {
+  const base = parseClassMetaFromKey(classKey);
+  const className = String(catalogItem?.className || base.className || classKey || '').trim();
+  const subject = String(catalogItem?.subject || base.subject || '').trim();
+  const hall = String(catalogItem?.hall || '중앙관').trim();
+  const day = String(catalogItem?.day || base.day || '').trim();
+  const time = String(catalogItem?.time || base.time || '').trim();
+  const title = subject ? `${className} · ${subject}` : className;
+  if (title && day && time) return `${title} (${hall} · ${day} ${time})`;
+  if (title) return `${title} (${hall})`;
+  return String(classKey || '');
 }
 
 function buildCompletionClassMap(data) {
@@ -246,46 +370,119 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
 
   // 영어 과제 관리 전용: 전화번호 엑셀 업로드 (선택한 반에만 적용)
   const [phoneUploading, setPhoneUploading] = useState(false);
-  // 숙제 완료도 → 영어 과제 이전: 이동된 반 목록 (doc id 목록)
-  const [migratedDocIds, setMigratedDocIds] = useState([]);
+  // 숙제 완료도 → 전체 완성도와 테스트관리: 연동된 반 목록 (실시간)
+  const [migratedClasses, setMigratedClasses] = useState([]);
   const [migrationLoading, setMigrationLoading] = useState(false);
+  const [selectedHallFilter, setSelectedHallFilter] = useState('전체');
+  const [selectedSchoolLevelFilter, setSelectedSchoolLevelFilter] = useState('전체');
+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('전체');
+  const [classSearchTerm, setClassSearchTerm] = useState('');
   const completionSyncRunningRef = useRef(false);
   const pendingCompletionSyncDataRef = useRef(null);
 
-  // 숙제 완료도에서 이전한 반만 표시 (옛날 영어 과제 관리로 만든 문서 제외)
-  const loadMigratedDocIds = useCallback(async () => {
-    if (!isFirebaseConfigured() || !db || subject !== 'english') return;
-    try {
-      const snap = await getDocs(collection(db, ENGLISH_PROGRESS_COLLECTION));
-      const ids = snap.docs
-        .filter((d) => d.data()?.migratedFromCompletion === true)
-        .map((d) => d.id);
-      setMigratedDocIds(ids);
-    } catch (e) {
-      console.warn('이동된 반 목록 로드 실패:', e);
-    }
+  useEffect(() => {
+    if (subject !== 'english' || !isFirebaseConfigured() || !db) return undefined;
+    const unsubscribe = onSnapshot(
+      collection(db, ENGLISH_PROGRESS_COLLECTION),
+      (snap) => {
+        const next = snap.docs
+          .filter((docSnap) => docSnap.data()?.migratedFromCompletion === true)
+          .map((docSnap) => {
+            const data = docSnap.data() || {};
+            const classKey = String(data.migratedClassName || docSnap.id).trim();
+            const parsed = parseClassMetaFromKey(classKey);
+            const subjectLabel = resolveClassSubject({
+              subject: String(data.subject || parsed.subject || '').trim(),
+              teacher: String(data.teacher || parsed.teacher || '').trim(),
+            });
+            const hall = String(data.hall || '중앙관').trim() || '중앙관';
+            const className = String(data.className || parsed.className || classKey).trim();
+            const teacher = String(data.teacher || parsed.teacher || '').trim();
+            const schoolLevel = String(data.schoolLevel || '').trim() || resolveSchoolLevelForEntry({
+              teacher,
+              className,
+              classKey,
+            });
+            return {
+              id: docSnap.id,
+              classKey,
+              className,
+              displayName: String(data.displayName || formatClassDisplay(classKey, data)).trim() || classKey,
+              hall,
+              subject: subjectLabel,
+              teacher,
+              day: String(data.day || parsed.day || '').trim(),
+              time: String(data.time || parsed.time || '').trim(),
+              schoolLevel,
+              group: getSchoolGradeGroup(classKey),
+            };
+          })
+          .sort((a, b) => {
+            const groupOrder =
+              SCHOOL_GRADE_ORDER.indexOf(a.group) - SCHOOL_GRADE_ORDER.indexOf(b.group);
+            if (groupOrder !== 0) return groupOrder;
+            return a.displayName.localeCompare(b.displayName, 'ko-KR');
+          });
+        setMigratedClasses(next);
+      },
+      (error) => {
+        console.warn('연동된 반 실시간 로드 실패:', error);
+      }
+    );
+    return () => unsubscribe();
   }, [subject]);
 
-  useEffect(() => {
-    if (subject === 'english') loadMigratedDocIds();
-  }, [subject, loadMigratedDocIds]);
+  const filteredMigratedClasses = useMemo(() => {
+    const keyword = String(classSearchTerm || '').trim().toLowerCase();
+    return migratedClasses.filter((entry) => {
+      if (
+        selectedHallFilter !== '전체' &&
+        String(entry.hall || '중앙관').trim() !== selectedHallFilter
+      ) {
+        return false;
+      }
+      if (selectedSchoolLevelFilter !== '전체' && String(entry.schoolLevel || '').trim() !== selectedSchoolLevelFilter) {
+        return false;
+      }
+      if (selectedSubjectFilter !== '전체' && String(entry.subject || '').trim() !== selectedSubjectFilter) {
+        return false;
+      }
+      if (!keyword) return true;
+      const haystack = [
+        entry.displayName,
+        entry.className,
+        entry.classKey,
+        entry.teacher,
+        entry.subject,
+        entry.day,
+        entry.time,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [classSearchTerm, migratedClasses, selectedHallFilter, selectedSchoolLevelFilter, selectedSubjectFilter]);
 
   // 이동된 반을 학교·학년별로 그룹화 (반 이름 기준)
   const migratedBySchoolGrade = useMemo(() => {
     const map = new Map();
-    for (const id of migratedDocIds) {
-      const group = getSchoolGradeGroup(id);
+    for (const entry of filteredMigratedClasses) {
+      const group = entry.group;
       if (!map.has(group)) map.set(group, []);
-      map.get(group).push(id);
+      map.get(group).push(entry);
     }
     const order = SCHOOL_GRADE_ORDER.filter((g) => map.has(g));
     const rest = [...map.keys()].filter((g) => !SCHOOL_GRADE_ORDER.includes(g));
     return [...order, ...rest].map((group) => ({ group, ids: map.get(group) }));
-  }, [migratedDocIds]);
+  }, [filteredMigratedClasses]);
 
   const syncMigratedClassesFromCompletion = useCallback(async (completionData, { showAlert = false, setLoading = false } = {}) => {
     if (subject !== 'english' || !isFirebaseConfigured() || !db) return;
     const classMap = buildCompletionClassMap(completionData || {});
+    const classCatalog =
+      completionData?.classCatalog && typeof completionData.classCatalog === 'object'
+        ? completionData.classCatalog
+        : {};
 
     if (setLoading) setMigrationLoading(true);
     try {
@@ -307,6 +504,25 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
         if (!safeDocId) continue;
 
         const existing = existingMigratedMap.get(safeDocId) || {};
+        const parsed = parseClassMetaFromKey(className);
+        const catalogItem =
+          classCatalog[className] && typeof classCatalog[className] === 'object'
+            ? classCatalog[className]
+            : {};
+        const teacher = String(catalogItem.teacher || parsed.teacher || '').trim();
+        const subjectLabel = resolveClassSubject({
+          subject: String(catalogItem.subject || parsed.subject || '').trim(),
+          teacher,
+        });
+        const classLabel = String(catalogItem.className || parsed.className || className).trim();
+        const hall = String(catalogItem.hall || '중앙관').trim() || '중앙관';
+        const day = String(catalogItem.day || parsed.day || '').trim();
+        const time = String(catalogItem.time || parsed.time || '').trim();
+        const schoolLevel = resolveSchoolLevelForEntry({
+          teacher,
+          className: classLabel,
+          classKey: className,
+        });
         const nextStudents = Array.isArray(entry.students) ? [...entry.students] : [];
         const studentSet = new Set(nextStudents);
         const nextProgressData = {};
@@ -340,14 +556,28 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
           phoneNumbers: nextPhoneNumbers,
           migratedFromCompletion: true,
           migratedClassName: className,
+          className: classLabel,
+          displayName: formatClassDisplay(className, {
+            ...catalogItem,
+            className: classLabel,
+            hall,
+            subject: subjectLabel,
+            teacher,
+            day,
+            time,
+          }),
+          hall,
+          subject: subjectLabel,
+          teacher,
+          day,
+          time,
+          schoolLevel,
           lastSyncedFromCompletion: now,
         }, { merge: true });
       }
 
-      await loadMigratedDocIds();
-
       if (showAlert) {
-        alert(`✅ 숙제 과제 완료도 기준으로 동기화되었습니다.\n반 ${classMap.size}개가 현재 영어 과제 관리에 반영되었습니다.`);
+        alert(`✅ 숙제 과제 완료도 기준으로 동기화되었습니다.\n반 ${classMap.size}개가 현재 전체 완성도와 테스트관리에 반영되었습니다.`);
       }
     } catch (e) {
       console.error(e);
@@ -357,7 +587,7 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
     } finally {
       if (setLoading) setMigrationLoading(false);
     }
-  }, [subject, loadMigratedDocIds]);
+  }, [subject]);
 
   useEffect(() => {
     if (subject !== 'english' || !isFirebaseConfigured() || !db) return undefined;
@@ -404,7 +634,7 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
 
   const runMigrationFromCompletion = useCallback(async () => {
     if (subject !== 'english' || !isFirebaseConfigured() || !db) return;
-    if (!window.confirm('숙제 과제 완료도 기준으로 영어 과제 관리 반/학생 명단을 지금 바로 다시 동기화할까요?')) return;
+    if (!window.confirm('숙제 과제 완료도 기준으로 전체 완성도와 테스트관리 반/학생 명단을 지금 바로 다시 동기화할까요?')) return;
 
     try {
       const phoneRef = doc(db, HOMEWORK_COMPLETION_PHONE_DOC, HOMEWORK_COMPLETION_PHONE_DOC_ID);
@@ -419,18 +649,6 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
       alert('동기화 중 오류가 발생했습니다: ' + (e?.message || e));
     }
   }, [subject, syncMigratedClassesFromCompletion]);
-
-  const handleDeleteMigratedClass = useCallback(async (docId) => {
-    if (subject !== 'english' || !isFirebaseConfigured() || !db) return;
-    if (!window.confirm(`"${docId}" 반을 삭제할까요? (Firestore에서 제거됩니다)`)) return;
-    try {
-      await deleteDoc(doc(db, ENGLISH_PROGRESS_COLLECTION, docId));
-      await loadMigratedDocIds();
-    } catch (e) {
-      console.error(e);
-      alert('삭제 중 오류: ' + (e?.message || e));
-    }
-  }, [subject, loadMigratedDocIds]);
 
   const getEnglishDocId = useCallback(() => {
     if (selectedSchool === '중학교 1학년' && selectedTeacher) {
@@ -758,103 +976,111 @@ export default function HomeworkDashboard({ subject = 'english', onClose, onShow
               <>
                 {/* 완료도 기준 반/학생 동기화 */}
                 {subject === 'english' && (
-                  <div style={{ gridColumn: '1 / -1', marginBottom: '20px', padding: '16px', backgroundColor: '#fef3c7', borderRadius: '8px', border: '2px solid #f59e0b' }}>
-                    <h4 style={{ margin: '0 0 10px 0', color: '#92400e' }}>🔄 숙제 과제 완료도 기준 자동 동기화</h4>
-                    <p style={{ fontSize: '0.9rem', color: '#78350f', margin: '0 0 10px 0' }}>
-                      숙제 과제 완료도 기준으로 영어 과제 관리의 반/학생 명단을 자동으로 맞춥니다. 사라진 반은 제거되고, 새 반과 학생은 추가되며, 기존 반의 진행 데이터는 가능한 범위에서 유지됩니다.
+                  <div className="homework-sync-panel">
+                    <h4 className="homework-sync-title">🔄 숙제 과제 완료도 기준 자동 동기화</h4>
+                    <p className="homework-sync-desc">
+                      숙제 과제 완료도 기준으로 전체 완성도와 테스트관리의 반/학생 명단을 자동으로 맞춥니다. 현재 반 기준으로 실시간 반영되며, 기존 반의 진행 데이터는 가능한 범위에서 유지됩니다.
                     </p>
                     <button
                       type="button"
                       disabled={migrationLoading}
                       onClick={runMigrationFromCompletion}
-                      style={{
-                        padding: '10px 20px',
-                        fontSize: '0.95rem',
-                        fontWeight: '600',
-                        backgroundColor: migrationLoading ? '#9ca3af' : '#f59e0b',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: '8px',
-                        cursor: migrationLoading ? 'not-allowed' : 'pointer',
-                      }}
+                      className="homework-sync-btn"
                     >
                       {migrationLoading ? '동기화 중…' : '지금 즉시 완료도 기준으로 다시 동기화'}
                     </button>
-                    {migratedBySchoolGrade.length > 0 && (
-                      <div style={{ marginTop: '14px', width: '100%' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '8px', color: '#78350f' }}>연동된 반 (클릭 시 명단 보기)</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+
+                    <div className="homework-filter-panel">
+                      <div className="homework-filter-head">
+                        <div className="homework-filter-label">연동된 반 빠르게 찾기</div>
+                        <div className="homework-filter-count">현재 {filteredMigratedClasses.length}개 반</div>
+                      </div>
+
+                      <div className="homework-filter-toolbar">
+                        <div className="homework-filter-group">
+                          {HALL_OPTIONS.map((hall) => (
+                            <button
+                              key={hall}
+                              type="button"
+                              className={`homework-filter-chip ${selectedHallFilter === hall ? 'active' : ''}`}
+                              onClick={() => setSelectedHallFilter(hall)}
+                            >
+                              {hall}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="homework-filter-group">
+                          {SCHOOL_LEVEL_OPTIONS.map((level) => (
+                            <button
+                              key={level}
+                              type="button"
+                              className={`homework-filter-chip ${selectedSchoolLevelFilter === level ? 'active' : ''}`}
+                              onClick={() => setSelectedSchoolLevelFilter(level)}
+                            >
+                              {level}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="homework-filter-group">
+                          {SUBJECT_FILTER_OPTIONS.map((item) => (
+                            <button
+                              key={item}
+                              type="button"
+                              className={`homework-filter-chip ${selectedSubjectFilter === item ? 'active' : ''}`}
+                              onClick={() => setSelectedSubjectFilter(item)}
+                            >
+                              {item}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          type="text"
+                          className="homework-filter-search"
+                          value={classSearchTerm}
+                          onChange={(e) => setClassSearchTerm(e.target.value)}
+                          placeholder="반 이름, 선생님, 요일로 검색"
+                        />
+                      </div>
+
+                      {migratedBySchoolGrade.length > 0 ? (
+                        <div className="homework-linked-groups">
                           {migratedBySchoolGrade.map(({ group, ids }) => (
-                            <div key={group} style={{ width: '100%' }}>
-                              <div style={{ fontWeight: '600', fontSize: '0.9rem', color: '#92400e', marginBottom: '4px' }}>{group}</div>
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                                  gap: '6px 8px',
-                                  width: '100%',
-                                }}
-                              >
-                                {ids.map((id) => (
-                                  <span
-                                    key={id}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      minWidth: 0,
-                                      backgroundColor: '#fef9c3',
-                                      border: '1px solid #f59e0b',
-                                      borderRadius: '6px',
-                                      overflow: 'hidden',
-                                    }}
+                            <div key={group} className="homework-linked-group">
+                              <div className="homework-linked-group-title">{group}</div>
+                              <div className="homework-linked-grid">
+                                {ids.map((entry) => (
+                                  <button
+                                    key={entry.id}
+                                    type="button"
+                                    className="homework-linked-card"
+                                    onClick={() =>
+                                      onShowRoster &&
+                                      onShowRoster(
+                                        {
+                                          docId: entry.id,
+                                          class: entry.className,
+                                          teacher: entry.teacher,
+                                          grade: entry.schoolLevel,
+                                        },
+                                        'english'
+                                      )
+                                    }
                                   >
-                                    <button
-                                      type="button"
-                                      onClick={() => onShowRoster && onShowRoster({ docId: id, class: id }, 'english')}
-                                      style={{
-                                        flex: 1,
-                                        minWidth: 0,
-                                        padding: '6px 8px 6px 10px',
-                                        fontSize: '0.8rem',
-                                        backgroundColor: 'transparent',
-                                        color: '#78350f',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                        textAlign: 'left',
-                                      }}
-                                    >
-                                      {id}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => { e.stopPropagation(); handleDeleteMigratedClass(id); }}
-                                      title="반 삭제"
-                                      style={{
-                                        flexShrink: 0,
-                                        padding: '4px 6px',
-                                        fontSize: '0.75rem',
-                                        lineHeight: 1,
-                                        backgroundColor: 'transparent',
-                                        color: '#b45309',
-                                        border: 'none',
-                                        borderLeft: '1px solid #f59e0b',
-                                        cursor: 'pointer',
-                                        fontWeight: 'bold',
-                                      }}
-                                    >
-                                      ×
-                                    </button>
-                                  </span>
+                                    <strong>{entry.className}</strong>
+                                    <span>{entry.subject || '과목 미지정'} | {entry.hall}</span>
+                                    <span>{entry.teacher || '담당 미지정'}{entry.day ? ` | ${entry.day}` : ''}{entry.time ? ` ${entry.time}` : ''}</span>
+                                  </button>
                                 ))}
                               </div>
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="homework-linked-empty">
+                          조건에 맞는 반이 없습니다. 필터를 바꾸거나 완료도 쪽 반 정보를 확인해주세요.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
                 {/* 영어: 이동된 반만 사용하므로 학교/학년/반 선택 숨김 */}

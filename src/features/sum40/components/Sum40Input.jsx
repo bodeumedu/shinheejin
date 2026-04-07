@@ -26,6 +26,18 @@ function chooseBlankTargets(words, count = 6) {
     .slice(0, count)
 }
 
+function orderBlankTargetsByAppearance(summary, words) {
+  return [...(words || [])].sort((a, b) => {
+    const aEscaped = a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const bEscaped = b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const aMatch = summary.match(new RegExp(`\\b${aEscaped}\\b`, 'i'))
+    const bMatch = summary.match(new RegExp(`\\b${bEscaped}\\b`, 'i'))
+    const aIndex = aMatch ? aMatch.index ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER
+    const bIndex = bMatch ? bMatch.index ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER
+    return aIndex - bIndex
+  })
+}
+
 function buildBlankToken(word) {
   const token = String(word || '')
   const match = token.match(/^([^A-Za-z0-9]*)([A-Za-z0-9])([A-Za-z0-9'-]*)([^A-Za-z0-9]*)$/)
@@ -115,7 +127,10 @@ function Sum40Input({ text, setText, onProcess, apiKey }) {
           matchedWords = []
         }
 
-        const blankTargets = chooseBlankTargets(matchedWords, 6)
+        const blankTargets = orderBlankTargetsByAppearance(
+          summary,
+          chooseBlankTargets(matchedWords, 6)
+        )
         let blankedSummary = summary
 
         blankTargets.forEach((word) => {

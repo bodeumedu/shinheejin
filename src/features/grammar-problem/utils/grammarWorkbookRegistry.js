@@ -334,6 +334,29 @@ export const COMPARISON_SECTIONS = [
   },
 ]
 
+function buildCompactSectionsFromLegacy(prefix, legacySections, labels) {
+  const groups = [
+    { id: 'I', title: 'Ⅰ. 기본', range: [0, 2], label: labels[0] },
+    { id: 'II', title: 'Ⅱ. 핵심', range: [2, 4], label: labels[1] },
+    { id: 'III', title: 'Ⅲ. 실전', range: [4], label: labels[2] },
+  ]
+
+  return groups.map((group, index) => {
+    const picked = group.range.flatMap((idx) => legacySections[idx] ? [legacySections[idx]] : [])
+    const subtitle = picked.map((section) => String(section.title || '').replace(/^[ⅠⅡⅢⅣⅤⅥ]\.\s*/u, '')).filter(Boolean)
+    return {
+      id: group.id,
+      title: `${group.title} ${subtitle.length ? `· ${subtitle.join(' / ')}` : ''}`.trim(),
+      topics: [
+        {
+          id: `${prefix}-${index + 1}`,
+          label: group.label,
+        },
+      ],
+    }
+  })
+}
+
 /** @type {GrammarWorkbookType[]} */
 export const GRAMMAR_WORKBOOK_TYPES = [
   {
@@ -343,7 +366,11 @@ export const GRAMMAR_WORKBOOK_TYPES = [
     promptSubject: 'the English infinitive ("to-infinitive")',
     promptFocus:
       'Focus on to-infinitive vs gerund vs bare infinitive where relevant. Use Korean high-school 수능·내신 style.',
-    sections: TO_INFINITIVE_SECTIONS,
+    sections: buildCompactSectionsFromLegacy('ti', TO_INFINITIVE_SECTIONS, [
+      '기본 개념과 문장 속 기본 역할',
+      '핵심 용법과 의미상 주어·시제·태',
+      '동명사 비교와 실전 어법 적용',
+    ]),
   },
   {
     id: 'gerund',
@@ -352,7 +379,11 @@ export const GRAMMAR_WORKBOOK_TYPES = [
     promptSubject: 'English gerunds (verb + -ing as noun)',
     promptFocus:
       'Include contrasts with infinitives where appropriate (forget, remember, try, stop, etc.).',
-    sections: GERUND_SECTIONS,
+    sections: buildCompactSectionsFromLegacy('ger', GERUND_SECTIONS, [
+      '개념·형태와 기본 명사적 용법',
+      '관용 구문과 의미상 주어',
+      'to부정사 비교와 실전 판별',
+    ]),
   },
   {
     id: 'participle',
@@ -361,7 +392,11 @@ export const GRAMMAR_WORKBOOK_TYPES = [
     promptSubject: 'English participles (present and past participles, participle clauses)',
     promptFocus:
       'Include reduced relative clauses, dangling participle traps, and absolute constructions.',
-    sections: PARTICIPLE_SECTIONS,
+    sections: buildCompactSectionsFromLegacy('par', PARTICIPLE_SECTIONS, [
+      '현재·과거분사와 기본 개념',
+      '관계사절 축약과 분사구문',
+      '독립분사·수식 관계와 실전 어법',
+    ]),
   },
   {
     id: 'relative',
@@ -370,7 +405,11 @@ export const GRAMMAR_WORKBOOK_TYPES = [
     promptSubject: 'English relative clauses (relative pronouns and relative adverbs)',
     promptFocus:
       'Test case (nominative/accusative/genitive), omission rules, what vs that, and compound relatives.',
-    sections: RELATIVE_SECTIONS,
+    sections: buildCompactSectionsFromLegacy('rel', RELATIVE_SECTIONS, [
+      '관계사의 기본 개념과 격',
+      'that·what·관계부사 핵심 구별',
+      '복합관계사와 실전 어법 적용',
+    ]),
   },
   {
     id: 'subjunctive',
@@ -379,7 +418,11 @@ export const GRAMMAR_WORKBOOK_TYPES = [
     promptSubject: 'English subjunctive and unreal conditionals (if-clauses, wish, etc.)',
     promptFocus:
       'Include if-clause tense sequence, inverted conditionals, suggest/insist that-clauses, and as if.',
-    sections: SUBJUNCTIVE_SECTIONS,
+    sections: buildCompactSectionsFromLegacy('sub', SUBJUNCTIVE_SECTIONS, [
+      '가정법 기본과 시제 대응',
+      'wish·as if·명사절 가정법',
+      '혼합·도치와 실전 문맥 판별',
+    ]),
   },
   {
     id: 'comparison',
@@ -388,7 +431,11 @@ export const GRAMMAR_WORKBOOK_TYPES = [
     promptSubject: 'English comparison (comparatives, superlatives, proportional comparison)',
     promptFocus:
       'Include than-clauses, correlative comparison, and multiple as structures.',
-    sections: COMPARISON_SECTIONS,
+    sections: buildCompactSectionsFromLegacy('cmp', COMPARISON_SECTIONS, [
+      '원급·비교급·최상급의 기본',
+      'as ~ as와 핵심 비교 구문',
+      '배수·비례비교와 실전 어법 적용',
+    ]),
   },
 ]
 

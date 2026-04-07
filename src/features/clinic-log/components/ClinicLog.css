@@ -292,6 +292,10 @@
   table-layout: fixed;
 }
 
+.clinic-log-table[data-subject="math"] {
+  min-width: 980px;
+}
+
 .clinic-log-table th,
 .clinic-log-table td {
   border: 1px solid #e5e7eb;
@@ -462,20 +466,11 @@
   max-width: 160px;
 }
 
-/* 수학 클리닉 대장: 출결/담당자/등원하원시간 칸 (4번째 열) */
-.clinic-log-table[data-subject="math"] th:nth-child(4),
-.clinic-log-table[data-subject="math"] td:nth-child(4) {
-  min-width: 47px;
-  max-width: 53px;
-  width: 50px;
-}
-
-/* 수학: 5번째 과목/교재, 6번째 시험 확인 */
-.clinic-log-table[data-subject="math"] th:nth-child(6),
-.clinic-log-table[data-subject="math"] td:nth-child(6) {
-  min-width: 200px;
-  max-width: 250px;
-  width: 225px;
+.clinic-log-table[data-subject="math"] th.merged-four-col,
+.clinic-log-table[data-subject="math"] td.math-detail-cell {
+  min-width: 420px;
+  width: auto;
+  max-width: none;
 }
 
 /* 삭제 칸을 1/3로 줄이기 - 모든 클리닉 대장 */
@@ -586,6 +581,57 @@
   min-width: 0;
 }
 
+.math-detail-cell {
+  text-align: left;
+}
+
+.math-activity-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.math-activity-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.math-activity-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.math-activity-add-btn,
+.math-activity-remove-btn {
+  align-self: flex-start;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.math-activity-add-btn {
+  background: #10b981;
+  color: #fff;
+}
+
+.math-activity-remove-btn {
+  background: #ef4444;
+  color: #fff;
+}
+
 .merged-four-label {
   font-size: 0.75rem;
   font-weight: 600;
@@ -689,6 +735,10 @@
   }
   .clinic-log-section {
     padding: 18px;
+  }
+  .merged-three-in-row,
+  .math-activity-inline-grid {
+    grid-template-columns: 1fr;
   }
 }
 

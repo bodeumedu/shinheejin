@@ -26,15 +26,18 @@ import {
   removeSchoolItem,
   saveSchoolMockBank,
   setSchoolAnalysis,
+  setSchoolExamTable,
   setSchoolParallelMockResult,
   setSchoolTemplateProfile,
   setSchoolReferencePdfMeta,
 } from '../utils/schoolMockBankStorage.js'
 import {
   analyzeSchoolPastPattern,
+  buildExamAnalysisTable,
   buildSchoolTemplateProfile,
   generateParallelMockExam,
   regenerateParallelMockQuestion,
+  resolveBlockTypes,
 } from '../utils/schoolMockExamAi.js'
 import {
   formatScopePresetLabel,
@@ -103,6 +106,7 @@ function getLoadingEstimateText(label) {
   if (text.includes('PDF에서 텍스트 추출')) return '예상 10~30초'
   if (text.includes('스캔 이미지 인식')) return '예상 1~4분'
   if (text.includes('기출 패턴 분석')) return '예상 20~60초'
+  if (text.includes('유형별 세부분석')) return '예상 10~30초'
   if (text.includes('학교 시험 템플릿')) return '예상 10~40초'
   if (text.includes('동형·변형 모의고사 생성')) return '예상 1~4분'
   if (text.includes('문항') && text.includes('다시 만드는 중')) return '예상 20~90초'
@@ -178,6 +182,7 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
   const [scopeExamType, setScopeExamType] = useState('기말')
   const [scopePresets, setScopePresets] = useState(() => loadScopePresets().presets)
   const [analysisText, setAnalysisText] = useState('')
+  const [examTable, setExamTable] = useState(null)
   const [resultText, setResultText] = useState('')
   const [loading, setLoading] = useState(false)
   const [loadingLabel, setLoadingLabel] = useState('')
@@ -185,6 +190,7 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
   const [error, setError] = useState(null)
   const [lastGeneratedScopeItems, setLastGeneratedScopeItems] = useState([])
   const [lastGeneratedTemplateProfile, setLastGeneratedTemplateProfile] = useState(null)
+  const [lastGeneratedResolvedTypes, setLastGeneratedResolvedTypes] = useState([])
   const [regeneratingQuestionNo, setRegeneratingQuestionNo] = useState(null)
   /** 마지막으로 등록한 기출 PDF 첫 쪽 규격(mm) — 생성 PDF 안내·레이아웃 감에 참고 */
   const [referencePdfMm, setReferencePdfMm] = useState(null)
@@ -219,6 +225,7 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
     setResultText(e.lastParallelResult || '')
     setLastGeneratedScopeItems([])
     setLastGeneratedTemplateProfile(null)
+    setLastGeneratedResolvedTypes([])
     setRegeneratingQuestionNo(null)
   }, [activeSchool])
 
@@ -246,7 +253,8 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
 
   useEffect(() => {
     setAnalysisText(entry.analysisText || '')
-  }, [activeSchool, entry.analysisText])
+    setExamTable(entry.examTable || null)
+  }, [activeSchool, entry.analysisText, entry.examTable])
 
   useEffect(() => {
     setReferencePdfMm(entry.referencePdfMeta ?? null)
@@ -370,6 +378,15 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
       persist(next)
       appendSchoolAnalysisRun(activeSchool, out)
       try {
+        setLoadingLabel('유형별 세부분석 표 생성 중…')
+        const table = await buildExamAnalysisTable(apiKey, activeSchool, out, items)
+        setExamTable(table)
+        next = setSchoolExamTable(next, activeSchool, table)
+        persist(next)
+      } catch (tableErr) {
+        console.warn('분석표 생성 실패:', tableErr)
+      }
+      try {
         setLoadingLabel('학교 시험 템플릿 정리 중…')
         const profile = await buildSchoolTemplateProfile(
           apiKey,
@@ -409,10 +426,16 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
       const cumulative = formatCumulativeForPrompt(activeSchool)
       let templateProfile = entry.templateProfile || null
       if (!templateProfile) {
-        setLoadingLabel('학교 시험 템플릿 준비 중…')
-        templateProfile = await ensureTemplateProfile(analysisText || entry.analysisText || '')
+        try {
+          setLoadingLabel('학교 시험 템플릿 준비 중…')
+          templateProfile = await ensureTemplateProfile(analysisText || entry.analysisText || '')
+        } catch (tplErr) {
+          console.warn('템플릿 추출 실패 (무시하고 계속):', tplErr)
+          templateProfile = null
+        }
         setLoadingLabel('동형·변형 모의고사 생성 중…')
       }
+      const types = resolveBlockTypes(randomizedScope.length, templateProfile, examTable || entry.examTable)
       const out = await generateParallelMockExam(
         apiKey,
         activeSchool,
@@ -420,11 +443,13 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
         entry.items,
         randomizedScope,
         cumulative,
-        templateProfile
+        templateProfile,
+        types
       )
       setResultText(out)
       setLastGeneratedScopeItems(randomizedScope)
       setLastGeneratedTemplateProfile(templateProfile || null)
+      setLastGeneratedResolvedTypes(types)
       setRegeneratingQuestionNo(null)
       setBank((prev) => {
         const next = setSchoolParallelMockResult(prev, activeSchool, out)
@@ -437,7 +462,7 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
       setLoading(false)
       setLoadingLabel('')
     }
-  }, [apiKey, scopePaste, analysisText, entry.items, entry.analysisText, entry.templateProfile, activeSchool, ensureTemplateProfile])
+  }, [apiKey, scopePaste, analysisText, entry.items, entry.analysisText, entry.templateProfile, entry.examTable, examTable, activeSchool, ensureTemplateProfile])
 
   const handleRegenerateOneQuestion = useCallback(
     async (questionNo) => {
@@ -463,6 +488,7 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
           lastGeneratedTemplateProfile ||
           entry.templateProfile ||
           (await ensureTemplateProfile(analysisText || entry.analysisText || ''))
+        const assignedType = lastGeneratedResolvedTypes[questionNo - 1] || ''
         const regen = await regenerateParallelMockQuestion(
           apiKey,
           activeSchool,
@@ -474,7 +500,8 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
           questionNo,
           Math.max(lastGeneratedScopeItems.length, questionBlocks.length),
           blocks[qIdx],
-          resultText
+          resultText,
+          assignedType
         )
         const nextBlocks = [...blocks]
         nextBlocks[qIdx] = regen.questionBlock
@@ -503,6 +530,7 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
     },
     [
       lastGeneratedScopeItems,
+      lastGeneratedResolvedTypes,
       resultText,
       activeSchool,
       lastGeneratedTemplateProfile,
@@ -673,7 +701,7 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
       <section className="spme-card">
         <h3 className="spme-h3">2. 기출 PDF 등록 (스캔본)</h3>
         <p className="spme-note">
-          시험지 PDF <strong>한 파일</strong>만 선택합니다. 순수 스캔은 텍스트 추출이 비어 있을 수 있어, 그때는 OpenAI Vision으로 앞쪽 {VISION_MAX_PAGES}쪽까지 전사합니다.{' '}
+          시험지 PDF <strong>한 파일</strong>만 선택합니다. 순수 스캔은 텍스트 추출이 비어 있을 수 있어, 그때는 Gemini 3 계열 Vision으로 앞쪽 {VISION_MAX_PAGES}쪽까지 전사합니다.{' '}
           <strong>시험 구분(목록 제목)</strong>은 <strong>파일 이름</strong>에서 자동으로 만듭니다(끝의 .pdf, 「보기수정」 등은 제거).
         </p>
         <div className="spme-row spme-pdf-row" key={pdfInputKey}>
@@ -755,6 +783,89 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
           spellCheck={false}
           placeholder="분석 실행 후 표시. 직접 수정해도 저장됩니다."
         />
+        {examTable && Array.isArray(examTable.rows) && examTable.rows.length > 0 && (
+          <div className="spme-exam-table-wrap">
+            <div className="spme-exam-table-title">유형별 세부분석</div>
+            <table className="spme-exam-table">
+              <thead>
+                <tr>
+                  <th>번호</th>
+                  <th>유형</th>
+                  <th>난이도</th>
+                  <th>출처</th>
+                  <th>출제 특징</th>
+                  <th>변형</th>
+                  <th>배점</th>
+                </tr>
+              </thead>
+              <tbody>
+                {examTable.rows.map((row, ri) => (
+                  <tr key={ri}>
+                    <td>{row.no}</td>
+                    <td>
+                      <input
+                        className="spme-cell-input"
+                        value={row.type}
+                        onChange={(e) => {
+                          const next = { ...examTable, rows: examTable.rows.map((r, i) => i === ri ? { ...r, type: e.target.value } : r) }
+                          setExamTable(next)
+                        }}
+                        onBlur={() => {
+                          setBank((prev) => {
+                            const updated = setSchoolExamTable(prev, activeSchool, examTable)
+                            saveSchoolMockBank(updated)
+                            return updated
+                          })
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <span className={row.difficulty === '하' ? 'spme-diff-ha' : row.difficulty === '상' ? 'spme-diff-sang' : 'spme-diff-jung'}>
+                        {row.difficulty || '-'}
+                      </span>
+                    </td>
+                    <td>{row.source || '-'}</td>
+                    <td className="spme-td-left">
+                      <input
+                        className="spme-cell-input spme-cell-left"
+                        value={row.characteristics}
+                        onChange={(e) => {
+                          const next = { ...examTable, rows: examTable.rows.map((r, i) => i === ri ? { ...r, characteristics: e.target.value } : r) }
+                          setExamTable(next)
+                        }}
+                        onBlur={() => {
+                          setBank((prev) => {
+                            const updated = setSchoolExamTable(prev, activeSchool, examTable)
+                            saveSchoolMockBank(updated)
+                            return updated
+                          })
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="spme-cell-input"
+                        value={row.variation}
+                        onChange={(e) => {
+                          const next = { ...examTable, rows: examTable.rows.map((r, i) => i === ri ? { ...r, variation: e.target.value } : r) }
+                          setExamTable(next)
+                        }}
+                        onBlur={() => {
+                          setBank((prev) => {
+                            const updated = setSchoolExamTable(prev, activeSchool, examTable)
+                            saveSchoolMockBank(updated)
+                            return updated
+                          })
+                        }}
+                      />
+                    </td>
+                    <td>{row.points || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="spme-card">
@@ -767,7 +878,7 @@ export default function SchoolParallelMockExamInput({ onClose, apiKey }) {
           <strong>입력한 범위 블록 순서도 생성 때마다 무작위로 섞여</strong> 같은 범위로 다시 뽑아도 문항 순서 체감이 달라집니다.{' '}
           <strong>시험지 PDF용</strong>으로 블록 구분선이 보이게 나옵니다.           <strong>B4 PDF 저장</strong>은 JIS B4(257×364mm) · 머리말·2단·각주 형태로 내려받으며, <strong>같은 쪽은 좌단에 첫 문항만·이어지는 문항은 우단</strong>에 쌓이게 배치합니다(기출 2단 관례). 생성 결과 맨 끝 <strong>정답표</strong>는 <strong>맨 뒤 표 형식</strong>으로 붙습니다. 기출 PDF를
           등록했다면 그 첫 쪽 규격을 부제에 참고로 적습니다. 생성은{' '}
-          <strong>gpt-4.1</strong>(출력 최대 약 3.2만 토큰)·<strong>최대 10분</strong> 대기입니다.
+          <strong>Gemini 3.1 Pro</strong>(출력 최대 약 3.2만 토큰 기준)·<strong>최대 10분</strong> 대기입니다.
         </p>
         <div className="spme-scope-fields spme-row">
           <label className="spme-label spme-label-narrow">
