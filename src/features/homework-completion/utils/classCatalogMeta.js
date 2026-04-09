@@ -18,10 +18,17 @@ export function isHighMathTeacherClass(teacherName = '') {
   return compact.includes('이민하') || compact.includes('김지수');
 }
 
+export function isEnglishTeacherClass(teacherName = '') {
+  const compact = String(teacherName || '').replace(/\s+/g, '').replace(/:/g, '');
+  if (!compact) return false;
+  return compact.includes('희진');
+}
+
 export function resolveClassSubject({ subject = '', teacher = '' }) {
   const normalizedSubject = String(subject || '').trim();
   if (normalizedSubject) return normalizedSubject;
   if (isHighMathTeacherClass(teacher)) return '수학';
+  if (isEnglishTeacherClass(teacher)) return '영어';
   return '';
 }
 

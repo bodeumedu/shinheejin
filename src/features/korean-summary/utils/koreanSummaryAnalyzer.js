@@ -1,3 +1,5 @@
+import { openAiChatCompletions } from '../../../utils/openaiProxyClient'
+
 // 한글 요약 분석 유틸리티
 
 export async function summarizeInKorean(text, apiKey) {
@@ -23,35 +25,21 @@ ${text}
 Return only the Korean summary text without any additional explanation or formatting.`
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a Korean English teacher who creates concise Korean summaries of English texts. Always respond in Korean.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 200
-      })
+    const data = await openAiChatCompletions(apiKey, {
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a Korean English teacher who creates concise Korean summaries of English texts. Always respond in Korean.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 200
     })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error?.message || `API 오류: ${response.status}`)
-    }
-
-    const data = await response.json()
     const summary = data.choices[0]?.message?.content?.trim() || ''
 
     if (!summary) {
@@ -90,35 +78,21 @@ ${text}
 Return only the selected sentence without any additional explanation or formatting.`
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a Korean English teacher. Always return only the exact sentence from the text, no additional text.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 200
-      })
+    const data = await openAiChatCompletions(apiKey, {
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a Korean English teacher. Always return only the exact sentence from the text, no additional text.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 200
     })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error?.message || `API 오류: ${response.status}`)
-    }
-
-    const data = await response.json()
     const keySentence = data.choices[0]?.message?.content?.trim() || ''
 
     if (!keySentence) {

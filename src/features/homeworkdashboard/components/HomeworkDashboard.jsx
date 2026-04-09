@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { doc, getDoc, setDoc, getDocs, collection, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../../../utils/firebase';
+import { isHighMathTeacherClass, isEnglishTeacherClass, resolveClassSubject } from '../../homework-completion/utils/classCatalogMeta';
 
 const HOMEWORK_COMPLETION_PHONE_DOC = 'homeworkCompletionPhoneNumbers';
 const HOMEWORK_COMPLETION_PHONE_DOC_ID = 'all';
@@ -43,19 +44,6 @@ function inferSchoolLevel(className) {
   if (!raw) return '';
   if (/중\d|중등|중학|중학생|초6/.test(raw)) return '중등';
   if (/고\d|고등|고교|고등부|수능/.test(raw)) return '고등';
-  return '';
-}
-
-function isHighMathTeacherClass(teacherName = '') {
-  const compact = String(teacherName || '').replace(/\s+/g, '');
-  if (!compact) return false;
-  return compact.includes('이민하') || compact.includes('김지수');
-}
-
-function resolveClassSubject({ subject = '', teacher = '' }) {
-  const normalizedSubject = String(subject || '').trim();
-  if (normalizedSubject) return normalizedSubject;
-  if (isHighMathTeacherClass(teacher)) return '수학';
   return '';
 }
 

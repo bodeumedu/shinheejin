@@ -612,3 +612,67 @@
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
 }
 
+/* 개별진도 — 캡슐형 ON/OFF (흰 배경 · 검은 테두리 · 원형 손잡이) */
+.hc-pill-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  min-width: 76px;
+  height: 34px;
+  padding: 4px 8px;
+  border: 1.5px solid #000;
+  border-radius: 999px;
+  background: #fff;
+  color: #000;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  line-height: 1;
+  transition: opacity 0.15s ease;
+}
+
+.hc-pill-toggle:hover {
+  opacity: 0.88;
+}
+
+.hc-pill-toggle:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 2px;
+}
+
+.hc-pill-toggle__knob {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #000;
+}
+
+.hc-pill-toggle--compact {
+  min-width: 68px;
+  height: 30px;
+  padding: 3px 7px;
+  font-size: 0.8125rem;
+}
+
+.hc-pill-toggle--compact .hc-pill-toggle__knob {
+  width: 20px;
+  height: 20px;
+}
+
+.hc-pill-toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hc-pill-toggle-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #111;
+  user-select: none;
+}
+

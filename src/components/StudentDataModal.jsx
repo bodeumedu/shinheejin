@@ -578,6 +578,17 @@ export default function StudentDataModal({ onClose, fullScreen = false }) {
   const [savingPhones, setSavingPhones] = useState(false);
   const [sendingKakaoFor, setSendingKakaoFor] = useState(null); // 카톡 발송 중인 학생명
   const [kakaoHistory, setKakaoHistory] = useState([]); // { studentName, date, message, timestamp }[]
+  const [scheduledSendAt, setScheduledSendAt] = useState(() => {
+    const base = new Date(Date.now() + 10 * 60 * 1000);
+    base.setSeconds(0, 0);
+    const y = base.getFullYear();
+    const mo = String(base.getMonth() + 1).padStart(2, '0');
+    const d = String(base.getDate()).padStart(2, '0');
+    const h = String(base.getHours()).padStart(2, '0');
+    const mi = String(base.getMinutes()).padStart(2, '0');
+    return `${y}-${mo}-${d}T${h}:${mi}`;
+  });
+  const [scheduleSending, setScheduleSending] = useState(false);
   const [historyStudent, setHistoryStudent] = useState(null); // 이름 클릭 시 해당 학생 발송 이력 모달
   const [studentMessageHistory, setStudentMessageHistory] = useState([]);
   const [studentMessageHistoryLoading, setStudentMessageHistoryLoading] = useState(false);
@@ -1138,6 +1149,58 @@ export default function StudentDataModal({ onClose, fullScreen = false }) {
       setSendingKakaoFor(null);
     }
   }, [messageText, apiUrl]);
+
+  const sendScheduledKakaoToStudent = useCallback(async (row) => {
+    const trimmed = (messageText || '').trim();
+    if (!trimmed) { alert('메시지 내용을 입력한 뒤 예약발송 버튼을 눌러주세요.'); return; }
+    if (!scheduledSendAt) { alert('예약 발송 시간을 입력해주세요.'); return; }
+    const scheduledDate = new Date(scheduledSendAt);
+    if (Number.isNaN(scheduledDate.getTime())) { alert('예약 발송 시간이 올바르지 않습니다.'); return; }
+    if (scheduledDate.getTime() <= Date.now() + 60 * 1000) { alert('예약 시간은 현재보다 1분 이상 이후로 설정해주세요.'); return; }
+
+    const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
+    const studentPhone = (row.studentPhone || '').replace(/[^0-9]/g, '');
+    const parentPhone = (row.parentPhone || '').replace(/[^0-9]/g, '');
+    if (!studentPhone && !parentPhone) { alert('해당 학생의 전화번호를 입력해주세요.'); return; }
+
+    setScheduleSending(true);
+    const variables = { 학생명: row.name || '', 학년: row.grade || '', 반명: row.className || '', 공지: trimmed };
+    let success = 0;
+    try {
+      const phones = [];
+      if (studentPhone && phoneRegex.test(studentPhone)) phones.push(studentPhone);
+      if (parentPhone && phoneRegex.test(parentPhone)) phones.push(parentPhone);
+
+      for (const phone of phones) {
+        try {
+          const res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phoneNumber: phone,
+              templateCode: STUDENT_DATA_KAKAO_TEMPLATE,
+              variables,
+              scheduleDate: scheduledDate.toISOString(),
+            }),
+          });
+          const data = await res.json();
+          if (data && data.success) success++;
+        } catch (err) {
+          console.error('예약발송 실패:', err);
+        }
+      }
+      if (success > 0) {
+        alert(`✅ ${row.name}님 ${success}건 예약발송 접수 완료\n예약 시각: ${scheduledSendAt.replace('T', ' ')}`);
+      } else {
+        alert('❌ 예약 접수에 실패했습니다. 전화번호와 예약 시간을 확인해주세요.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('예약발송 중 오류가 발생했습니다.');
+    } finally {
+      setScheduleSending(false);
+    }
+  }, [messageText, apiUrl, scheduledSendAt]);
 
   const toggleWithdrawn = useCallback(async (name) => {
     const next = new Set(withdrawnSet);
@@ -2235,23 +2298,42 @@ export default function StudentDataModal({ onClose, fullScreen = false }) {
                         </button>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          disabled={sendingKakaoFor === row.name}
-                          onClick={() => sendKakaoToStudent(row)}
-                          style={{
-                            padding: '6px 12px',
-                            fontSize: '0.85rem',
-                            backgroundColor: sendingKakaoFor === row.name ? '#9ca3af' : '#FEE500',
-                            color: '#000',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: sendingKakaoFor === row.name ? 'not-allowed' : 'pointer',
-                            fontWeight: '600',
-                          }}
-                        >
-                          {sendingKakaoFor === row.name ? '발송 중…' : '카톡 보내기'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            disabled={sendingKakaoFor === row.name || scheduleSending}
+                            onClick={() => sendKakaoToStudent(row)}
+                            style={{
+                              padding: '6px 10px',
+                              fontSize: '0.8rem',
+                              backgroundColor: sendingKakaoFor === row.name ? '#9ca3af' : '#FEE500',
+                              color: '#000',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: sendingKakaoFor === row.name ? 'not-allowed' : 'pointer',
+                              fontWeight: '600',
+                            }}
+                          >
+                            {sendingKakaoFor === row.name ? '발송 중…' : '즉시'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={scheduleSending || sendingKakaoFor === row.name}
+                            onClick={() => sendScheduledKakaoToStudent(row)}
+                            style={{
+                              padding: '6px 10px',
+                              fontSize: '0.8rem',
+                              background: scheduleSending ? '#9ca3af' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: scheduleSending ? 'not-allowed' : 'pointer',
+                              fontWeight: '600',
+                            }}
+                          >
+                            {scheduleSending ? '접수중…' : '⏰예약'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -2338,6 +2420,16 @@ export default function StudentDataModal({ onClose, fullScreen = false }) {
                 onChange={(e) => setMessageText(e.target.value)}
                 rows={4}
               />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px', padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', flexWrap: 'wrap' }}>
+                <label style={{ fontWeight: 700, color: '#9a3412', fontSize: '0.9rem' }}>⏰ 예약 발송 시간</label>
+                <input
+                  type="datetime-local"
+                  value={scheduledSendAt}
+                  onChange={(e) => setScheduledSendAt(e.target.value)}
+                  style={{ padding: '6px 10px', border: '1px solid #fdba74', borderRadius: '6px', background: 'white', fontSize: '0.9rem' }}
+                />
+                <span style={{ color: '#7c2d12', fontSize: '0.82rem' }}>시간 설정 후 「예약발송」 클릭</span>
+              </div>
             </div>
 
             {/* 학생별 카톡 발송 이력 모달 */}

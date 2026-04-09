@@ -1552,10 +1552,10 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey, liveClass
             setShowActionModal(false);
             setSelectedClass(null);
           }}
-          onAction={async (actionType) => {
+          onAction={async (actionType, scheduleDate) => {
             setIsSendingKakao(true);
             try {
-              const result = await handleAction(actionType, selectedClass, cancelledClasses, setCancelledClasses, currentWeekKey, isFirebaseConfigured, db, studentData);
+              const result = await handleAction(actionType, selectedClass, cancelledClasses, setCancelledClasses, currentWeekKey, isFirebaseConfigured, db, studentData, scheduleDate);
               // handleAction이 false를 반환하면 모달을 닫지 않음 (템플릿 코드 없음 등)
               if (result !== false) {
                 setShowActionModal(false);
@@ -1576,7 +1576,7 @@ function WeeklyScheduleViewer({ scheduleData, weekKey: initialWeekKey, liveClass
 }
 
 // 액션 처리 함수
-async function handleAction(actionType, classInfo, cancelledClasses, setCancelledClasses, currentWeekKey, isFirebaseConfigured, db, studentData = []) {
+async function handleAction(actionType, classInfo, cancelledClasses, setCancelledClasses, currentWeekKey, isFirebaseConfigured, db, studentData = [], scheduleDate = null) {
   const apiUrl = import.meta.env.PROD 
     ? `${window.location.origin}/api/send-kakao`
     : import.meta.env.VITE_API_URL || 'https://bodeumshjpocketbook.vercel.app/api/send-kakao';
@@ -1692,12 +1692,7 @@ async function handleAction(actionType, classInfo, cancelledClasses, setCancelle
   // 각 학생에게 카카오톡 전송
   for (const phoneNumber of studentPhoneNumbers) {
     try {
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const requestBody = {
           phoneNumber: phoneNumber.replace(/-/g, ''),
           templateCode: templateCode.trim(),
           variables: {
@@ -1709,15 +1704,22 @@ async function handleAction(actionType, classInfo, cancelledClasses, setCancelle
             '강의실': classroom,
             '안내내용': actionMessage,
           },
-        }),
+        };
+      if (scheduleDate) requestBody.scheduleDate = scheduleDate;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();
 
-      if (result.success) {
+      if (response.ok && result.success) {
         successCount++;
       } else {
-        throw new Error(result.error || '알 수 없는 오류');
+        throw new Error(result.error || `HTTP ${response.status}`);
       }
     } catch (error) {
       console.error(`카카오톡 전송 실패 (${phoneNumber}):`, error);
@@ -1762,12 +1764,13 @@ async function handleAction(actionType, classInfo, cancelledClasses, setCancelle
   }
 
   // 결과 알림
+  const sendLabel = scheduleDate ? '예약발송 접수' : '전송';
   if (studentPhoneNumbers.length === 0) {
     alert(`✅ ${actionMessage} 처리 완료\n\n(전화번호 목록이 비어있어 카카오톡은 전송되지 않았습니다.)`);
   } else if (failCount === 0) {
-    alert(`✅ 카카오톡 전송 완료\n\n성공: ${successCount}명`);
+    alert(`✅ 카카오톡 ${sendLabel} 완료\n\n성공: ${successCount}명${scheduleDate ? `\n예약 시각: ${scheduleDate.replace('T', ' ').slice(0, 16)}` : ''}`);
   } else {
-    alert(`⚠️ 카카오톡 전송 결과\n\n성공: ${successCount}명\n실패: ${failCount}명`);
+    alert(`⚠️ 카카오톡 ${sendLabel} 결과\n\n성공: ${successCount}명\n실패: ${failCount}명`);
   }
   
   return true; // 정상 완료 시 true 반환
@@ -1775,6 +1778,18 @@ async function handleAction(actionType, classInfo, cancelledClasses, setCancelle
 
 // 액션 모달 컴포넌트
 function ActionModal({ classInfo, isCancelled, onClose, onAction, isSending }) {
+  const [localScheduleDate, setLocalScheduleDate] = useState(() => {
+    const base = new Date(Date.now() + 10 * 60 * 1000);
+    base.setSeconds(0, 0);
+    const y = base.getFullYear();
+    const mo = String(base.getMonth() + 1).padStart(2, '0');
+    const d = String(base.getDate()).padStart(2, '0');
+    const h = String(base.getHours()).padStart(2, '0');
+    const mi = String(base.getMinutes()).padStart(2, '0');
+    return `${y}-${mo}-${d}T${h}:${mi}`;
+  });
+  const [useSchedule, setUseSchedule] = useState(false);
+
   const formatClassInfo = () => {
     const dayNames = ['월', '화', '수', '목', '금', '토', '일'];
     const days = classInfo.days ? classInfo.days.map(d => dayNames[d - 1]).join(', ') : '';
@@ -1795,6 +1810,17 @@ function ActionModal({ classInfo, isCancelled, onClose, onAction, isSending }) {
 
   const info = formatClassInfo();
 
+  const handleActionWithSchedule = (actionType) => {
+    if (useSchedule) {
+      const sd = new Date(localScheduleDate);
+      if (Number.isNaN(sd.getTime())) { alert('예약 시간이 올바르지 않습니다.'); return; }
+      if (sd.getTime() <= Date.now() + 60 * 1000) { alert('예약 시간은 현재보다 1분 이상 이후로 설정해주세요.'); return; }
+      onAction(actionType, sd.toISOString());
+    } else {
+      onAction(actionType, null);
+    }
+  };
+
   return (
     <div className="action-modal-overlay" onClick={onClose}>
       <div className="action-modal" onClick={(e) => e.stopPropagation()}>
@@ -1811,24 +1837,38 @@ function ActionModal({ classInfo, isCancelled, onClose, onAction, isSending }) {
             <div><strong>시간:</strong> {info.time}</div>
             <div><strong>강의실:</strong> {info.classroom}</div>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 0', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+              <input type="checkbox" checked={useSchedule} onChange={(e) => setUseSchedule(e.target.checked)} />
+              <span style={{ fontWeight: 600, color: '#9a3412' }}>⏰ 예약발송</span>
+            </label>
+            {useSchedule && (
+              <input
+                type="datetime-local"
+                value={localScheduleDate}
+                onChange={(e) => setLocalScheduleDate(e.target.value)}
+                style={{ padding: '6px 10px', border: '1px solid #fdba74', borderRadius: '6px', background: 'white' }}
+              />
+            )}
+          </div>
           <div className="action-modal-buttons">
             <button
               className="action-btn action-btn-cancel"
-              onClick={() => onAction('cancel')}
+              onClick={() => handleActionWithSchedule('cancel')}
               disabled={isSending}
             >
               {isCancelled ? '휴강 해제' : '휴강'}
             </button>
             <button
               className="action-btn action-btn-change"
-              onClick={() => onAction('change')}
+              onClick={() => handleActionWithSchedule('change')}
               disabled={isSending}
             >
               이 일정만 변경
             </button>
             <button
               className="action-btn action-btn-makeup"
-              onClick={() => onAction('makeup')}
+              onClick={() => handleActionWithSchedule('makeup')}
               disabled={isSending}
             >
               보강잡기
@@ -1836,7 +1876,7 @@ function ActionModal({ classInfo, isCancelled, onClose, onAction, isSending }) {
           </div>
           {isSending && (
             <div className="action-modal-loading">
-              카카오톡 전송 중...
+              {useSchedule ? '예약 접수 중...' : '카카오톡 전송 중...'}
             </div>
           )}
         </div>

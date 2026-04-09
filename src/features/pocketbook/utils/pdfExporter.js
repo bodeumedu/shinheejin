@@ -1,5 +1,7 @@
 // PDF 내보내기 유틸리티
 
+import { addCanvasAcrossPdfPages } from '../../../utils/addCanvasAcrossPdfPages'
+
 let jsPDF, html2canvas
 
 // 동적 import로 변경 (패키지가 없을 경우를 대비)
@@ -224,7 +226,6 @@ export async function exportToPdf(selectedIndices = null) {
 
     // 모바일 감지
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768)
-    const pxToMm = 0.264583 // 1px = 0.264583mm
 
     let isFirst = true
     for (let i = 0; i < pages.length; i++) {
@@ -244,23 +245,11 @@ export async function exportToPdf(selectedIndices = null) {
         removeContainer: false,
         preserveDrawingBuffer: true
       })
-      const imgData = canvas.toDataURL('image/png', 1.0)
-      const imgWidth = canvas.width
-      const imgHeight = canvas.height
-      const imgWidthMm = imgWidth * pxToMm
-      const imgHeightMm = imgHeight * pxToMm
-      const widthRatio = pdfWidth / imgWidthMm
-      const heightRatio = pdfHeight / imgHeightMm
-      const ratio = Math.min(widthRatio, heightRatio)
-      const finalWidth = imgWidthMm * ratio
-      const finalHeight = imgHeightMm * ratio
-      const xOffset = (pdfWidth - finalWidth) / 2
-      const yOffset = (pdfHeight - finalHeight) / 2
       if (!isFirst) {
         pdf.addPage()
       }
-      pdf.addImage(imgData, 'PNG', xOffset, yOffset, finalWidth, finalHeight)
       isFirst = false
+      addCanvasAcrossPdfPages(pdf, canvas, { pageWidthMm: pdfWidth, pageHeightMm: pdfHeight })
     }
     // 파일 저장 (모바일/데스크톱 모두 동일한 방식)
     try {

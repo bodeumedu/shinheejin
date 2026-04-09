@@ -1,3 +1,5 @@
+import { openAiChatCompletions } from '../../../utils/openaiProxyClient'
+
 // Paraphrasing 처리 유틸리티 - OpenAI API 사용
 
 export async function paraphraseText(text, apiKey) {
@@ -21,34 +23,20 @@ Original text:
 ${text}`
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful English teacher. Always respond with only the paraphrased text, no additional text.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.9
-      })
+    const data = await openAiChatCompletions(apiKey, {
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful English teacher. Always respond with only the paraphrased text, no additional text.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.9
     })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error?.message || `API 오류: ${response.status}`)
-    }
-
-    const data = await response.json()
     const content = data.choices[0]?.message?.content
 
     if (!content) {

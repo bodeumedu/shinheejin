@@ -24,6 +24,47 @@ const ABSENT_VIDEO_LINK_KEY = 'absentVideoLink';
 const LEGACY_ABSENT_VIDEO_LINK_KEY = '__absent_video_link__';
 const ABSENT_MATERIAL_LINK_KEY = 'absentMaterialLink';
 const LEGACY_ABSENT_MATERIAL_LINK_KEY = '__absent_material_link__';
+/** 개별 숙제를 줄 단위로 나눈 뒤 알림장 발송 완료 시 true — 이후 완료도 체크 UI 표시 */
+const INDIVIDUAL_NOTICE_SENT_KEY = '__individual_notice_sent__';
+/** 켜두면 blur·전원 진도 입력 완료 시에도 개별 진도 모드가 자동으로 꺼지지 않음 (localStorage) */
+const INDIVIDUAL_MODE_STICKY_STORAGE_KEY = 'pocketbook_hw_individual_mode_sticky';
+/** sticky일 때 같은 브라우저 세션에서 개별 진도 표시 여부 복구 */
+const SESSION_SHOW_INDIVIDUAL_FIELDS_KEY = 'pocketbook_hw_show_individual_fields';
+
+function readIndividualModeSticky() {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(INDIVIDUAL_MODE_STICKY_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function readSessionShowIndividualFields(stickyEnabled) {
+  if (!stickyEnabled) return false;
+  try {
+    return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SESSION_SHOW_INDIVIDUAL_FIELDS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function parseIndividualHomeworkLines(text) {
+  return String(text || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function isIndividualStudentRowMetaKey(key) {
+  if (!key || typeof key !== 'string') return true;
+  if (key === COMMENT_KEY || key === LEGACY_COMMENT_KEY) return true;
+  if (key === MATH_HOMEWORK_TEXT_KEY || key === LEGACY_MATH_HOMEWORK_TEXT_KEY) return true;
+  if (key === INDIVIDUAL_NOTICE_SENT_KEY) return true;
+  if (key === ABSENT_STATUS_KEY || key === LEGACY_ABSENT_STATUS_KEY) return true;
+  if (key === ABSENT_VIDEO_LINK_KEY || key === LEGACY_ABSENT_VIDEO_LINK_KEY) return true;
+  if (key === ABSENT_MATERIAL_LINK_KEY || key === LEGACY_ABSENT_MATERIAL_LINK_KEY) return true;
+  return false;
+}
 
 function getHomeworkCompletionConfig() {
   return {
@@ -564,7 +605,10 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
   const [showAddStudentForm, setShowAddStudentForm] = useState(false); // 학생 추가 폼 표시 여부
   const [studentImportQuery, setStudentImportQuery] = useState('');
   const [studentImportKey, setStudentImportKey] = useState('');
-  const [showIndividualFields, setShowIndividualFields] = useState(false); // 학생별 숙제/진도 입력 표시 여부
+  const [individualModeSticky, setIndividualModeSticky] = useState(readIndividualModeSticky);
+  const [showIndividualFields, setShowIndividualFields] = useState(() =>
+    readSessionShowIndividualFields(readIndividualModeSticky())
+  ); // 학생별 숙제/진도 입력 표시 여부
   const [calendarStudentFilter, setCalendarStudentFilter] = useState('all'); // 캘린더 학생별 보기
   const [newStudentForm, setNewStudentForm] = useState({
     name: '',
@@ -636,6 +680,24 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
   useEffect(() => {
     selectedClassRef.current = selectedClass;
   }, [selectedClass]);
+
+  useEffect(() => {
+    try {
+      if (individualModeSticky) {
+        localStorage.setItem(INDIVIDUAL_MODE_STICKY_STORAGE_KEY, '1');
+      } else {
+        localStorage.removeItem(INDIVIDUAL_MODE_STICKY_STORAGE_KEY);
+        sessionStorage.removeItem(SESSION_SHOW_INDIVIDUAL_FIELDS_KEY);
+      }
+    } catch (_) {}
+  }, [individualModeSticky]);
+
+  useEffect(() => {
+    if (!individualModeSticky) return;
+    try {
+      sessionStorage.setItem(SESSION_SHOW_INDIVIDUAL_FIELDS_KEY, showIndividualFields ? '1' : '0');
+    } catch (_) {}
+  }, [individualModeSticky, showIndividualFields]);
 
   useEffect(() => {
     saveJsonLocalStorage(QUICK_MEMO_STORAGE_KEY, quickMemoByClass);
@@ -1371,6 +1433,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
 
   const exitIndividualModeWhenProgressComplete = useCallback((studentName, value, date = tableDisplayDate) => {
     if (!showIndividualFields || selectedClass === 'all') return;
+    if (individualModeSticky) return;
     const requiredStudents = filteredAndSortedStudents.filter(
       (name) => !Boolean(dateCompletionData[date]?.[selectedClass]?.[name]?.[ABSENT_STATUS_KEY])
     );
@@ -1393,7 +1456,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     setShowIndividualFields(false);
     setCalendarStudentFilter('all');
     setSelectedDateDetail(null);
-  }, [showIndividualFields, selectedClass, filteredAndSortedStudents, dateCompletionData, dateProgressData, tableDisplayDate]);
+  }, [showIndividualFields, selectedClass, filteredAndSortedStudents, dateCompletionData, dateProgressData, tableDisplayDate, individualModeSticky]);
 
   const duplicateStudentNameSet = useMemo(() => {
     const counts = new Map();
@@ -1658,20 +1721,20 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
 
   const getMathHomeworkValue = useCallback((studentName, date = tableDisplayDate) => {
     if (selectedClass === 'all') return '';
-    return String(
-      (dateCompletionData[date]?.[selectedClass]?.[studentName]?.[MATH_HOMEWORK_TEXT_KEY] ??
-        completionData[selectedClass]?.[studentName]?.[MATH_HOMEWORK_TEXT_KEY] ??
-        '')
-    );
+    const row =
+      dateCompletionData[date]?.[selectedClass]?.[studentName] ??
+      completionData[selectedClass]?.[studentName] ??
+      {};
+    return String(row[MATH_HOMEWORK_TEXT_KEY] ?? row[LEGACY_MATH_HOMEWORK_TEXT_KEY] ?? '');
   }, [selectedClass, tableDisplayDate, dateCompletionData, completionData]);
 
   const getMathProgressValue = useCallback((studentName, date = tableDisplayDate) => {
     if (selectedClass === 'all') return '';
-    return String(
-      (dateProgressData[date]?.[selectedClass]?.[studentName]?.[MATH_PROGRESS_TEXT_KEY] ??
-        progressData[selectedClass]?.[studentName]?.[MATH_PROGRESS_TEXT_KEY] ??
-        '')
-    );
+    const row =
+      dateProgressData[date]?.[selectedClass]?.[studentName] ??
+      progressData[selectedClass]?.[studentName] ??
+      {};
+    return String(row[MATH_PROGRESS_TEXT_KEY] ?? row[LEGACY_MATH_PROGRESS_TEXT_KEY] ?? '');
   }, [selectedClass, tableDisplayDate, dateProgressData, progressData]);
 
   const updateMathHomeworkText = useCallback((studentName, value) => {
@@ -1771,6 +1834,57 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     });
   }, [selectedClass, studentInfo, classesForSelectedTeacher]);
 
+  const markIndividualNoticeSent = useCallback((date, studentName, sent = true) => {
+    if (selectedClass === 'all') return;
+    setDateCompletionData((prev) => ({
+      ...prev,
+      [date]: {
+        ...(prev[date] || {}),
+        [selectedClass]: {
+          ...(prev[date]?.[selectedClass] || {}),
+          [studentName]: {
+            ...(prev[date]?.[selectedClass]?.[studentName] || {}),
+            [INDIVIDUAL_NOTICE_SENT_KEY]: sent,
+          },
+        },
+      },
+    }));
+  }, [selectedClass]);
+
+  const pruneIndividualLineCompletion = useCallback((date, studentName, homeworkText) => {
+    if (selectedClass === 'all') return;
+    const linesSet = new Set(parseIndividualHomeworkLines(homeworkText));
+    setDateCompletionData((prev) => {
+      const bucket = prev[date]?.[selectedClass]?.[studentName];
+      if (!bucket) return prev;
+      const nextStudent = { ...bucket };
+      let changed = false;
+      Object.keys(nextStudent).forEach((k) => {
+        if (isIndividualStudentRowMetaKey(k)) return;
+        const v = nextStudent[k];
+        if (v && typeof v === 'object' && ('completed' in v || 'percentage' in v) && !linesSet.has(k)) {
+          delete nextStudent[k];
+          changed = true;
+        }
+      });
+      if (linesSet.size === 0 && nextStudent[INDIVIDUAL_NOTICE_SENT_KEY]) {
+        delete nextStudent[INDIVIDUAL_NOTICE_SENT_KEY];
+        changed = true;
+      }
+      if (!changed) return prev;
+      return {
+        ...prev,
+        [date]: {
+          ...(prev[date] || {}),
+          [selectedClass]: {
+            ...(prev[date]?.[selectedClass] || {}),
+            [studentName]: nextStudent,
+          },
+        },
+      };
+    });
+  }, [selectedClass]);
+
   const buildMathStudentPayload = useCallback((studentName, date = tableDisplayDate) => {
     const classKey = selectedClass !== 'all' ? selectedClass : '';
     const homeworkText = classKey ? getMathHomeworkValue(studentName, date) : '';
@@ -1782,11 +1896,39 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
             '')
         )
       : '';
-    const homeworkStatus = [homeworkText && `숙제\n${homeworkText}`, commentText && `코멘트\n${commentText}`]
-      .filter(Boolean)
-      .join('\n\n');
+    const lines = classKey ? parseIndividualHomeworkLines(homeworkText) : [];
+    const noticeSent = Boolean(dateCompletionData[date]?.[classKey]?.[studentName]?.[INDIVIDUAL_NOTICE_SENT_KEY]);
+    const completionRow =
+      (dateCompletionData[date]?.[classKey]?.[studentName]) ||
+      (completionData[classKey]?.[studentName]) ||
+      {};
+
+    let homeworkStatus;
+    let homeworkListText = homeworkText;
+
+    if (lines.length > 0 && noticeSent) {
+      homeworkListText = lines.join('\n');
+      const statusLines = lines.map((hw) => {
+        const hwData = completionRow[hw] || {};
+        const completed = hwData.completed || false;
+        const note =
+          hwData.percentage !== undefined && hwData.percentage !== null && String(hwData.percentage).trim() !== ''
+            ? String(hwData.percentage)
+            : '';
+        return note ? `${hw}: ${completed ? '완료' : '미완료'} (${note})` : `${hw}: ${completed ? '완료' : '미완료'}`;
+      });
+      homeworkStatus = statusLines.join('\n');
+      if (commentText.trim()) {
+        homeworkStatus += `\n\n코멘트: ${commentText.trim()}`;
+      }
+    } else {
+      homeworkStatus = [homeworkText && `숙제\n${homeworkText}`, commentText && `코멘트\n${commentText}`]
+        .filter(Boolean)
+        .join('\n\n');
+    }
+
     return {
-      homeworkListText: homeworkText,
+      homeworkListText,
       homeworkStatus,
       progressText,
       commentText,
@@ -2731,10 +2873,28 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
       const parentPhone = phoneData.parent ? phoneData.parent.replace(/-/g, '') : null;
       
       if (showIndividualFields) {
-        const mathPayload = buildMathStudentPayload(student, previewSendDate || tableDisplayDate);
+        const previewDate = previewSendDate || tableDisplayDate;
         const info = studentInfo[student] || {};
         const grade = info.grade || '';
         const className = selectedClass !== 'all' ? formatClassName(selectedClass) : '';
+        const lines = parseIndividualHomeworkLines(getMathHomeworkValue(student, previewDate));
+        const progressOnly = getMathProgressValue(student, previewDate);
+        if (sendType === 'notice') {
+          if (lines.length === 0) continue;
+          const listText = lines.join('\n');
+          previewData.push({
+            student,
+            phone: studentPhone,
+            parentPhone: parentPhone,
+            homeworkList: listText,
+            homeworkStatus: listText,
+            progressStatus: progressOnly,
+            grade,
+            className,
+          });
+          continue;
+        }
+        const mathPayload = buildMathStudentPayload(student, previewDate);
         previewData.push({
           student,
           phone: studentPhone,
@@ -2828,7 +2988,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     }
     
     return previewData;
-  }, [filteredAndSortedStudents, phoneNumbers, completionData, dateCompletionData, dateHomeworkList, dateProgressList, dateProgressData, tableDisplayDate, homeworkList, progressList, progressData, studentInfo, selectedClass, showIndividualFields, buildMathStudentPayload]);
+  }, [filteredAndSortedStudents, phoneNumbers, completionData, dateCompletionData, dateHomeworkList, dateProgressList, dateProgressData, tableDisplayDate, homeworkList, progressList, progressData, studentInfo, selectedClass, showIndividualFields, buildMathStudentPayload, getMathHomeworkValue, getMathProgressValue]);
 
   const previewItems = useMemo(() => (
     showPreview ? generatePreview(previewSendType) : []
@@ -3004,6 +3164,17 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
       return;
     }
     if (showIndividualFields) {
+      for (const s of filteredAndSortedStudents) {
+        const lines = parseIndividualHomeworkLines(getMathHomeworkValue(s, tableDisplayDate));
+        if (lines.length === 0) continue;
+        const sent = dateCompletionData[tableDisplayDate]?.[selectedClass]?.[s]?.[INDIVIDUAL_NOTICE_SENT_KEY];
+        if (!sent) {
+          alert(
+            `「${s}」 학생은 개별 숙제가 여러 줄로 나뉜 경우, 먼저 행의 📋 알림장 또는 하단 일괄 알림장을 보낸 뒤 완료도를 보낼 수 있습니다.`
+          );
+          return;
+        }
+      }
       const hasAnyIndividualPayload = filteredAndSortedStudents.some((student) => {
         const payload = buildMathStudentPayload(student, tableDisplayDate);
         return Boolean(payload.homeworkStatus || payload.progressText);
@@ -3027,7 +3198,27 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     }
     setPreviewSendType(null);
     setShowPreview(true);
-  }, [selectedClass, homeworkList, dateHomeworkList, tableDisplayDate, showIndividualFields, filteredAndSortedStudents, buildMathStudentPayload]);
+  }, [selectedClass, homeworkList, dateHomeworkList, tableDisplayDate, showIndividualFields, filteredAndSortedStudents, buildMathStudentPayload, dateCompletionData, getMathHomeworkValue]);
+
+  const handleOpenIndividualNoticePreview = useCallback(() => {
+    if (selectedClass === 'all') {
+      alert('반을 선택해주세요. 전체 학생에게는 발송할 수 없습니다.');
+      return;
+    }
+    if (
+      !filteredAndSortedStudents.some(
+        (s) => parseIndividualHomeworkLines(getMathHomeworkValue(s, tableDisplayDate)).length > 0
+      )
+    ) {
+      alert('개별 숙제를 한 줄 이상 입력한 학생이 최소 한 명 있어야 합니다.');
+      return;
+    }
+    setPreviewSendType('notice');
+    sessionStorage.removeItem('previewSendStudent');
+    sessionStorage.removeItem('previewSendDate');
+    sessionStorage.removeItem('previewSendHomework');
+    setShowPreview(true);
+  }, [selectedClass, filteredAndSortedStudents, getMathHomeworkValue, tableDisplayDate]);
 
   // 개별 학생에게 카톡 전송
   const sendKakaoToStudent = useCallback(async (studentName, recipientSelection = null) => {
@@ -3077,6 +3268,17 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     let currentProgressList = [];
 
     if (showIndividualFields) {
+      const indLines = parseIndividualHomeworkLines(getMathHomeworkValue(studentName, tableDisplayDate));
+      if (indLines.length > 0) {
+        const noticeOk =
+          dateCompletionData[tableDisplayDate]?.[selectedClass]?.[studentName]?.[INDIVIDUAL_NOTICE_SENT_KEY];
+        if (!noticeOk) {
+          alert(
+            '이 학생의 개별 알림장을 먼저 보내 주세요. (개별 숙제 칸의 📋 알림장 또는 하단 일괄 알림장)'
+          );
+          return;
+        }
+      }
       const mathPayload = buildMathStudentPayload(studentName, tableDisplayDate);
       homeworkStatus = mathPayload.homeworkStatus;
       progressText = mathPayload.progressText;
@@ -3259,7 +3461,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     } finally {
       setSending(false);
     }
-  }, [selectedClass, homeworkList, progressList, phoneNumbers, completionData, progressData, dateCompletionData, dateProgressData, dateHomeworkList, dateProgressList, tableDisplayDate, studentInfo, db, saveAllToFirebase, showIndividualFields, buildMathStudentPayload]);
+  }, [selectedClass, homeworkList, progressList, phoneNumbers, completionData, progressData, dateCompletionData, dateProgressData, dateHomeworkList, dateProgressList, tableDisplayDate, studentInfo, db, saveAllToFirebase, showIndividualFields, buildMathStudentPayload, getMathHomeworkValue]);
 
   // 날짜별 완료도 카톡 전송 (단체)
   const sendDateCompletionMessages = useCallback(async (date, recipientSelections = {}) => {
@@ -3325,28 +3527,47 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
         const info = studentInfo[studentName] || {};
         const grade = info.grade || '';
         const className = selectedClass !== 'all' ? formatClassName(selectedClass) : '';
-        
-        // 날짜별 완료도 데이터 사용 (반별로 분리, 메모는 자유 입력)
-        let homeworkStatus = homeworkArray.map(hw => {
-          const hwData = dateCompletionData[date]?.[selectedClass]?.[studentName]?.[hw];
-          const completed = hwData?.completed || false;
-          const note = (hwData?.percentage !== undefined && hwData?.percentage !== null && hwData?.percentage !== '') ? String(hwData.percentage) : '';
-          return note ? `${hw}: ${completed ? '완료' : '미완료'} (${note})` : `${hw}: ${completed ? '완료' : '미완료'}`;
-        }).join('\n');
-        const comment = dateCompletionData[date]?.[selectedClass]?.[studentName]?.[COMMENT_KEY] ?? '';
-        if (comment) homeworkStatus += '\n\n코멘트: ' + comment;
 
-        const progressArray = dateProgressList[date]?.[selectedClass] || [];
-        const dateProgSource = dateProgressData[date]?.[selectedClass] || {};
-        const progressText = progressArray.length > 0
-          ? progressArray.map(p => `${p}: ${(dateProgSource[studentName]?.[p] ?? '').trim() || '-'}`).join('\n')
-          : '';
+        let homeworkStatus;
+        let progressText;
+        let homeworkListForTemplate;
+
+        if (showIndividualFields) {
+          // 캘린더「날짜별 완료도」재발송: 개별 진도 모드 데이터는 buildMathStudentPayload와 동일하게 넣어야 함
+          const payload = buildMathStudentPayload(studentName, date);
+          if (!payload.homeworkStatus && !payload.progressText) {
+            continue;
+          }
+          homeworkStatus = payload.homeworkStatus;
+          progressText = payload.progressText;
+          homeworkListForTemplate = (payload.homeworkListText && payload.homeworkListText.trim())
+            ? payload.homeworkListText
+            : homeworkArray.join('\n');
+        } else {
+          // 날짜별 완료도 데이터 사용 (반별로 분리, 메모는 자유 입력)
+          homeworkStatus = homeworkArray.map(hw => {
+            const hwData = dateCompletionData[date]?.[selectedClass]?.[studentName]?.[hw];
+            const completed = hwData?.completed || false;
+            const note = (hwData?.percentage !== undefined && hwData?.percentage !== null && hwData?.percentage !== '') ? String(hwData.percentage) : '';
+            return note ? `${hw}: ${completed ? '완료' : '미완료'} (${note})` : `${hw}: ${completed ? '완료' : '미완료'}`;
+          }).join('\n');
+          const comment = dateCompletionData[date]?.[selectedClass]?.[studentName]?.[COMMENT_KEY] ?? '';
+          if (comment) homeworkStatus += '\n\n코멘트: ' + comment;
+
+          const progressArray = dateProgressList[date]?.[selectedClass] || [];
+          const dateProgSource = dateProgressData[date]?.[selectedClass] || {};
+          progressText = progressArray.length > 0
+            ? progressArray.map(p => `${p}: ${(dateProgSource[studentName]?.[p] ?? '').trim() || '-'}`).join('\n')
+            : '';
+
+          homeworkListForTemplate = homeworkArray.join('\n');
+        }
 
         const variables = {
           '학생명': studentName,
           '학년': grade,
           '반명': className,
-          '과제목록': homeworkArray.join('\n'),
+          '과제목록': homeworkListForTemplate,
           '과제완료상태': homeworkStatus,
           '진도상황': progressText,
         };
@@ -3488,7 +3709,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     } finally {
       setSending(false);
     }
-  }, [selectedClass, phoneNumbers, dateCompletionData, dateProgressList, dateProgressData, studentInfo, sendHistory, db, saveAllToFirebase]);
+  }, [selectedClass, phoneNumbers, dateCompletionData, dateProgressList, dateProgressData, studentInfo, sendHistory, db, saveAllToFirebase, showIndividualFields, buildMathStudentPayload]);
 
   // 과제 알림장 카톡 전송 (개별) - 완료/미완료 상태 없이 과제 목록만 전송
   const sendHomeworkNoticeToStudent = useCallback(async (studentName, recipientSelection = null) => {
@@ -3498,8 +3719,17 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     }
     // 카톡 전송 전 현재 완료도·메모·진도·코멘트를 Firebase에 저장
     try { await saveAllToFirebase(); } catch (e) { console.error('전송 전 저장 실패', e); }
-    const currentHomeworkList = selectedClass !== 'all' ? (homeworkList[selectedClass] || []) : [];
-    if (currentHomeworkList.length === 0) {
+
+    let currentHomeworkList = selectedClass !== 'all' ? (homeworkList[selectedClass] || []) : [];
+    let individualLines = null;
+    if (showIndividualFields) {
+      individualLines = parseIndividualHomeworkLines(getMathHomeworkValue(studentName, tableDisplayDate));
+      if (individualLines.length === 0) {
+        alert('이 학생의 개별 숙제를 한 줄 이상 입력해 주세요. (줄마다 한 과제로 알림장에 나갑니다.)');
+        return;
+      }
+      currentHomeworkList = individualLines;
+    } else if (currentHomeworkList.length === 0) {
       alert('과제를 추가해주세요.');
       return;
     }
@@ -3532,9 +3762,11 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     const progressSourceNotice = (dateProg.length > 0)
       ? (dateProgressData[tableDisplayDate]?.[selectedClass] || {})
       : (progressData[selectedClass] || {});
-    const progressTextNotice = currentProgressListNotice.length > 0
-      ? currentProgressListNotice.map(p => `${p}: ${(progressSourceNotice[studentName]?.[p] ?? '').trim() || '-'}`).join('\n')
-      : '';
+    const progressTextNotice = showIndividualFields
+      ? String(getMathProgressValue(studentName, tableDisplayDate) || '').trim()
+      : (currentProgressListNotice.length > 0
+        ? currentProgressListNotice.map(p => `${p}: ${(progressSourceNotice[studentName]?.[p] ?? '').trim() || '-'}`).join('\n')
+        : '');
 
     setSending(true);
     
@@ -3677,6 +3909,9 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
         } else {
           setSendHistory(prev => ({ ...prev, [today]: [...(prev[today] || []), noticeEntry] }));
         }
+        if (showIndividualFields) {
+          markIndividualNoticeSent(tableDisplayDate, studentName, true);
+        }
         try { await saveAllToFirebase(); } catch (e) { console.error('자동 저장 실패', e); }
         alert(`✅ ${studentName} 과제 알림장 카카오톡 발송 완료!`);
       } else {
@@ -3688,7 +3923,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     } finally {
       setSending(false);
     }
-  }, [selectedClass, homeworkList, progressList, dateHomeworkList, dateProgressList, dateProgressData, progressData, tableDisplayDate, phoneNumbers, studentInfo, db, saveAllToFirebase]);
+  }, [selectedClass, homeworkList, progressList, dateHomeworkList, dateProgressList, dateProgressData, progressData, tableDisplayDate, phoneNumbers, studentInfo, db, saveAllToFirebase, showIndividualFields, getMathHomeworkValue, getMathProgressValue, markIndividualNoticeSent]);
 
   const sendAbsenceLinksToStudent = useCallback(async () => {
     if (!absenceLinkModal) return;
@@ -3822,8 +4057,15 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     const progressSourceNotices = (dateProgNotice.length > 0)
       ? (dateProgressData[tableDisplayDate]?.[selectedClass] || {})
       : (progressData[selectedClass] || {});
-    if (currentHomeworkList.length === 0) {
+    if (!showIndividualFields && currentHomeworkList.length === 0) {
       alert('과제를 추가하거나 캘린더 날짜를 선택해주세요.');
+      return;
+    }
+    if (
+      showIndividualFields &&
+      !filteredAndSortedStudents.some((s) => parseIndividualHomeworkLines(getMathHomeworkValue(s, tableDisplayDate)).length > 0)
+    ) {
+      alert('개별 숙제를 한 줄 이상 입력한 학생이 한 명도 없습니다.');
       return;
     }
 
@@ -3844,9 +4086,6 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
       let failCount = 0;
       const errorMessages = [];
 
-      // 과제 목록만 전송 (완료/미완료 상태 없음) - 이미 위에서 currentHomeworkList 설정됨
-      const homeworkListText = currentHomeworkList.join('\n');
-
       // 전화번호가 있는 학생들에게만 발송
       const studentSuccessCounts = {}; // {학생명: 성공횟수}
       
@@ -3860,14 +4099,25 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
         const sendToStudent = recipientSelection.student ?? true;
         const sendToParent = recipientSelection.parent ?? true;
         if (!sendToStudent && !sendToParent) continue;
+
+        const individualLines = showIndividualFields
+          ? parseIndividualHomeworkLines(getMathHomeworkValue(student, tableDisplayDate))
+          : null;
+        if (showIndividualFields && individualLines.length === 0) continue;
+
+        const homeworkListForSend = showIndividualFields
+          ? individualLines.join('\n')
+          : currentHomeworkList.join('\n');
         
         // 학생 정보 가져오기
         const info = studentInfo[student] || {};
         const grade = info.grade || '';
         const className = selectedClass !== 'all' ? formatClassName(selectedClass) : '';
-        const progressTextNotices = currentProgressListNotices.length > 0
-          ? currentProgressListNotices.map(p => `${p}: ${(progressSourceNotices[student]?.[p] ?? '').trim() || '-'}`).join('\n')
-          : '';
+        const progressTextNotices = showIndividualFields
+          ? String(getMathProgressValue(student, tableDisplayDate) || '').trim()
+          : (currentProgressListNotices.length > 0
+            ? currentProgressListNotices.map(p => `${p}: ${(progressSourceNotices[student]?.[p] ?? '').trim() || '-'}`).join('\n')
+            : '');
 
         let studentSuccess = 0;
 
@@ -3886,7 +4136,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                   '학생명': student,
                   '학년': grade,
                   '반명': className,
-                  '과제목록': currentHomeworkList.join('\n'),
+                  '과제목록': homeworkListForSend,
                   '진도상황': progressTextNotices,
                 },
               }),
@@ -3930,7 +4180,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                   '학생명': student,
                   '학년': grade,
                   '반명': className,
-                  '과제목록': currentHomeworkList.join('\n'),
+                  '과제목록': homeworkListForSend,
                   '진도상황': progressTextNotices,
                 },
               }),
@@ -3961,6 +4211,9 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
         
         if (studentSuccess > 0) {
           studentSuccessCounts[student] = studentSuccess;
+          if (showIndividualFields) {
+            markIndividualNoticeSent(tableDisplayDate, student, true);
+          }
         }
       }
       
@@ -4012,8 +4265,16 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
           const noticeEntry = {
             반명: selectedClass,
             학생명: Object.keys(studentSuccessCounts).join(', '),
-            과제목록: [...currentHomeworkList],
-            진도목록: [...currentProgressListNotices],
+            과제목록: showIndividualFields
+              ? [
+                  ...new Set(
+                    Object.keys(studentSuccessCounts).flatMap((s) =>
+                      parseIndividualHomeworkLines(getMathHomeworkValue(s, tableDisplayDate))
+                    ),
+                  ),
+                ]
+              : [...currentHomeworkList],
+            진도목록: showIndividualFields ? [] : [...currentProgressListNotices],
             타입: '알림장',
             시간: now,
           };
@@ -4035,14 +4296,16 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
           }
         }
 
-        // 날짜별 과제 목록 저장 (반별로 분리)
-        setDateHomeworkList(prev => ({
-          ...prev,
-          [today]: {
-            ...(prev[today] || {}),
-            [selectedClass]: [...currentHomeworkList],
-          },
-        }));
+        // 날짜별 과제 목록 저장 (반별로 분리) — 개별 진도 모드에서는 반 공통 과제 목록이 없으므로 건너뜀
+        if (!showIndividualFields) {
+          setDateHomeworkList(prev => ({
+            ...prev,
+            [today]: {
+              ...(prev[today] || {}),
+              [selectedClass]: [...currentHomeworkList],
+            },
+          }));
+        }
       }
 
       // 결과 알림
@@ -4062,7 +4325,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     } finally {
       setSending(false);
     }
-  }, [selectedClass, filteredAndSortedStudents, phoneNumbers, homeworkList, progressList, dateHomeworkList, dateProgressList, dateProgressData, progressData, tableDisplayDate, studentInfo, saveAllToFirebase]);
+  }, [selectedClass, filteredAndSortedStudents, phoneNumbers, homeworkList, progressList, dateHomeworkList, dateProgressList, dateProgressData, progressData, tableDisplayDate, studentInfo, saveAllToFirebase, showIndividualFields, getMathHomeworkValue, getMathProgressValue, markIndividualNoticeSent]);
 
   // 카톡 전송 (단체)
   const sendKakaoMessages = useCallback(async (recipientSelections = {}) => {
@@ -4073,6 +4336,17 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     // 카톡 전송 전 현재 완료도·메모·진도·코멘트를 Firebase에 저장
     try { await saveAllToFirebase(); } catch (e) { console.error('전송 전 저장 실패', e); }
     if (showIndividualFields) {
+      for (const s of filteredAndSortedStudents) {
+        const lines = parseIndividualHomeworkLines(getMathHomeworkValue(s, tableDisplayDate));
+        if (lines.length === 0) continue;
+        const sent = dateCompletionData[tableDisplayDate]?.[selectedClass]?.[s]?.[INDIVIDUAL_NOTICE_SENT_KEY];
+        if (!sent) {
+          alert(
+            `「${s}」 학생은 개별 숙제가 여러 줄로 나뉜 경우, 먼저 알림장을 보낸 뒤 완료도를 보낼 수 있습니다.`
+          );
+          return;
+        }
+      }
       const individualTargets = filteredAndSortedStudents
         .map((student) => ({
           student,
@@ -4504,7 +4778,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
     } finally {
       setSending(false);
     }
-  }, [selectedClass, filteredAndSortedStudents, phoneNumbers, completionData, progressData, dateCompletionData, dateProgressData, homeworkList, progressList, dateHomeworkList, dateProgressList, tableDisplayDate, studentInfo, db, saveAllToFirebase, showIndividualFields, buildMathStudentPayload]);
+  }, [selectedClass, filteredAndSortedStudents, phoneNumbers, completionData, progressData, dateCompletionData, dateProgressData, homeworkList, progressList, dateHomeworkList, dateProgressList, tableDisplayDate, studentInfo, db, saveAllToFirebase, showIndividualFields, buildMathStudentPayload, getMathHomeworkValue]);
 
   if (loading) {
     return (
@@ -4679,23 +4953,56 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
               </select>
             </div>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', marginBottom: '15px' }}>
-            <button
-              type="button"
-              onClick={() => setShowIndividualFields((prev) => !prev)}
-              style={{
-                padding: '8px 16px',
-                fontSize: '0.9rem',
-                backgroundColor: showIndividualFields ? '#4f46e5' : '#64748b',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: '600',
-              }}
-            >
-              {showIndividualFields ? '개별 진도 모드 사용 중' : '개별 진도'}
-            </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', alignItems: 'center', marginBottom: '15px' }}>
+            <div className="hc-pill-toggle-row">
+              <span className="hc-pill-toggle-label">개별진도</span>
+              <button
+                type="button"
+                className="hc-pill-toggle"
+                aria-pressed={showIndividualFields}
+                aria-label={showIndividualFields ? '개별 진도 모드 끄기' : '개별 진도 모드 켜기'}
+                onClick={() => setShowIndividualFields((prev) => !prev)}
+              >
+                {showIndividualFields ? (
+                  <>
+                    <span>ON</span>
+                    <span className="hc-pill-toggle__knob" aria-hidden />
+                  </>
+                ) : (
+                  <>
+                    <span className="hc-pill-toggle__knob" aria-hidden />
+                    <span>OFF</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="hc-pill-toggle-row">
+              <span className="hc-pill-toggle-label" style={{ fontSize: '0.9rem', color: '#334155' }}>
+                화면 유지
+              </span>
+              <button
+                type="button"
+                className="hc-pill-toggle hc-pill-toggle--compact"
+                aria-pressed={individualModeSticky}
+                aria-label={individualModeSticky ? '개별 진도 화면 유지 끄기' : '개별 진도 화면 유지 켜기'}
+                onClick={() => setIndividualModeSticky((prev) => !prev)}
+              >
+                {individualModeSticky ? (
+                  <>
+                    <span>ON</span>
+                    <span className="hc-pill-toggle__knob" aria-hidden />
+                  </>
+                ) : (
+                  <>
+                    <span className="hc-pill-toggle__knob" aria-hidden />
+                    <span>OFF</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <span style={{ color: '#64748b', fontSize: '0.85rem', maxWidth: '440px', lineHeight: 1.45 }}>
+              화면 유지를 켜두면 카톡·포커스 이동 후에도 개별 진도가 자동으로 꺼지지 않습니다. 같은 브라우저 세션에서 완료도 화면을 다시 열면 개별 진도 표시를 이어갑니다.
+            </span>
             <span style={{ color: '#64748b', fontSize: '0.92rem' }}>
               반 생성/수정/삭제는 `반 만들기` 화면에서만 가능합니다.
             </span>
@@ -5046,11 +5353,11 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                       <th rowSpan="2" style={{ minWidth: '180px' }}>전화번호</th>
                       {showIndividualFields ? (
                         <>
-                          <th rowSpan="2" style={{ minWidth: '220px', background: '#ccfbf1', color: '#000' }}>
-                            개별 진도 {tableDisplayDate && `(${tableDisplayDate})`}
-                          </th>
                           <th rowSpan="2" style={{ minWidth: '240px', background: '#f8f9fa', color: '#000' }}>
                             개별 숙제 {tableDisplayDate && `(${tableDisplayDate})`}
+                          </th>
+                          <th rowSpan="2" style={{ minWidth: '220px', background: '#ccfbf1', color: '#000' }}>
+                            개별 진도 {tableDisplayDate && `(${tableDisplayDate})`}
                           </th>
                         </>
                       ) : (selectedClass !== 'all' && displayProgressList.length > 0) && (
@@ -5240,6 +5547,153 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                           </td>
                           {showIndividualFields ? (
                             <>
+                              <td style={{ textAlign: 'center', padding: '6px', verticalAlign: 'top' }}>
+                                <textarea
+                                  value={getMathHomeworkValue(student)}
+                                  onChange={(e) => updateDateMathHomeworkText(tableDisplayDate, student, e.target.value)}
+                                  onBlur={(e) => pruneIndividualLineCompletion(tableDisplayDate, student, e.target.value)}
+                                  placeholder="줄마다 한 과제로 나갑니다. 알림장 후 줄별 완료·메모를 쓸 수 있습니다."
+                                  style={{
+                                    width: '100%',
+                                    minWidth: '240px',
+                                    minHeight: '92px',
+                                    padding: '8px 10px',
+                                    fontSize: '0.9rem',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '6px',
+                                    boxSizing: 'border-box',
+                                    resize: 'vertical',
+                                    lineHeight: '1.5',
+                                    fontFamily: 'inherit',
+                                  }}
+                                />
+                                <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => sendHomeworkNoticeToStudent(student)}
+                                    disabled={sending || selectedClass === 'all'}
+                                    style={{
+                                      padding: '6px 12px',
+                                      fontSize: '0.85rem',
+                                      fontWeight: '600',
+                                      backgroundColor: selectedClass === 'all' ? '#9ca3af' : '#10b981',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      cursor: selectedClass === 'all' || sending ? 'not-allowed' : 'pointer',
+                                    }}
+                                    title="이 학생 개별 숙제·진도로 과제 알림장 카톡 발송"
+                                  >
+                                    📋 알림장
+                                  </button>
+                                </div>
+                                {parseIndividualHomeworkLines(getMathHomeworkValue(student)).length > 0 && (
+                                  <div style={{ marginTop: '10px', textAlign: 'left' }}>
+                                    {!dateCompletionData[tableDisplayDate]?.[selectedClass]?.[student]?.[INDIVIDUAL_NOTICE_SENT_KEY] ? (
+                                      <div
+                                        style={{
+                                          fontSize: '0.82rem',
+                                          color: '#b45309',
+                                          lineHeight: 1.45,
+                                          padding: '8px',
+                                          background: '#fffbeb',
+                                          borderRadius: '6px',
+                                          border: '1px solid #fcd34d',
+                                        }}
+                                      >
+                                        알림장을 내면 아래에 줄마다 완료 체크와 메모를 입력할 수 있습니다.
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {parseIndividualHomeworkLines(getMathHomeworkValue(student)).map((hw, hwIdx) => {
+                                          const hwData =
+                                            dateCompletionData[tableDisplayDate]?.[selectedClass]?.[student]?.[hw] || {};
+                                          const completed = hwData.completed || false;
+                                          const note =
+                                            hwData.percentage !== undefined && hwData.percentage !== null
+                                              ? String(hwData.percentage)
+                                              : '';
+                                          return (
+                                            <div
+                                              key={`ind-hw-${student}-${hwIdx}`}
+                                              style={{
+                                                padding: '8px',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: '6px',
+                                                background: '#f9fafb',
+                                              }}
+                                            >
+                                              <div
+                                                style={{
+                                                  fontSize: '0.82rem',
+                                                  color: '#334155',
+                                                  marginBottom: '6px',
+                                                  wordBreak: 'break-word',
+                                                  lineHeight: 1.4,
+                                                }}
+                                              >
+                                                {hw}
+                                              </div>
+                                              <div
+                                                style={{
+                                                  display: 'flex',
+                                                  flexWrap: 'wrap',
+                                                  alignItems: 'center',
+                                                  gap: '8px',
+                                                }}
+                                              >
+                                                <label
+                                                  style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    cursor: 'pointer',
+                                                  }}
+                                                >
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={completed}
+                                                    onChange={(e) =>
+                                                      updateDateCompletion(
+                                                        tableDisplayDate,
+                                                        student,
+                                                        hw,
+                                                        e.target.checked
+                                                      )
+                                                    }
+                                                  />
+                                                  <span style={{ color: completed ? '#059669' : '#64748b' }}>
+                                                    {completed ? '완료' : '미완료'}
+                                                  </span>
+                                                </label>
+                                                <input
+                                                  type="text"
+                                                  value={note}
+                                                  onChange={(e) =>
+                                                    updateDatePercentage(tableDisplayDate, student, hw, e.target.value)
+                                                  }
+                                                  placeholder="메모"
+                                                  style={{
+                                                    flex: '1 1 120px',
+                                                    minWidth: '100px',
+                                                    padding: '6px 8px',
+                                                    fontSize: '0.85rem',
+                                                    border: '1px solid #d1d5db',
+                                                    borderRadius: '4px',
+                                                    boxSizing: 'border-box',
+                                                  }}
+                                                />
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
                               <td style={{ textAlign: 'center', padding: '6px' }}>
                                 <textarea
                                   value={getMathProgressValue(student)}
@@ -5253,26 +5707,6 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                                     padding: '8px 10px',
                                     fontSize: '0.9rem',
                                     border: '1px solid #99f6e4',
-                                    borderRadius: '6px',
-                                    boxSizing: 'border-box',
-                                    resize: 'vertical',
-                                    lineHeight: '1.5',
-                                    fontFamily: 'inherit',
-                                  }}
-                                />
-                              </td>
-                              <td style={{ textAlign: 'center', padding: '6px' }}>
-                                <textarea
-                                  value={getMathHomeworkValue(student)}
-                                  onChange={(e) => updateDateMathHomeworkText(tableDisplayDate, student, e.target.value)}
-                                  placeholder="학생 개별 숙제를 넉넉하게 입력"
-                                  style={{
-                                    width: '100%',
-                                    minWidth: '240px',
-                                    minHeight: '92px',
-                                    padding: '8px 10px',
-                                    fontSize: '0.9rem',
-                                    border: '1px solid #d1d5db',
                                     borderRadius: '6px',
                                     boxSizing: 'border-box',
                                     resize: 'vertical',
@@ -5442,6 +5876,21 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                                   return;
                                 }
                                 if (showIndividualFields) {
+                                  const indLines = parseIndividualHomeworkLines(
+                                    getMathHomeworkValue(student, tableDisplayDate)
+                                  );
+                                  if (indLines.length > 0) {
+                                    const noticeOk =
+                                      dateCompletionData[tableDisplayDate]?.[selectedClass]?.[student]?.[
+                                        INDIVIDUAL_NOTICE_SENT_KEY
+                                      ];
+                                    if (!noticeOk) {
+                                      alert(
+                                        '이 학생의 개별 알림장을 먼저 보내 주세요. (개별 숙제 칸의 📋 알림장 또는 하단 일괄 알림장)'
+                                      );
+                                      return;
+                                    }
+                                  }
                                   const payload = buildMathStudentPayload(student);
                                   if (!payload.homeworkStatus && !payload.progressText) {
                                     alert('이 학생의 개별 숙제나 진도를 먼저 입력해주세요.');
@@ -5570,6 +6019,43 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
           {showIndividualFields && filteredAndSortedStudents.length > 0 && selectedClass !== 'all' && (
             <div className="class-modal-actions" style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <button
+                type="button"
+                onClick={handleOpenIndividualNoticePreview}
+                disabled={sending}
+                style={{
+                  padding: '12px 30px',
+                  background: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '1.1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                }}
+              >
+                👁️ 개별 알림장 미리보기
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenIndividualNoticePreview}
+                disabled={sending}
+                style={{
+                  padding: '12px 30px',
+                  background: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '1.1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  opacity: sending ? 0.6 : 1,
+                }}
+              >
+                📋 개별 알림장 발송
+              </button>
+              <button
+                type="button"
                 onClick={handleOpenPreview}
                 disabled={sending}
                 style={{
@@ -5587,6 +6073,7 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                 👁️ 개별 진도 미리보기
               </button>
               <button
+                type="button"
                 className="send-kakao-btn"
                 onClick={handleOpenPreview}
                 disabled={filteredAndSortedStudents.length === 0 || sending}
@@ -5960,13 +6447,43 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                         ? (dateProgressData[date]?.[selectedClass]?.[selectedStudent] || {})
                         : null;
 
-                      if (showIndividualFields && selectedStudent) {
-                        const hwText = String(selectedStudentCompletion?.[MATH_HOMEWORK_TEXT_KEY] || '').trim();
-                        const progText = String(selectedStudentProgress?.[MATH_PROGRESS_TEXT_KEY] || '').trim();
-                        const commentText = String(selectedStudentCompletion?.[COMMENT_KEY] || '').trim();
-                        if (hwText) allSavedHomework.add('개별 숙제');
-                        if (progText) allSavedProgress.add('개별 진도');
-                        if (commentText) allSavedProgress.add('코멘트');
+                      // 개별 진도 모드: 특정 학생 선택 시 그 학생만, 「전체 학생」이면 해당 날짜·반 전원을 훑어 표시
+                      if (showIndividualFields && selectedClass !== 'all') {
+                        const readHw = (row) =>
+                          String(
+                            row?.[MATH_HOMEWORK_TEXT_KEY] ??
+                              row?.[LEGACY_MATH_HOMEWORK_TEXT_KEY] ??
+                              ''
+                          ).trim();
+                        const readProg = (row) =>
+                          String(
+                            row?.[MATH_PROGRESS_TEXT_KEY] ??
+                              row?.[LEGACY_MATH_PROGRESS_TEXT_KEY] ??
+                              ''
+                          ).trim();
+
+                        if (selectedStudent) {
+                          const hwText = readHw(selectedStudentCompletion);
+                          const progText = readProg(selectedStudentProgress);
+                          const commentText = String(selectedStudentCompletion?.[COMMENT_KEY] || '').trim();
+                          if (hwText) allSavedHomework.add('개별 숙제');
+                          if (progText) allSavedProgress.add('개별 진도');
+                          if (commentText) allSavedProgress.add('코멘트');
+                        } else {
+                          const classCompletion = dateCompletionData[date]?.[selectedClass] || {};
+                          const classProgress = dateProgressData[date]?.[selectedClass] || {};
+                          let anyHw = false;
+                          let anyProg = false;
+                          let anyComment = false;
+                          filteredAndSortedStudents.forEach((stu) => {
+                            if (readHw(classCompletion[stu])) anyHw = true;
+                            if (readProg(classProgress[stu])) anyProg = true;
+                            if (String(classCompletion[stu]?.[COMMENT_KEY] || '').trim()) anyComment = true;
+                          });
+                          if (anyHw) allSavedHomework.add('개별 숙제');
+                          if (anyProg) allSavedProgress.add('개별 진도');
+                          if (anyComment) allSavedProgress.add('코멘트');
+                        }
                       }
 
                       const allHomework = allSavedHomework;
@@ -6099,15 +6616,15 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
                         <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px' }}>
-                          <div style={{ fontWeight: '600', marginBottom: '8px', color: '#0f766e' }}>개별 진도</div>
-                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
-                            {getMathProgressValue(calendarStudentFilter, selectedDateDetail) || '-'}
-                          </pre>
-                        </div>
-                        <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px' }}>
                           <div style={{ fontWeight: '600', marginBottom: '8px', color: '#334155' }}>개별 숙제</div>
                           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
                             {getMathHomeworkValue(calendarStudentFilter, selectedDateDetail) || '-'}
+                          </pre>
+                        </div>
+                        <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px' }}>
+                          <div style={{ fontWeight: '600', marginBottom: '8px', color: '#0f766e' }}>개별 진도</div>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+                            {getMathProgressValue(calendarStudentFilter, selectedDateDetail) || '-'}
                           </pre>
                         </div>
                         <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '6px' }}>
@@ -7077,12 +7594,6 @@ export default function HomeworkCompletion({ onClose, apiKey, onApiKeySet, onOpe
                       {previewSendType === 'completion' && (
                         <div className="preview-content">
                           <strong>과제 완료 상태:</strong>
-                          <pre className="preview-text">{preview.homeworkStatus}</pre>
-                        </div>
-                      )}
-                      {previewSendType === 'notice' && (
-                        <div className="preview-content">
-                          <strong>과제 목록 (완료도 없음):</strong>
                           <pre className="preview-text">{preview.homeworkStatus}</pre>
                         </div>
                       )}

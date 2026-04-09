@@ -65,6 +65,17 @@ export default function WinterSchoolManager({ onClose }) {
   const [studentMemos, setStudentMemos] = useState({}); // {날짜: {학생명: '메모'}} - 카카오톡에 포함되지 않음
   const [templateCode] = useState('KA01TP2601111513575357JZNDJgjYQU'); // 윈터자습관 고정 템플릿 코드
   const [sentStudents, setSentStudents] = useState({}); // {날짜: {학생명: number}} - 전송 횟수
+  const [scheduledSendAt, setScheduledSendAt] = useState(() => {
+    const base = new Date(Date.now() + 10 * 60 * 1000);
+    base.setSeconds(0, 0);
+    const y = base.getFullYear();
+    const mo = String(base.getMonth() + 1).padStart(2, '0');
+    const d = String(base.getDate()).padStart(2, '0');
+    const h = String(base.getHours()).padStart(2, '0');
+    const mi = String(base.getMinutes()).padStart(2, '0');
+    return `${y}-${mo}-${d}T${h}:${mi}`;
+  });
+  const [scheduleSending, setScheduleSending] = useState(false);
   const [saving, setSaving] = useState(false); // 저장 중
   const [saveMessage, setSaveMessage] = useState(''); // 저장 메시지
   const saveTimeoutRef = useRef(null); // 저장 debounce용
@@ -1401,6 +1412,74 @@ export default function WinterSchoolManager({ onClose }) {
     }
   }, [winterStudents, phoneNumbers, studyPlanners, selectedDate, templateCode, generatePreview, studentMemos]);
 
+  const sendScheduledKakao = useCallback(async (studentName = null) => {
+    if (!scheduledSendAt) { alert('예약 발송 시간을 입력해주세요.'); return; }
+    const scheduledDate = new Date(scheduledSendAt);
+    if (Number.isNaN(scheduledDate.getTime())) { alert('예약 발송 시간이 올바르지 않습니다.'); return; }
+    if (scheduledDate.getTime() <= Date.now() + 60 * 1000) { alert('예약 시간은 현재보다 1분 이상 이후로 설정해주세요.'); return; }
+
+    const trimmedTemplateCode = templateCode.trim();
+    const apiUrl = import.meta.env.PROD
+      ? `${window.location.origin}/api/send-kakao`
+      : import.meta.env.VITE_API_URL || 'https://bodeumshjpocketbook.vercel.app/api/send-kakao';
+
+    const previews = studentName
+      ? [generateStudentPreview(studentName)].filter(Boolean)
+      : generatePreview();
+
+    if (previews.length === 0) { alert('전송할 대상이 없습니다.'); return; }
+
+    setScheduleSending(true);
+    let successCount = 0;
+    let failCount = 0;
+    const errorMessages = [];
+
+    try {
+      for (const preview of previews) {
+        const { student, phone: sPhone, parentPhone, content: planner, comment, formattedDate } = preview;
+        const fullContent = comment ? `${planner}\n\n[코멘트]\n${comment}` : planner;
+        const phones = [];
+        if (sPhone && /^010\d{8}$/.test(sPhone)) phones.push(sPhone);
+        if (parentPhone && /^010\d{8}$/.test(parentPhone)) phones.push(parentPhone);
+
+        for (const phone of phones) {
+          try {
+            const res = await fetch(apiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phoneNumber: phone,
+                templateCode: trimmedTemplateCode,
+                variables: { '학생명': student, '날짜': formattedDate, '스터디플래너': fullContent },
+                scheduleDate: scheduledDate.toISOString(),
+              }),
+            });
+            const result = await res.json();
+            if (res.ok && result.success) successCount++;
+            else throw new Error(result.error || `HTTP ${res.status}`);
+          } catch (err) {
+            failCount++;
+            const msg = err?.message || '알 수 없는 오류';
+            if (!errorMessages.includes(msg)) errorMessages.push(msg);
+          }
+        }
+      }
+
+      if (errorMessages.length > 0) alert(`❌ 예약발송 오류:\n${errorMessages.join('\n')}`);
+      if (successCount > 0) {
+        alert(`✅ ${successCount}건 예약발송 접수 완료\n예약 시각: ${scheduledSendAt.replace('T', ' ')}${failCount > 0 ? `\n❌ ${failCount}건 접수 실패` : ''}`);
+        setShowPreview(false);
+      } else {
+        alert('❌ 예약 접수된 메시지가 없습니다.');
+      }
+    } catch (error) {
+      console.error('예약발송 오류:', error);
+      alert(`❌ 예약발송 중 오류: ${error?.message || error}`);
+    } finally {
+      setScheduleSending(false);
+    }
+  }, [scheduledSendAt, templateCode, generatePreview, generateStudentPreview]);
+
   if (loading) {
     return (
       <div className="winter-school-page">
@@ -2031,23 +2110,53 @@ export default function WinterSchoolManager({ onClose }) {
                       ))}
                     </div>
 
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 20px', background: '#fffbeb', borderRadius: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
+                      <label style={{ fontWeight: 700, color: '#9a3412' }}>예약 발송 시간</label>
+                      <input
+                        type="datetime-local"
+                        value={scheduledSendAt}
+                        onChange={(e) => setScheduledSendAt(e.target.value)}
+                        style={{ padding: '8px 12px', border: '1px solid #fdba74', borderRadius: '8px', background: 'white' }}
+                      />
+                    </div>
+
                     <div className="preview-modal-actions">
                       {previewStudent ? (
-                        <button
-                          className="send-kakao-btn"
-                          onClick={() => sendKakaoToStudent(previewStudent)}
-                          disabled={sendingStudent === previewStudent}
-                        >
-                          {sendingStudent === previewStudent ? '전송 중...' : '📱 카톡으로 발송'}
-                        </button>
+                        <>
+                          <button
+                            className="send-kakao-btn"
+                            onClick={() => sendKakaoToStudent(previewStudent)}
+                            disabled={sendingStudent === previewStudent || scheduleSending}
+                          >
+                            {sendingStudent === previewStudent ? '전송 중...' : '📱 카톡으로 발송'}
+                          </button>
+                          <button
+                            className="send-kakao-btn"
+                            onClick={() => sendScheduledKakao(previewStudent)}
+                            disabled={scheduleSending || sendingStudent === previewStudent}
+                            style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white' }}
+                          >
+                            {scheduleSending ? '예약 접수 중...' : '⏰ 예약발송'}
+                          </button>
+                        </>
                       ) : (
-                        <button
-                          className="send-kakao-btn"
-                          onClick={sendKakaoMessages}
-                          disabled={sending}
-                        >
-                          {sending ? '전송 중...' : '📱 카톡으로 발송'}
-                        </button>
+                        <>
+                          <button
+                            className="send-kakao-btn"
+                            onClick={sendKakaoMessages}
+                            disabled={sending || scheduleSending}
+                          >
+                            {sending ? '전송 중...' : '📱 카톡으로 발송'}
+                          </button>
+                          <button
+                            className="send-kakao-btn"
+                            onClick={() => sendScheduledKakao()}
+                            disabled={scheduleSending || sending}
+                            style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white' }}
+                          >
+                            {scheduleSending ? '예약 접수 중...' : '⏰ 예약발송'}
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

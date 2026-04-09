@@ -1,3 +1,5 @@
+import { openAiChatCompletions } from '../../../utils/openaiProxyClient'
+
 // 빈칸 분석 유틸리티 - OpenAI API 사용
 
 export async function createBlank(text, blankType, apiKey) {
@@ -46,35 +48,21 @@ ${text}
 Return ONLY a valid JSON object, no additional text.`
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful English teacher. Always respond with valid JSON only, no additional text.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000
-      })
+    const data = await openAiChatCompletions(apiKey, {
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful English teacher. Always respond with valid JSON only, no additional text.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
     })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error?.message || `API 오류: ${response.status}`)
-    }
-
-    const data = await response.json()
     const content = data.choices[0]?.message?.content
 
     if (!content) {

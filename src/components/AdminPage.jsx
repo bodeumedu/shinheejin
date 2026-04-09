@@ -11,6 +11,10 @@ import {
   savePocketbookAccessControl,
   setPocketbookUserActive,
 } from '../features/auth/utils/userAuth';
+import {
+  fetchSuggestionNotesForAdmin,
+  markSuggestionNoteResolved,
+} from '../features/notes/utils/suggestionNotesFirestore';
 import './AdminPage.css';
 
 const PHONE_DOC = 'homeworkCompletionPhoneNumbers';
@@ -259,6 +263,63 @@ export default function AdminPage({ currentUser, onClose }) {
   const [accountError, setAccountError] = useState('');
   const [approvalForm, setApprovalForm] = useState({ name: '', phoneNumber: '', role: 'teacher', note: '' });
   const isPrimaryAdmin = isPrimaryAdminUser(currentUser);
+  const [suggestionNotesItems, setSuggestionNotesItems] = useState([]);
+  const [suggestionNotesLoading, setSuggestionNotesLoading] = useState(false);
+  const [suggestionNotesError, setSuggestionNotesError] = useState('');
+  const [suggestionNoteSavingId, setSuggestionNoteSavingId] = useState(null);
+
+  const loadSuggestionNotes = useCallback(async () => {
+    if (!isPrimaryAdmin) return;
+    setSuggestionNotesLoading(true);
+    setSuggestionNotesError('');
+    const res = await fetchSuggestionNotesForAdmin(300);
+    setSuggestionNotesLoading(false);
+    if (!res.ok) {
+      setSuggestionNotesError(res.error || '수정 제안을 불러오지 못했습니다.');
+      setSuggestionNotesItems([]);
+      return;
+    }
+    setSuggestionNotesItems(res.items);
+  }, [isPrimaryAdmin]);
+
+  useEffect(() => {
+    loadSuggestionNotes();
+  }, [loadSuggestionNotes]);
+
+  const handleToggleSuggestionResolved = useCallback(
+    async (item) => {
+      const nextResolved = !item.resolved;
+      setSuggestionNoteSavingId(item.id);
+      try {
+        const res = await markSuggestionNoteResolved(item.id, nextResolved);
+        if (!res.ok) {
+          alert(res.error?.message || '상태를 변경하지 못했습니다.');
+          return;
+        }
+        await loadSuggestionNotes();
+      } finally {
+        setSuggestionNoteSavingId(null);
+      }
+    },
+    [loadSuggestionNotes]
+  );
+
+  const copyAllSuggestionNotes = useCallback(() => {
+    if (suggestionNotesItems.length === 0) {
+      alert('복사할 수정 제안이 없습니다.');
+      return;
+    }
+    const lines = suggestionNotesItems.map((item, i) => {
+      const who = [item.submitterName, item.submitterPhone, item.submitterRole].filter(Boolean).join(' · ') || '익명/미로그인';
+      const status = item.resolved ? `반영 완료${item.resolvedAtLabel ? ` (${item.resolvedAtLabel})` : ''}` : '대기';
+      return `[${suggestionNotesItems.length - i}] ${item.createdAtLabel || '-'} · ${status}\n출처: ${who}\n${item.content}`;
+    });
+    const text = lines.join('\n\n---\n\n');
+    void navigator.clipboard.writeText(text).then(
+      () => alert('전체 수정 제안을 클립보드에 복사했습니다.'),
+      () => alert('클립보드 복사에 실패했습니다.')
+    );
+  }, [suggestionNotesItems]);
 
   const loadAdminData = useCallback(async () => {
     if (!isFirebaseConfigured() || !db) {
@@ -794,6 +855,7 @@ export default function AdminPage({ currentUser, onClose }) {
         {!loading && !error ? (
           <>
             {isPrimaryAdmin ? (
+              <>
               <div style={{ marginBottom: '20px', padding: '20px', border: '1px solid #d8b4fe', borderRadius: '14px', background: '#faf5ff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
                   <div>
@@ -905,6 +967,81 @@ export default function AdminPage({ currentUser, onClose }) {
                   </section>
                 </div>
               </div>
+
+              <div style={{ marginBottom: '20px', padding: '20px', border: '1px solid #93c5fd', borderRadius: '14px', background: '#eff6ff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '1rem', color: '#1e3a8a' }}>📝 수정 제안 모아보기 (신희진 전용)</strong>
+                    <span style={{ fontSize: '0.88rem', color: '#6b7280' }}>
+                      메인 메뉴 「수정 제안」에서 Firestore로 올라온 글만 모입니다. 로그인한 분은 이름·전화가 함께 저장됩니다. 「수정 완료」를 누르면 제안을 남긴 사람 화면에 반영 완료로 표시됩니다.
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button type="button" className="admin-page-refresh" onClick={loadSuggestionNotes} disabled={suggestionNotesLoading}>
+                      {suggestionNotesLoading ? '불러오는 중...' : '새로고침'}
+                    </button>
+                    <button type="button" className="admin-page-refresh" onClick={copyAllSuggestionNotes} disabled={suggestionNotesItems.length === 0}>
+                      전체 복사
+                    </button>
+                  </div>
+                </div>
+                {suggestionNotesError ? (
+                  <div style={{ marginBottom: '12px', color: '#b91c1c', fontSize: '0.9rem', fontWeight: 600 }}>{suggestionNotesError}</div>
+                ) : null}
+                {!isFirebaseConfigured() ? (
+                  <div className="admin-page-empty">Firebase가 꺼져 있으면 수정 제안을 모을 수 없습니다.</div>
+                ) : suggestionNotesLoading && suggestionNotesItems.length === 0 ? (
+                  <div className="admin-page-state">수정 제안 불러오는 중...</div>
+                ) : suggestionNotesItems.length === 0 ? (
+                  <div className="admin-page-empty">아직 수집된 수정 제안이 없습니다. (앱에서 제안을 남기면 여기에 쌓입니다.)</div>
+                ) : (
+                  <div style={{ maxHeight: '360px', overflowY: 'auto', display: 'grid', gap: '10px' }}>
+                    {suggestionNotesItems.map((item, index) => {
+                      const who = [item.submitterName, item.submitterPhone, item.submitterRole].filter(Boolean).join(' · ') || '익명/미로그인';
+                      return (
+                        <div
+                          key={item.id}
+                          style={{ padding: '12px 14px', border: '1px solid #bfdbfe', borderRadius: '10px', background: '#fff' }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '6px', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 700, color: '#1e40af' }}>제안 {suggestionNotesItems.length - index}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              {item.resolved ? (
+                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#047857', padding: '4px 10px', borderRadius: '999px', background: '#d1fae5' }}>
+                                  반영 완료{item.resolvedAtLabel ? ` · ${item.resolvedAtLabel}` : ''}
+                                </span>
+                              ) : null}
+                              <span style={{ fontSize: '0.82rem', color: '#64748b' }}>{item.createdAtLabel || '-'}</span>
+                              <button
+                                type="button"
+                                className="admin-page-refresh"
+                                disabled={suggestionNoteSavingId === item.id || suggestionNotesLoading}
+                                onClick={() => handleToggleSuggestionResolved(item)}
+                              >
+                                {suggestionNoteSavingId === item.id ? '저장 중...' : item.resolved ? '완료 취소' : '수정 완료'}
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '8px' }}>출처: {who}</div>
+                          <pre
+                            style={{
+                              margin: 0,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              fontSize: '0.9rem',
+                              fontFamily: 'inherit',
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {item.content}
+                          </pre>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              </>
             ) : null}
 
             <div className="admin-page-filters">

@@ -126,6 +126,11 @@ service cloud.firestore {
     match /academicCalendar/{document} {
       allow read, write: if true;
     }
+
+    // 앱 수정 제안(메인 메뉴) — 제출은 누구나, 목록은 UI상 관리자만 보는 구조(규칙은 기존과 동일 수준)
+    match /pocketbookSuggestionNotes/{document} {
+      allow read, write: if true;
+    }
   }
 }
 

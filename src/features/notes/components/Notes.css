@@ -70,6 +70,49 @@
   margin-bottom: 8px;
 }
 
+.notes-suggestion-item-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.notes-resolved-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  border: none;
+  white-space: nowrap;
+}
+
+.notes-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  white-space: nowrap;
+}
+
+.notes-suggestion-item--resolved {
+  border-color: #6ee7b7;
+  background: linear-gradient(180deg, #f0fdf4 0%, #fff 48%);
+}
+
+.notes-resolved-date {
+  color: #059669;
+  font-weight: 600;
+}
+
 .notes-item-title {
   font-weight: 600;
   font-size: 1rem;

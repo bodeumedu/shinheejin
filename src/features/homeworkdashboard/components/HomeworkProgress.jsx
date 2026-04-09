@@ -391,6 +391,17 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
   const [kakaoPreview, setKakaoPreview] = useState(null);
   const [kakaoSendHistory, setKakaoSendHistory] = useState([]);
   const [selectedHistoryStudent, setSelectedHistoryStudent] = useState(null);
+  const [scheduledSendAt, setScheduledSendAt] = useState(() => {
+    const base = new Date(Date.now() + 10 * 60 * 1000);
+    base.setSeconds(0, 0);
+    const y = base.getFullYear();
+    const mo = String(base.getMonth() + 1).padStart(2, '0');
+    const d = String(base.getDate()).padStart(2, '0');
+    const h = String(base.getHours()).padStart(2, '0');
+    const mi = String(base.getMinutes()).padStart(2, '0');
+    return `${y}-${mo}-${d}T${h}:${mi}`;
+  });
+  const [scheduleSending, setScheduleSending] = useState(false);
   
   const savedTemplateCode = HOMEWORK_PROGRESS_FIXED_TEMPLATE_CODE;
   const [includeScoreStatsInKakao, setIncludeScoreStatsInKakao] = useState(() => {
@@ -2043,7 +2054,7 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     }
   
     setKakaoPreview({
-      templateCode,
+      templateCode: savedTemplateCode,
       messages,
     });
   
@@ -2233,6 +2244,93 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
     // 템플릿 코드는 kakaoPreview에서 가져온 것을 사용하므로 다시 물어보지 않음
     console.log('카카오톡 발송 완료. 사용된 템플릿 코드:', templateCode);
   };
+
+  const handleScheduledKakaoSend = async () => {
+    if (!kakaoPreview || !kakaoPreview.messages || kakaoPreview.messages.length === 0) {
+      alert('먼저 "카카오톡 전송 미리보기" 버튼을 눌러 미리보기를 생성해주세요.');
+      return;
+    }
+    if (!scheduledSendAt) {
+      alert('예약 발송 시간을 입력해주세요.');
+      return;
+    }
+    const scheduledDate = new Date(scheduledSendAt);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      alert('예약 발송 시간이 올바르지 않습니다.');
+      return;
+    }
+    if (scheduledDate.getTime() <= Date.now() + 60 * 1000) {
+      alert('예약 시간은 현재보다 1분 이상 이후로 설정해주세요.');
+      return;
+    }
+
+    const { templateCode, messages } = kakaoPreview;
+    if (!templateCode) {
+      alert('템플릿 코드가 없습니다. 미리보기를 다시 생성해주세요.');
+      return;
+    }
+
+    try {
+      await saveData(students, progressData, scores, headerTexts, phoneNumbers);
+      clearProgressPageDirty();
+    } catch (e) {
+      console.error('예약 전 저장 실패', e);
+    }
+
+    setScheduleSending(true);
+    const title = getTitle();
+    let successCount = 0;
+    let failCount = 0;
+    const errorMessages = [];
+
+    try {
+      const apiUrl = import.meta.env.PROD
+        ? `${window.location.origin}/api/send-kakao`
+        : import.meta.env.VITE_API_URL || 'https://bodeumshjpocketbook.vercel.app/api/send-kakao';
+
+      for (const message of messages) {
+        const { phones, content } = message;
+        const phoneRegex = /^01[0-9]{1}[0-9]{7,8}$/;
+
+        for (const { phone } of phones) {
+          if (!phone || !phoneRegex.test(phone)) continue;
+          try {
+            const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phoneNumber: phone.replace(/-/g, ''),
+                templateCode,
+                variables: { '과제제목': title, '과제내용': content },
+                scheduleDate: scheduledDate.toISOString(),
+              }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`);
+            successCount++;
+          } catch (error) {
+            failCount++;
+            const msg = error?.message || '알 수 없는 오류';
+            if (!errorMessages.includes(msg)) errorMessages.push(msg);
+          }
+        }
+      }
+
+      if (errorMessages.length > 0) {
+        alert(`❌ 예약발송 오류:\n${errorMessages.join('\n')}`);
+      }
+      if (successCount > 0) {
+        alert(`✅ ${successCount}건 예약발송 접수 완료\n예약 시각: ${scheduledSendAt.replace('T', ' ')}${failCount > 0 ? `\n❌ ${failCount}건 접수 실패` : ''}`);
+      } else {
+        alert('❌ 예약 접수된 메시지가 없습니다. 전화번호와 예약 시간을 확인해주세요.');
+      }
+    } catch (error) {
+      console.error('예약발송 처리 중 오류:', error);
+      alert(`❌ 예약발송 중 오류가 발생했습니다: ${error?.message || error}`);
+    } finally {
+      setScheduleSending(false);
+    }
+  };
   
   // 제목 생성 (학교명 없이 반/학년만 표시)
   const getTitle = () => {
@@ -2373,12 +2471,33 @@ export default function HomeworkProgress({ subject = 'english', school, grade, c
                       </div>
                     ))}
                   </div>
-                  <button 
-                    className="kakao-btn kakao-send-final-btn" 
-                    onClick={handleKakaoSendConfirm}
-                  >
-                    ✅ 최종 카카오톡 발송하기
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 20px', background: '#fffbeb', borderRadius: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
+                    <label style={{ fontWeight: 700, color: '#9a3412' }}>예약 발송 시간</label>
+                    <input
+                      type="datetime-local"
+                      value={scheduledSendAt}
+                      onChange={(e) => setScheduledSendAt(e.target.value)}
+                      style={{ padding: '8px 12px', border: '1px solid #fdba74', borderRadius: '8px', background: 'white' }}
+                    />
+                    <span style={{ color: '#7c2d12', fontSize: '0.9rem' }}>예약 시 같은 내용을 지정 시간에 발송합니다.</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button 
+                      className="kakao-btn kakao-send-final-btn" 
+                      onClick={handleKakaoSendConfirm}
+                      disabled={scheduleSending}
+                    >
+                      ✅ 최종 카카오톡 발송하기
+                    </button>
+                    <button
+                      className="kakao-btn"
+                      onClick={handleScheduledKakaoSend}
+                      disabled={scheduleSending}
+                      style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: 'white' }}
+                    >
+                      {scheduleSending ? '예약 접수 중...' : '⏰ 예약발송'}
+                    </button>
+                  </div>
                 </div>
               )}
 
