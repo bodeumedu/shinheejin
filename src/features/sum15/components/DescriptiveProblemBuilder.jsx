@@ -940,6 +940,71 @@ function isTransformable(word) {
   return false
 }
 
+const CONDITION_TRANSFORM_ONE_WORD =
+  '<보기>에 주어진 단어 및 어구만을 모두 한번씩 사용하되, <b>한 단어만</b> 어법에 맞게 그 형태를 바꿀 것'
+const CONDITION_TRANSFORM_IF_NEEDED =
+  '<보기>에 주어진 단어 및 어구만을 모두 한번씩 사용하되, <b>필요한 경우</b> 어법에 맞게 그 형태를 바꿀 것'
+
+/** 동사형(-ing/-ed/-s) 우선, 나머지 변형 후보는 문장 순서대로 */
+function buildTransformCandidateOrder(words) {
+  const transformableList = words
+    .map((w, idx) => ({ word: w, index: idx }))
+    .filter(({ word }) => isTransformable(word))
+  const verbFirst = transformableList.filter(({ word }) => {
+    const clean = word.replace(/[.,!?;:]/g, '').toLowerCase()
+    return (
+      clean.endsWith('ing') ||
+      clean.endsWith('ed') ||
+      (clean.endsWith('s') &&
+        !['has', 'is', 'was', 'his', 'its', 'this', 'plus', 'thus', 'yes', 'us'].includes(clean))
+    )
+  })
+  const ordered = [...verbFirst]
+  for (const t of transformableList) {
+    if (!verbFirst.some((v) => v.index === t.index)) ordered.push(t)
+  }
+  return ordered
+}
+
+/**
+ * 보기에 넣을 원형이 답 문장 표기와 달라질 때만 볼드·변형 적용.
+ * 첫 후보만 보면 API가 단어를 그대로 돌려줘 볼드가 없는데 조건만「한 단어만」인 경우가 생김 → 후보를 순서대로 모두 시도.
+ */
+async function applyBaseFormTransformToWordBank(words, apiKey) {
+  const transformedTokens = [...words]
+  const boldTokens = words.map((w) => w)
+  const ordered = buildTransformCandidateOrder(words)
+
+  for (const toTransform of ordered) {
+    const cleanWord = toTransform.word.replace(/[.,!?;:]/g, '')
+    const punctuation = toTransform.word.replace(/[^.,!?;:]/g, '')
+    try {
+      const baseFormsResponse = await getBaseForms([cleanWord], apiKey)
+      const baseForm = baseFormsResponse[cleanWord] || cleanWord
+      const finalForm = baseForm + punctuation
+      const originalClean = toTransform.word.replace(/[.,!?;:]/g, '').toLowerCase()
+      const finalClean = finalForm.replace(/[.,!?;:]/g, '').toLowerCase()
+      if (originalClean !== finalClean) {
+        transformedTokens[toTransform.index] = finalForm
+        boldTokens[toTransform.index] = `<b>${finalForm}</b>`
+        return {
+          transformedTokens,
+          boldTokens,
+          conditionText: CONDITION_TRANSFORM_ONE_WORD,
+        }
+      }
+    } catch (error) {
+      console.error('어법 변형(원형) API 오류:', error)
+    }
+  }
+
+  return {
+    transformedTokens,
+    boldTokens,
+    conditionText: CONDITION_TRANSFORM_IF_NEEDED,
+  }
+}
+
 async function processTopic15OriginalTexts(inputText, apiKey, groupSize = 1) {
   const textBlocks = splitTextBlocks(inputText)
   const results = []
@@ -1027,36 +1092,7 @@ async function processTopic15Texts(inputText, apiKey, groupSize = 1) {
     try {
       const topic = await generateTopic15(englishText, apiKey)
       const words = (topic || '').split(/\s+/).filter((w) => w.length > 0)
-      const transformableList = words
-        .map((w, idx) => ({ word: w, index: idx }))
-        .filter(({ word }) => isTransformable(word))
-      const verbFirst = transformableList.filter(({ word }) => {
-        const clean = word.replace(/[.,!?;:]/g, '').toLowerCase()
-        return clean.endsWith('ing') || clean.endsWith('ed') || (clean.endsWith('s') && !['has', 'is', 'was', 'his', 'its', 'this', 'plus', 'thus', 'yes', 'us'].includes(clean))
-      })
-      const toTransform = verbFirst.length > 0 ? verbFirst[0] : transformableList[0]
-
-      let transformedTokens = [...words]
-      let boldTokens = words.map((w) => w)
-      const conditionText = '<보기>에 주어진 단어 및 어구만을 모두 한번씩 사용하되, <b>한 단어만</b> 어법에 맞게 그 형태를 바꿀 것'
-
-      if (toTransform) {
-        const cleanWord = toTransform.word.replace(/[.,!?;:]/g, '')
-        const punctuation = toTransform.word.replace(/[^.,!?;:]/g, '')
-        try {
-          const baseFormsResponse = await getBaseForms([cleanWord], apiKey)
-          const baseForm = baseFormsResponse[cleanWord] || cleanWord
-          const finalForm = baseForm + punctuation
-          const originalClean = toTransform.word.replace(/[.,!?;:]/g, '').toLowerCase()
-          const finalClean = finalForm.replace(/[.,!?;:]/g, '').toLowerCase()
-          if (originalClean !== finalClean) {
-            transformedTokens[toTransform.index] = finalForm
-            boldTokens[toTransform.index] = `<b>${finalForm}</b>`
-          }
-        } catch (error) {
-          console.error('topic 15 어법 변형 오류:', error)
-        }
-      }
+      const { transformedTokens, boldTokens, conditionText } = await applyBaseFormTransformToWordBank(words, apiKey)
 
       const groupedDisplays = buildGroupedDisplays(words, transformedTokens, boldTokens, groupSize)
 
@@ -1203,36 +1239,7 @@ async function processTopicSentence15Texts(inputText, apiKey, groupSize = 1) {
     try {
       const topicSentence = await generateTopicSentence15(englishText, apiKey)
       const words = (topicSentence || '').split(/\s+/).filter((w) => w.length > 0)
-      const transformableList = words
-        .map((w, idx) => ({ word: w, index: idx }))
-        .filter(({ word }) => isTransformable(word))
-      const verbFirst = transformableList.filter(({ word }) => {
-        const clean = word.replace(/[.,!?;:]/g, '').toLowerCase()
-        return clean.endsWith('ing') || clean.endsWith('ed') || (clean.endsWith('s') && !['has', 'is', 'was', 'his', 'its', 'this', 'plus', 'thus', 'yes', 'us'].includes(clean))
-      })
-      const toTransform = verbFirst.length > 0 ? verbFirst[0] : transformableList[0]
-
-      let transformedTokens = [...words]
-      let boldTokens = words.map((w) => w)
-      const conditionText = '<보기>에 주어진 단어 및 어구만을 모두 한번씩 사용하되, <b>한 단어만</b> 어법에 맞게 그 형태를 바꿀 것'
-
-      if (toTransform) {
-        const cleanWord = toTransform.word.replace(/[.,!?;:]/g, '')
-        const punctuation = toTransform.word.replace(/[^.,!?;:]/g, '')
-        try {
-          const baseFormsResponse = await getBaseForms([cleanWord], apiKey)
-          const baseForm = baseFormsResponse[cleanWord] || cleanWord
-          const finalForm = baseForm + punctuation
-          const originalClean = toTransform.word.replace(/[.,!?;:]/g, '').toLowerCase()
-          const finalClean = finalForm.replace(/[.,!?;:]/g, '').toLowerCase()
-          if (originalClean !== finalClean) {
-            transformedTokens[toTransform.index] = finalForm
-            boldTokens[toTransform.index] = `<b>${finalForm}</b>`
-          }
-        } catch (error) {
-          console.error('topic sentence 15 어법 변형 오류:', error)
-        }
-      }
+      const { transformedTokens, boldTokens, conditionText } = await applyBaseFormTransformToWordBank(words, apiKey)
 
       const groupedDisplays = buildGroupedDisplays(words, transformedTokens, boldTokens, groupSize)
 
@@ -1389,36 +1396,7 @@ async function processResponse20Texts(inputText, apiKey, groupSize = 1) {
         remaining = remaining.substring(prefix.length).trim()
       }
       const words = remaining.split(/\s+/).filter((w) => w.length > 0)
-      const transformableList = words
-        .map((w, idx) => ({ word: w, index: idx }))
-        .filter(({ word }) => isTransformable(word))
-      const verbFirst = transformableList.filter(({ word }) => {
-        const clean = word.replace(/[.,!?;:]/g, '').toLowerCase()
-        return clean.endsWith('ing') || clean.endsWith('ed') || (clean.endsWith('s') && !['has', 'is', 'was', 'his', 'its', 'this', 'plus', 'thus', 'yes', 'us'].includes(clean))
-      })
-      const toTransform = verbFirst.length > 0 ? verbFirst[0] : transformableList[0]
-
-      let transformedTokens = [...words]
-      let boldTokens = words.map((w) => w)
-      const conditionText = '<보기>에 주어진 단어 및 어구만을 모두 한번씩 사용하되, <b>한 단어만</b> 어법에 맞게 그 형태를 바꿀 것'
-
-      if (toTransform) {
-        const cleanWord = toTransform.word.replace(/[.,!?;:]/g, '')
-        const punctuation = toTransform.word.replace(/[^.,!?;:]/g, '')
-        try {
-          const baseFormsResponse = await getBaseForms([cleanWord], apiKey)
-          const baseForm = baseFormsResponse[cleanWord] || cleanWord
-          const finalForm = baseForm + punctuation
-          const originalClean = toTransform.word.replace(/[.,!?;:]/g, '').toLowerCase()
-          const finalClean = finalForm.replace(/[.,!?;:]/g, '').toLowerCase()
-          if (originalClean !== finalClean) {
-            transformedTokens[toTransform.index] = finalForm
-            boldTokens[toTransform.index] = `<b>${finalForm}</b>`
-          }
-        } catch (error) {
-          console.error('response 20 어법 변형 오류:', error)
-        }
-      }
+      const { transformedTokens, boldTokens, conditionText } = await applyBaseFormTransformToWordBank(words, apiKey)
 
       const groupedDisplays = buildGroupedDisplays(words, transformedTokens, boldTokens, groupSize)
 
@@ -1560,36 +1538,7 @@ async function processInterview25Texts(inputText, apiKey, groupSize = 1) {
     try {
       const { q1, a1 } = await generateInterview25Single(englishText, apiKey)
       const words = String(a1 || '').split(/\s+/).filter((w) => w.length > 0)
-      const transformableList = words
-        .map((w, idx) => ({ word: w, index: idx }))
-        .filter(({ word }) => isTransformable(word))
-      const verbFirst = transformableList.filter(({ word }) => {
-        const clean = word.replace(/[.,!?;:]/g, '').toLowerCase()
-        return clean.endsWith('ing') || clean.endsWith('ed') || (clean.endsWith('s') && !['has', 'is', 'was', 'his', 'its', 'this', 'plus', 'thus', 'yes', 'us'].includes(clean))
-      })
-      const toTransform = verbFirst.length > 0 ? verbFirst[0] : transformableList[0]
-
-      let transformedTokens = [...words]
-      let boldTokens = words.map((w) => w)
-      const conditionText = '<보기>에 주어진 단어 및 어구만을 모두 한번씩 사용하되, <b>한 단어만</b> 어법에 맞게 그 형태를 바꿀 것'
-
-      if (toTransform) {
-        const cleanWord = toTransform.word.replace(/[.,!?;:]/g, '')
-        const punctuation = toTransform.word.replace(/[^.,!?;:]/g, '')
-        try {
-          const baseFormsResponse = await getBaseForms([cleanWord], apiKey)
-          const baseForm = baseFormsResponse[cleanWord] || cleanWord
-          const finalForm = baseForm + punctuation
-          const originalClean = toTransform.word.replace(/[.,!?;:]/g, '').toLowerCase()
-          const finalClean = finalForm.replace(/[.,!?;:]/g, '').toLowerCase()
-          if (originalClean !== finalClean) {
-            transformedTokens[toTransform.index] = finalForm
-            boldTokens[toTransform.index] = `<b>${finalForm}</b>`
-          }
-        } catch (error) {
-          console.error('interview 25 어법 변형 오류:', error)
-        }
-      }
+      const { transformedTokens, boldTokens, conditionText } = await applyBaseFormTransformToWordBank(words, apiKey)
 
       const groupedDisplays = buildGroupedDisplays(words, transformedTokens, boldTokens, groupSize)
 
