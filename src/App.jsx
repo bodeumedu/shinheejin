@@ -11,16 +11,16 @@ import AttendanceCheckPage from './features/attendance/components/AttendanceChec
 import { clearStoredSessionUser, getStoredSessionUser } from './features/auth/utils/userAuth'
 import BlankMaker from './features/blank/components/BlankMaker'
 import BlankGenerator from './features/blank/components/BlankGenerator'
-import PreprocessorInput from './features/preprocessor/components/PreprocessorInput'
-import ComplexDescriptionInput from './features/complex-description/components/ComplexDescriptionInput'
 import KoreanOriginInput from './features/korean-origin/components/KoreanOriginInput'
-import ParaphrasingInput from './features/paraphrasing/components/ParaphrasingInput'
 import EnglishEnglishWordInput from './features/english-english-word/components/EnglishEnglishWordInput'
 import EnglishEnglishWordTable from './features/english-english-word/components/EnglishEnglishWordTable'
 import EnglishEnglishWordTestSheet from './features/english-english-word/components/EnglishEnglishWordTestSheet'
 import { vocabularyTableToTsv } from './features/english-english-word/utils/englishEnglishWordAnalyzer'
 import { countTestItems } from './features/english-english-word/utils/englishEnglishWordTestUtils'
 import { exportVocabularyTablePdf } from './features/english-english-word/utils/englishEnglishWordPdfExport'
+import McqProblemBuilder from './features/mcq-builder/components/McqProblemBuilder'
+import TextProcessor from './features/text-processor/components/TextProcessor'
+import MygodBuilder from './features/mygod/components/MygodBuilder'
 import Sum15Input from './features/sum15/components/Sum15Input'
 import DescriptiveProblemBuilder from './features/sum15/components/DescriptiveProblemBuilder'
 import Sum15OriginalInput from './features/sum15/components/Sum15OriginalInput'
@@ -34,8 +34,6 @@ import Sum30Input from './features/sum30/components/Sum30Input'
 import Sum30Viewer from './features/sum30/components/Sum30Viewer'
 import Sum40Input from './features/sum40/components/Sum40Input'
 import Sum40Viewer from './features/sum40/components/Sum40Viewer'
-import KoreanSummaryInput from './features/korean-summary/components/KoreanSummaryInput'
-import KoreanSummaryViewer from './features/korean-summary/components/KoreanSummaryViewer'
 import KeyInput from './features/key/components/KeyInput'
 import CsatClozeInput from './features/csat-cloze/components/CsatClozeInput'
 import ThirdWordInput from './features/third-word/components/ThirdWordInput'
@@ -66,7 +64,6 @@ import { exportBlankToPdf } from './features/blank/utils/blankPdfExporter'
 import { exportSum15ToPdf } from './features/sum15/utils/sum15PdfExporter'
 import { exportSum30ToPdf } from './features/sum30/utils/sum30PdfExporter'
 import { exportSum40ToPdf } from './features/sum40/utils/sum40PdfExporter'
-import { exportKoreanSummaryToPdf } from './features/korean-summary/utils/koreanSummaryPdfExporter'
 import './App.css'
 import { analyzeText } from './features/pocketbook/utils/textAnalyzer'
 import { saveTextResult, generateTextId, saveSourceInfo, getSourceDocumentId } from './utils/firestoreUtils'
@@ -150,9 +147,9 @@ function ProcessedTextEditor({ value, onChange }) {
   )
 }
 
-function App() {
+export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getStoredSessionUser())
-  const [mode, setMode] = useState('main') // 'main', 'pocketbook', 'blank', 'preprocessor', 'complex-description', 'paraphrasing', 'sum15', 'clinic-log', 'winter-school'
+  const [mode, setMode] = useState('main') // 'main', 'pocketbook', 'blank', 'sum15', 'clinic-log', 'winter-school', ...
   const [managementReturnMode, setManagementReturnMode] = useState('main')
   const [homeworkCompletionEntryAction, setHomeworkCompletionEntryAction] = useState('default')
   const [text, setText] = useState('')
@@ -172,10 +169,7 @@ function App() {
   const [blankSourceInfo, setBlankSourceInfo] = useState(null) // 빈칸 출처 정보
   const [blankSourcePopup, setBlankSourcePopup] = useState(null) // 빈칸 출처 입력 팝업
   const [showBlankSourceLoader, setShowBlankSourceLoader] = useState(false) // 빈칸 저장된 출처 불러오기 팝업
-  const [preprocessorData, setPreprocessorData] = useState(null) // 전처리 결과
-  const [complexDescriptionData, setComplexDescriptionData] = useState(null) // 복합서술형 결과
   const [koreanOriginProcessedText, setKoreanOriginProcessedText] = useState('') // 한글원문생성 결과 (출처/영어원문/한글해석//)
-  const [paraphrasingData, setParaphrasingData] = useState(null) // Paraphrasing 결과
   const [englishEnglishWordData, setEnglishEnglishWordData] = useState(null) // 영영 단어 결과
   const [englishWordTestOpen, setEnglishWordTestOpen] = useState(false)
   const [eeVocabPdfLoading, setEeVocabPdfLoading] = useState(false)
@@ -198,9 +192,6 @@ function App() {
   const [showSum30Design, setShowSum30Design] = useState(false) // SUM30 디자인 페이지 표시 여부
   const [sum40Data, setSum40Data] = useState(null) // SUM40 결과
   const [showSum40Design, setShowSum40Design] = useState(false) // SUM40 디자인 페이지 표시 여부
-  const [koreanSummaryData, setKoreanSummaryData] = useState(null) // 요약문 한글 결과
-  const [koreanSummaryProcessedText, setKoreanSummaryProcessedText] = useState('') // 요약문 한글 처리된 텍스트 (수정 가능)
-  const [showKoreanSummaryDesign, setShowKoreanSummaryDesign] = useState(false) // 요약문 한글 디자인 페이지 표시 여부
   const [keyData, setKeyData] = useState(null) // KEY 결과
   const [csatClozeData, setCsatClozeData] = useState(null) // 빈칸 수능문제 결과
   const [thirdWordData, setThirdWordData] = useState(null) // Third Word 결과
@@ -505,9 +496,6 @@ function App() {
     setPocketbookTextId(null)
     setSelectedTexts(new Set())
     setBlankData(null)
-    setPreprocessorData(null)
-    setComplexDescriptionData(null)
-    setParaphrasingData(null)
     setEnglishEnglishWordData(null)
     setSum15Data(null)
     setShowSum15Design(false)
@@ -515,9 +503,6 @@ function App() {
     setSum30ProcessedText('')
     setShowSum30Design(false)
     setSum40Data(null)
-    setKoreanSummaryData(null)
-    setKoreanSummaryProcessedText('')
-    setShowKoreanSummaryDesign(false)
     setKeyData(null)
     setCsatClozeData(null)
     setThirdWordData(null)
@@ -568,9 +553,6 @@ function App() {
     setSaveStatus({ saved: 0, failed: 0, total: 0 })
     setShowSourceLoader(false)
     setBlankData(null)
-    setPreprocessorData(null)
-    setComplexDescriptionData(null)
-    setParaphrasingData(null)
     setEnglishEnglishWordData(null)
     setSum15Data(null)
     setShowSum15Design(false)
@@ -578,9 +560,6 @@ function App() {
     setSum30ProcessedText('')
     setShowSum30Design(false)
     setSum40Data(null)
-    setKoreanSummaryData(null)
-    setKoreanSummaryProcessedText('')
-    setShowKoreanSummaryDesign(false)
     setKeyData(null)
     setCsatClozeData(null)
     setThirdWordData(null)
@@ -810,14 +789,6 @@ function App() {
     }
   }
   
-  const handleSelectPreprocessor = () => {
-    setMode('preprocessor')
-  }
-  
-  const handleSelectComplexDescription = () => {
-    setMode('complex-description')
-  }
-
   const handleSelectKoreanOrigin = () => {
     setText('')
     setKoreanOriginProcessedText('')
@@ -828,10 +799,6 @@ function App() {
     setKoreanOriginProcessedText(resultString)
   }
   
-  const handleSelectParaphrasing = () => {
-    setMode('paraphrasing')
-  }
-
   const handleSelectEnglishEnglishWord = () => {
     setText('')
     setEnglishEnglishWordData(null)
@@ -841,7 +808,7 @@ function App() {
   const handleEnglishEnglishWordProcess = (data) => {
     setEnglishEnglishWordData(data)
   }
-  
+
   const handleSelectSum15Original = () => {
     setText('')
     setSum15OriginalData(null)
@@ -927,10 +894,24 @@ function App() {
     setMode('sum40')
   }
   
-  const handleSelectKoreanSummary = () => {
-    setMode('korean-summary')
+  const handleSelectMcqBuilder = () => {
+    setMode('mcq-builder')
   }
-  
+
+  const handleSelectTextProcessor = () => {
+    setText('')
+    setMode('text-processor')
+  }
+
+  const handleSelectMygod = () => {
+    const pw = window.prompt('비밀번호를 입력하세요.')
+    if (pw !== '24680') {
+      if (pw !== null) alert('비밀번호가 틀렸습니다.')
+      return
+    }
+    setMode('mygod')
+  }
+
   const handleSelectKey = () => {
     setMode('key')
   }
@@ -1082,18 +1063,6 @@ function App() {
     setWeeklyScheduleData(data)
   }
   
-  const handlePreprocessorProcess = (data) => {
-    setPreprocessorData(data)
-  }
-  
-  const handleComplexDescriptionProcess = (data) => {
-    setComplexDescriptionData(data)
-  }
-  
-  const handleParaphrasingProcess = (data) => {
-    setParaphrasingData(data)
-  }
-  
   const handleSum15Process = (data) => {
     setSum15Data(data)
   }
@@ -1106,11 +1075,6 @@ function App() {
   const handleSum40Process = (data) => {
     setSum40Data(data)
     setShowSum40Design(false)
-  }
-  
-  const handleKoreanSummaryProcess = (data) => {
-    setKoreanSummaryData(data)
-    setKoreanSummaryProcessedText(data.processed || data.summary || '')
   }
   
   const handleKeyProcess = (data) => {
@@ -1177,11 +1141,11 @@ function App() {
           onSelectAttendanceCheck={handleSelectAttendanceCheck}
           onSelectPocketbook={handleSelectPocketbook}
           onSelectBlank={handleSelectBlank}
-          onSelectPreprocessor={handleSelectPreprocessor}
-          onSelectComplexDescription={handleSelectComplexDescription}
+          onSelectTextProcessor={handleSelectTextProcessor}
+          onSelectSentenceInsertion={handleSelectSentenceInsertion}
           onSelectKoreanOrigin={handleSelectKoreanOrigin}
-          onSelectParaphrasing={handleSelectParaphrasing}
           onSelectEnglishEnglishWord={handleSelectEnglishEnglishWord}
+          onSelectMygod={handleSelectMygod}
           onSelectDescriptiveProblemBuilder={handleSelectDescriptiveProblemBuilder}
           onSelectSum15Original={handleSelectSum15Original}
           onSelectTitle10Original={handleSelectTitle10Original}
@@ -1192,13 +1156,13 @@ function App() {
           onSelectSum15={handleSelectSum15}
           onSelectSum30={handleSelectSum30}
           onSelectSum40={handleSelectSum40}
-          onSelectKoreanSummary={handleSelectKoreanSummary}
           onSelectKey={handleSelectKey}
           onSelectCsatCloze={handleSelectCsatCloze}
           onSelectThirdWord={handleSelectThirdWord}
           onSelectReferenceDescription={handleSelectReferenceDescription}
           onSelectGrammarAnalysis={handleSelectGrammarAnalysis}
           onSelectContentMatch={handleSelectContentMatch}
+          onSelectMcqBuilder={handleSelectMcqBuilder}
           onSelectGrammarWorkbook={handleSelectGrammarWorkbook}
           onSelectParallelMockExam={handleSelectParallelMockExam}
           onSelectOcr={handleSelectOcr}
@@ -1405,7 +1369,7 @@ function App() {
             메인 메뉴로 돌아가기
           </button>
         </header>
-        <SentenceInsertionProblemMaker preprocessorData={preprocessorData} />
+        <SentenceInsertionProblemMaker />
       </div>
     )
   }
@@ -1816,160 +1780,6 @@ function App() {
     )
   }
 
-  // 문장 넣기 전처리 모드
-  if (mode === 'preprocessor') {
-    return (
-      <div className="app">
-        <header className="app-header">
-          <h1>문장 넣기 전처리</h1>
-          <p>by 신희진</p>
-          <button 
-            onClick={handleBackToMain} 
-            className="btn btn-secondary" 
-            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
-          >
-            메인 메뉴로 돌아가기
-          </button>
-        </header>
-
-        {!preprocessorData ? (
-          <PreprocessorInput
-            text={text}
-            setText={setText}
-            onProcess={handlePreprocessorProcess}
-          />
-        ) : (
-          <div className="result-container">
-            <div className="result-actions">
-              <button onClick={() => { setPreprocessorData(null); setText('') }} className="btn btn-secondary">
-                다시 처리하기
-              </button>
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(preprocessorData.processed)
-                  alert('전처리된 텍스트가 클립보드에 복사되었습니다.')
-                }} 
-                className="btn btn-primary"
-              >
-                결과 복사하기
-              </button>
-              <button 
-                onClick={() => {
-                  setMode('sentence-insertion')
-                }} 
-                className="btn btn-primary"
-                style={{ background: 'linear-gradient(135deg, #27ae60 0%, #229954 100%)' }}
-              >
-                문장삽입 문제 생성하기
-              </button>
-            </div>
-            <div className="multiple-results">
-              <div style={{ marginBottom: '20px', color: '#6c757d' }}>
-                전처리가 완료되었습니다. 아래 결과를 확인하세요.
-              </div>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '20px',
-                marginBottom: '20px'
-              }}>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
-                  <div style={{ 
-                    padding: '12px', 
-                    background: 'white', 
-                    borderRadius: '4px',
-                    border: '1px solid #e0e0e0',
-                    maxHeight: '500px',
-                    overflowY: 'auto'
-                  }}>
-                    <pre style={{ 
-                      margin: 0, 
-                      color: '#2c3e50', 
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.6'
-                    }}>
-                      {preprocessorData.original}
-                    </pre>
-                  </div>
-                </div>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>전처리된 텍스트</h4>
-                  <div style={{ 
-                    padding: '12px', 
-                    background: 'white', 
-                    borderRadius: '4px',
-                    border: '1px solid #e0e0e0',
-                    maxHeight: '500px',
-                    overflowY: 'auto'
-                  }}>
-                    {(() => {
-                      // 슬래시 부족한 지문 부분만 빨간색으로 표시
-                      if (!preprocessorData.results || preprocessorData.results.length === 0) {
-                        return (
-                          <pre style={{ 
-                            margin: 0, 
-                            color: '#2c3e50', 
-                            whiteSpace: 'pre-wrap',
-                            fontFamily: 'inherit',
-                            fontSize: '0.95rem',
-                            lineHeight: '1.6'
-                          }}>
-                            {preprocessorData.processed}
-                          </pre>
-                        )
-                      }
-
-                      // 전체 텍스트를 지문별로 나누어 색상 적용
-                      let processedText = preprocessorData.processed
-                      let charIndex = 0
-                      const elements = []
-                      
-                      preprocessorData.results.forEach((result, idx) => {
-                        const startIndex = charIndex
-                        let blockText = result.processed
-                        
-                        // separator 추가 (첫 번째가 아니면)
-                        if (idx > 0) {
-                          blockText = result.separator + blockText
-                        }
-                        
-                        const endIndex = startIndex + blockText.length
-                        const textColor = result.isValid ? '#2c3e50' : '#e74c3c'
-                        
-                        elements.push(
-                          <span key={idx} style={{ color: textColor }}>
-                            {blockText}
-                          </span>
-                        )
-                        
-                        charIndex = endIndex
-                      })
-                      
-                      return (
-                        <pre style={{ 
-                          margin: 0, 
-                          whiteSpace: 'pre-wrap',
-                          fontFamily: 'inherit',
-                          fontSize: '0.95rem',
-                          lineHeight: '1.6'
-                        }}>
-                          {elements}
-                        </pre>
-                      )
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
   // 빈칸 수능문제 출제기 모드
   if (mode === 'csat-cloze') {
     return (
@@ -2095,115 +1905,6 @@ function App() {
     )
   }
 
-  // 복합서술형 모드
-  if (mode === 'complex-description') {
-    return (
-      <div className="app">
-        <header className="app-header">
-          <h1>복합서술형</h1>
-          <p>by 신희진</p>
-          <button 
-            onClick={handleBackToMain} 
-            className="btn btn-secondary" 
-            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
-          >
-            메인 메뉴로 돌아가기
-          </button>
-        </header>
-
-        <ApiKeyInput onApiKeySet={handleApiKeySet} />
-
-        {!complexDescriptionData ? (
-          <ComplexDescriptionInput
-            text={text}
-            setText={setText}
-            onProcess={handleComplexDescriptionProcess}
-            apiKey={apiKey}
-          />
-        ) : (
-          <div className="result-container">
-            <div className="result-actions">
-              <button 
-                onClick={() => { 
-                  setComplexDescriptionData(null); 
-                  setText(''); 
-                }} 
-                className="btn btn-secondary"
-              >
-                모두 삭제하고 처음부터
-              </button>
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(complexDescriptionData.processed)
-                  alert('처리된 텍스트가 클립보드에 복사되었습니다.')
-                }} 
-                className="btn btn-primary"
-              >
-                결과 복사하기
-              </button>
-            </div>
-            <div className="multiple-results">
-              <div style={{ marginBottom: '20px', color: '#6c757d' }}>
-                처리가 완료되었습니다. 아래 결과를 확인하세요.
-              </div>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '20px',
-                marginBottom: '20px'
-              }}>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
-                  <div style={{ 
-                    padding: '12px', 
-                    background: 'white', 
-                    borderRadius: '4px',
-                    border: '1px solid #e0e0e0',
-                    maxHeight: '500px',
-                    overflowY: 'auto'
-                  }}>
-                    <pre style={{ 
-                      margin: 0, 
-                      color: '#2c3e50', 
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.6'
-                    }}>
-                      {complexDescriptionData.original}
-                    </pre>
-                  </div>
-                </div>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
-                  <div style={{ 
-                    padding: '12px', 
-                    background: 'white', 
-                    borderRadius: '4px',
-                    border: '1px solid #e0e0e0',
-                    maxHeight: '500px',
-                    overflowY: 'auto'
-                  }}>
-                    <pre style={{ 
-                      margin: 0, 
-                      color: '#2c3e50', 
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.6'
-                    }}>
-                      {complexDescriptionData.processed}
-                    </pre>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
   // 한글원문생성 모드
   if (mode === 'korean-origin') {
     return (
@@ -2265,115 +1966,6 @@ function App() {
                 whiteSpace: 'pre-wrap',
               }}
             />
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // Paraphrasing 모드
-  if (mode === 'paraphrasing') {
-    return (
-      <div className="app">
-        <header className="app-header">
-          <h1>Paraphrasing</h1>
-          <p>by 신희진</p>
-          <button 
-            onClick={handleBackToMain} 
-            className="btn btn-secondary" 
-            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
-          >
-            메인 메뉴로 돌아가기
-          </button>
-        </header>
-
-        <ApiKeyInput onApiKeySet={handleApiKeySet} />
-
-        {!paraphrasingData ? (
-          <ParaphrasingInput
-            text={text}
-            setText={setText}
-            onProcess={handleParaphrasingProcess}
-            apiKey={apiKey}
-          />
-        ) : (
-          <div className="result-container">
-            <div className="result-actions">
-              <button 
-                onClick={() => { 
-                  setParaphrasingData(null); 
-                  setText(''); 
-                }} 
-                className="btn btn-secondary"
-              >
-                모두 삭제하고 처음부터
-              </button>
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(paraphrasingData.paraphrased || paraphrasingData.processed)
-                  alert('처리된 텍스트가 클립보드에 복사되었습니다.')
-                }} 
-                className="btn btn-primary"
-              >
-                결과 복사하기
-              </button>
-            </div>
-            <div className="multiple-results">
-              <div style={{ marginBottom: '20px', color: '#6c757d' }}>
-                처리가 완료되었습니다. 아래 결과를 확인하세요.
-              </div>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '20px',
-                marginBottom: '20px'
-              }}>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
-                  <div style={{ 
-                    padding: '12px', 
-                    background: 'white', 
-                    borderRadius: '4px',
-                    border: '1px solid #e0e0e0',
-                    maxHeight: '500px',
-                    overflowY: 'auto'
-                  }}>
-                    <pre style={{ 
-                      margin: 0, 
-                      color: '#2c3e50', 
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.6'
-                    }}>
-                      {paraphrasingData.original}
-                    </pre>
-                  </div>
-                </div>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트</h4>
-                  <div style={{ 
-                    padding: '12px', 
-                    background: 'white', 
-                    borderRadius: '4px',
-                    border: '1px solid #e0e0e0',
-                    maxHeight: '500px',
-                    overflowY: 'auto'
-                  }}>
-                    <pre style={{ 
-                      margin: 0, 
-                      color: '#2c3e50', 
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.6'
-                    }}>
-                      {paraphrasingData.paraphrased || paraphrasingData.processed}
-                    </pre>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </div>
@@ -3691,183 +3283,6 @@ function App() {
     )
   }
 
-  // 요약문 한글 모드
-  if (mode === 'korean-summary') {
-    return (
-      <div className="app">
-        <header className="app-header">
-          <h1>요약문 한글</h1>
-          <p>by 신희진</p>
-          <button 
-            onClick={handleBackToMain} 
-            className="btn btn-secondary" 
-            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
-          >
-            메인 메뉴로 돌아가기
-          </button>
-        </header>
-
-        <ApiKeyInput onApiKeySet={handleApiKeySet} />
-
-        {!koreanSummaryData ? (
-          <KoreanSummaryInput
-            text={text}
-            setText={setText}
-            onProcess={handleKoreanSummaryProcess}
-            apiKey={apiKey}
-          />
-        ) : showKoreanSummaryDesign ? (
-          <div className="result-container">
-            <div className="result-actions">
-              <button 
-                onClick={() => setShowKoreanSummaryDesign(false)} 
-                className="btn btn-secondary"
-              >
-                텍스트 모드로 돌아가기
-              </button>
-              <button 
-                onClick={async () => {
-                  try {
-                    await exportKoreanSummaryToPdf()
-                  } catch (error) {
-                    alert('PDF 저장 중 오류가 발생했습니다: ' + error.message)
-                  }
-                }} 
-                className="btn btn-primary"
-              >
-                PDF 저장하기
-              </button>
-              <button 
-                onClick={() => { 
-                  setKoreanSummaryData(null); 
-                  setKoreanSummaryProcessedText('')
-                  setShowKoreanSummaryDesign(false)
-                  setText(''); 
-                }} 
-                className="btn btn-secondary"
-              >
-                모두 삭제하고 처음부터
-              </button>
-            </div>
-            
-            {/* A4 페이지 형식으로 문제 출력 */}
-            <KoreanSummaryViewer data={koreanSummaryData} processedText={koreanSummaryProcessedText} />
-          </div>
-        ) : (
-          <div className="result-container">
-            <div className="result-actions">
-              <button 
-                onClick={() => { 
-                  setKoreanSummaryData(null); 
-                  setKoreanSummaryProcessedText('')
-                  setShowKoreanSummaryDesign(false)
-                  setText(''); 
-                }} 
-                className="btn btn-secondary"
-              >
-                모두 삭제하고 처음부터
-              </button>
-              <button 
-                onClick={() => {
-                  let fullText = koreanSummaryProcessedText || koreanSummaryData.summary || koreanSummaryData.processed
-                  navigator.clipboard.writeText(fullText)
-                  alert('처리된 텍스트가 클립보드에 복사되었습니다.')
-                }} 
-                className="btn btn-primary"
-              >
-                결과 복사하기
-              </button>
-            </div>
-            <div className="multiple-results">
-              <div style={{ marginBottom: '20px', color: '#6c757d' }}>
-                처리가 완료되었습니다. 아래 결과를 확인하세요.
-              </div>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '20px',
-                marginBottom: '20px'
-              }}>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>원본 텍스트</h4>
-                  <div style={{ 
-                    padding: '12px', 
-                    background: 'white', 
-                    borderRadius: '4px',
-                    border: '1px solid #e0e0e0',
-                    maxHeight: '500px',
-                    overflowY: 'auto'
-                  }}>
-                    <pre style={{ 
-                      margin: 0, 
-                      color: '#2c3e50', 
-                      whiteSpace: 'pre-wrap',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.6'
-                    }}>
-                      {koreanSummaryData.original}
-                    </pre>
-                  </div>
-                </div>
-                <div className="text-box" style={{ padding: '16px', background: '#f8f9fa', borderRadius: '8px', textAlign: 'right' }}>
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '1rem', color: '#2c3e50', fontWeight: '600' }}>처리된 텍스트 (수정 가능)</h4>
-                  <textarea
-                    value={koreanSummaryProcessedText}
-                    onChange={(e) => setKoreanSummaryProcessedText(e.target.value)}
-                    style={{ 
-                      width: '100%',
-                      minHeight: '400px',
-                      padding: '12px', 
-                      background: 'white', 
-                      borderRadius: '4px',
-                      border: '1px solid #e0e0e0',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.6',
-                      resize: 'vertical',
-                      boxSizing: 'border-box',
-                      textAlign: 'left'
-                    }}
-                  />
-                </div>
-              </div>
-              
-              {/* 디자인 추가 버튼 */}
-              <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px' }}>
-                <button 
-                  onClick={() => setShowKoreanSummaryDesign(true)}
-                  className="btn btn-primary"
-                  style={{ 
-                    fontSize: '1.1rem', 
-                    padding: '12px 30px',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    border: 'none',
-                    borderRadius: '8px',
-                    color: 'white',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.transform = 'translateY(-2px)'
-                    e.target.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.transform = 'translateY(0)'
-                    e.target.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)'
-                  }}
-                >
-                  디자인 추가
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
   // Third Word 모드
   if (mode === 'third-word') {
     return (
@@ -4452,6 +3867,79 @@ function App() {
     )
   }
 
+  // 전처리 통합 모드
+  if (mode === 'mygod') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>📘 마이갓 만들기</h1>
+          <p>한글 원문으로 내신 대비 워크북 PDF 생성</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+        <MygodBuilder apiKey={apiKey} />
+      </div>
+    )
+  }
+
+  if (mode === 'text-processor') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>🔧 전처리</h1>
+          <p>지문 형식: 출처/영어/한글// · 전처리 · 피어나 · 복합서술형 · Paraphrasing · 요약문 한글 · 빈칸</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+        <ApiKeyInput
+          onApiKeySet={handleGeminiApiKeySet}
+          storageKey="gemini_api_key"
+          defaultEnvKeyName="VITE_DEFAULT_GEMINI_API_KEY"
+          title="Gemini API 키 (피어나용, 선택)"
+          description="전처리 통합에서 피어나 실행 시 Gemini로 생성하려면 설정하세요."
+          docsUrl="https://aistudio.google.com/app/apikey"
+          label="Gemini API Key"
+          placeholder="AIza..."
+          statusText="✓ Gemini API 키가 설정되었습니다"
+        />
+        <TextProcessor apiKey={apiKey} geminiApiKey={geminiApiKey} />
+      </div>
+    )
+  }
+
+  // 객관식 문제 만들기 통합 모드
+  if (mode === 'mcq-builder') {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <h1>🎯 객관식 문제 만들기</h1>
+          <p>KEY · 수능형 빈칸 · 3rd Word</p>
+          <button
+            onClick={handleBackToMain}
+            className="btn btn-secondary"
+            style={{ marginTop: '10px', padding: '8px 16px', fontSize: '0.9rem' }}
+          >
+            메인 메뉴로 돌아가기
+          </button>
+        </header>
+        <ApiKeyInput onApiKeySet={handleApiKeySet} />
+        <McqProblemBuilder apiKey={apiKey} />
+      </div>
+    )
+  }
+
   // KEY 모드
 
   if (mode === 'key') {
@@ -4871,6 +4359,3 @@ function App() {
     </div>
   )
 }
-
-export default App
-

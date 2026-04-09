@@ -9,10 +9,9 @@ function MainMenu({
   onSelectAttendanceCheck,
   onSelectPocketbook,
   onSelectBlank,
-  onSelectPreprocessor,
-  onSelectComplexDescription,
+  onSelectTextProcessor,
+  onSelectSentenceInsertion,
   onSelectKoreanOrigin,
-  onSelectParaphrasing,
   onSelectEnglishEnglishWord,
   onSelectDescriptiveProblemBuilder,
   onSelectSum15Original,
@@ -24,13 +23,13 @@ function MainMenu({
   onSelectSum15,
   onSelectSum30,
   onSelectSum40,
-  onSelectKoreanSummary,
   onSelectKey,
   onSelectCsatCloze,
   onSelectThirdWord,
   onSelectReferenceDescription,
   onSelectGrammarAnalysis,
   onSelectContentMatch,
+  onSelectMcqBuilder,
   onSelectOcr,
   onSelectEnglishHomeworkDashboard,
   onSelectMathHomeworkDashboard,
@@ -46,6 +45,7 @@ function MainMenu({
   onSelectHomeworkClassBuilder,
   onSelectGrammarWorkbook,
   onSelectParallelMockExam,
+  onSelectMygod,
 }) {
   const isExecutive = currentUser?.role === 'executive'
 
@@ -126,20 +126,20 @@ function MainMenu({
               <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectBlank}>
                 📝 빈칸 만들기
               </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectPreprocessor}>
-                🔧 전처리
+              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectSentenceInsertion}>
+                📝 문장삽입 문제
               </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectComplexDescription}>
-                📋 복합서술형
+              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectTextProcessor}>
+                🧰 전처리·통합
               </button>
               <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectKoreanOrigin}>
                 📄 한글원문생성
               </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectParaphrasing}>
-                ✏️ Paraphrasing
-              </button>
               <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectEnglishEnglishWord}>
                 📖 영영 단어
+              </button>
+              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectMygod}>
+                📘 마이갓 만들기
               </button>
             </div>
           </div>
@@ -147,11 +147,11 @@ function MainMenu({
           <div className="main-menu-center">
             <h2 className="section-title">문제 만들기</h2>
             <div className="main-menu-buttons">
+              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectMcqBuilder}>
+                🎯 객관식 문제 만들기
+              </button>
               <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectDescriptiveProblemBuilder}>
                 🧩 서술형 문제 만들기
-              </button>
-              <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectKoreanSummary}>
-                📝 요약문 한글
               </button>
               <button className="main-menu-btn main-menu-btn-primary" onClick={onSelectKey}>
                 🔑 KEY

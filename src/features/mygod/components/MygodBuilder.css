@@ -1,0 +1,211 @@
+.mygod-builder {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.mygod-top {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.mygod-input-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mygod-input-area label {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.mygod-input-area textarea {
+  padding: 14px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 400px;
+  transition: border-color 0.3s;
+}
+
+.mygod-input-area textarea:focus {
+  outline: none;
+  border-color: #1a237e;
+}
+
+.mygod-input-area small {
+  color: #7f8c8d;
+  font-size: 0.85rem;
+}
+
+.mygod-control-area {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mygod-control-area > label {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.mygod-info-box {
+  background: #f0f4ff;
+  border: 1px solid #c5cae9;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 0.88rem;
+  color: #333;
+}
+
+.mygod-info-box p {
+  margin: 0;
+  font-weight: 600;
+  color: #1a237e;
+}
+
+.mygod-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.mygod-toggle-all {
+  background: none;
+  border: 1px solid #9fa8da;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  color: #3949ab;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mygod-toggle-all:hover:not(:disabled) {
+  background: #e8eaf6;
+}
+
+.mygod-section-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mygod-check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  cursor: pointer;
+  padding: 3px 4px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.mygod-check-label:hover {
+  background: #e8eaf6;
+}
+
+.mygod-check-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #1a237e;
+  cursor: pointer;
+}
+
+.mygod-check-num {
+  font-weight: 700;
+  color: #1a237e;
+  min-width: 18px;
+}
+
+.mygod-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mygod-progress-bar {
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mygod-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1a237e, #3f51b5);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.mygod-progress-text {
+  font-size: 0.85rem;
+  color: #555;
+  text-align: center;
+}
+
+.mygod-error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+}
+
+.mygod-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.mygod-btn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mygod-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mygod-btn-generate {
+  background: linear-gradient(135deg, #1a237e, #3f51b5);
+  color: white;
+}
+
+.mygod-btn-generate:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(26, 35, 126, 0.35);
+}
+
+.mygod-btn-reset {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.mygod-btn-reset:hover:not(:disabled) {
+  background: #cbd5e1;
+}
+
+@media (max-width: 768px) {
+  .mygod-top {
+    grid-template-columns: 1fr;
+  }
+}
