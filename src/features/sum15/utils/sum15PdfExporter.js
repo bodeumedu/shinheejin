@@ -1,5 +1,8 @@
 // SUM15 PDF 내보내기 유틸리티
 
+import { addCanvasAcrossPdfPages } from '../../../utils/addCanvasAcrossPdfPages'
+import { capturePdfPageWithAdaptiveEnglish } from '../../../utils/pdfAdaptiveEnglishBody'
+
 let jsPDF, html2canvas
 
 // 동적 import로 변경 (패키지가 없을 경우를 대비)
@@ -51,7 +54,6 @@ export async function exportSum15ToPdf(options = {}) {
     format: 'a4'
   })
 
-  // A4 크기 (mm)
   const pageWidth = 210
   const pageHeight = 297
 
@@ -59,33 +61,31 @@ export async function exportSum15ToPdf(options = {}) {
     const page = pages[i]
     
     try {
-      // 이미지 로드 대기
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      const canvas = await html2canvas(page, {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      const baseOpts = {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
         logging: false,
         width: page.offsetWidth,
-        height: page.offsetHeight
-      })
-
-      const imgData = canvas.toDataURL('image/png')
-      
-      // PDF 페이지 크기에 맞게 조정
-      const imgWidth = pageWidth
-      const imgHeight = (canvas.height * pageWidth) / canvas.width
-
-      // 새 페이지 추가 (첫 페이지 제외)
-      if (i > 0) {
-        pdf.addPage()
+        height: page.offsetHeight,
       }
 
-      // 이미지 추가
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight, undefined, 'FAST')
-      
+      const { canvas, restore } = await capturePdfPageWithAdaptiveEnglish(page, html2canvas, baseOpts, {
+        pageWidthMm: pageWidth,
+        pageHeightMm: pageHeight,
+      })
+
+      try {
+        if (i > 0) {
+          pdf.addPage()
+        }
+        addCanvasAcrossPdfPages(pdf, canvas, { pageWidthMm: pageWidth, pageHeightMm: pageHeight })
+      } finally {
+        restore()
+      }
     } catch (error) {
       console.error(`페이지 ${i + 1} 변환 중 오류:`, error)
       // 오류가 있어도 계속 진행

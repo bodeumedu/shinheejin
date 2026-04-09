@@ -15,6 +15,9 @@ const DATE_DATA_DOC = 'homeworkCompletionDateData'
 const DATE_DATA_ID = 'all'
 const WITHDRAWN_NAMES_FIELD = 'withdrawnNames'
 
+/** HomeworkCompletion.jsx 와 동일 키 — 출석 저장 시 완료도 결석 표시 연동 */
+const ABSENT_STATUS_KEY = 'absentStatus'
+
 const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
 
 const STATUS_OPTIONS = ['출석', '결석', '지각', '조퇴', '보강']
@@ -118,7 +121,9 @@ export default function AttendanceCheckPage({ onClose }) {
   const [localByStudent, setLocalByStudent] = useState({})
   const [sendSmsHint, setSendSmsHint] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [ctxMenu, setCtxMenu] = useState(null)
   const draftDirtyRef = useRef(false)
+  const ctxMenuRef = useRef(null)
 
   useEffect(() => {
     if (!isFirebaseConfigured() || !db) {
@@ -159,6 +164,23 @@ export default function AttendanceCheckPage({ onClose }) {
       unsubDate()
     }
   }, [])
+
+  useEffect(() => {
+    if (!ctxMenu) return undefined
+    const onDoc = (e) => {
+      if (ctxMenuRef.current?.contains(e.target)) return
+      setCtxMenu(null)
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') setCtxMenu(null)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [ctxMenu])
 
   const withdrawnSet = useMemo(() => new Set(withdrawnNames), [withdrawnNames])
 
@@ -304,6 +326,31 @@ export default function AttendanceCheckPage({ onClose }) {
     }))
   }, [])
 
+  /** 우클릭 메뉴용: 선택한 출결을 그대로 반영(토글 없음) */
+  const setStudentStatusDirect = useCallback((student, status) => {
+    if (!STATUS_OPTIONS.includes(status)) return
+    draftDirtyRef.current = true
+    setLocalByStudent((prev) => ({
+      ...prev,
+      [student]: status,
+    }))
+  }, [])
+
+  const goToAttendanceDate = useCallback(
+    (dateYmd) => {
+      if (!dateYmd || dateYmd === selectedDate) return
+      if (draftDirtyRef.current) {
+        const ok = window.confirm(
+          '저장하지 않은 출석 변경이 있습니다. 날짜를 바꾸면 화면에서 잃게 됩니다. 계속할까요?',
+        )
+        if (!ok) return
+      }
+      draftDirtyRef.current = false
+      setSelectedDate(dateYmd)
+    },
+    [selectedDate],
+  )
+
   const handleAllPresent = useCallback(() => {
     draftDirtyRef.current = true
     setLocalByStudent((prev) => {
@@ -340,7 +387,46 @@ export default function AttendanceCheckPage({ onClose }) {
       })
       prevDay[selectedClass] = mergedClass
       prevRoot[selectedDate] = prevDay
-      await setDoc(ref, { attendanceData: prevRoot }, { merge: true })
+
+      const prevCompletionRoot =
+        data.completionData && typeof data.completionData === 'object' && !Array.isArray(data.completionData)
+          ? JSON.parse(JSON.stringify(data.completionData))
+          : {}
+      const prevCompletionDay =
+        prevCompletionRoot[selectedDate] && typeof prevCompletionRoot[selectedDate] === 'object'
+          ? { ...prevCompletionRoot[selectedDate] }
+          : {}
+      const prevClassCompletion =
+        prevCompletionDay[selectedClass] && typeof prevCompletionDay[selectedClass] === 'object'
+          ? { ...prevCompletionDay[selectedClass] }
+          : {}
+      const mergedClassCompletion = { ...prevClassCompletion }
+      classStudents.forEach((name) => {
+        const att = localByStudent[name]
+        const prevRow =
+          mergedClassCompletion[name] && typeof mergedClassCompletion[name] === 'object'
+            ? { ...mergedClassCompletion[name] }
+            : {}
+        if (att === '결석') {
+          mergedClassCompletion[name] = { ...prevRow, [ABSENT_STATUS_KEY]: true }
+        } else if (att && STATUS_OPTIONS.includes(att)) {
+          mergedClassCompletion[name] = { ...prevRow, [ABSENT_STATUS_KEY]: false }
+        } else {
+          mergedClassCompletion[name] = { ...prevRow, [ABSENT_STATUS_KEY]: false }
+        }
+      })
+      prevCompletionDay[selectedClass] = mergedClassCompletion
+      prevCompletionRoot[selectedDate] = prevCompletionDay
+
+      await setDoc(
+        ref,
+        {
+          attendanceData: prevRoot,
+          completionData: prevCompletionRoot,
+          lastUpdated: new Date().toISOString(),
+        },
+        { merge: true },
+      )
       draftDirtyRef.current = false
     } catch (e) {
       console.error(e)
@@ -368,6 +454,70 @@ export default function AttendanceCheckPage({ onClose }) {
 
   return (
     <div className="attendance-page">
+      {ctxMenu ? (
+        <div
+          ref={ctxMenuRef}
+          className="attendance-ctx-menu"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          role="menu"
+        >
+          <button
+            type="button"
+            className="attendance-ctx-menu-item"
+            role="menuitem"
+            onClick={() => {
+              setStudentStatusDirect(ctxMenu.student, '출석')
+              setCtxMenu(null)
+            }}
+          >
+            <span className="attendance-month-mark attendance-month-mark--o">O</span> 출석
+          </button>
+          <button
+            type="button"
+            className="attendance-ctx-menu-item"
+            role="menuitem"
+            onClick={() => {
+              setStudentStatusDirect(ctxMenu.student, '결석')
+              setCtxMenu(null)
+            }}
+          >
+            <span className="attendance-month-mark attendance-month-mark--x">✕</span> 결석
+          </button>
+          <button
+            type="button"
+            className="attendance-ctx-menu-item"
+            role="menuitem"
+            onClick={() => {
+              setStudentStatusDirect(ctxMenu.student, '지각')
+              setCtxMenu(null)
+            }}
+          >
+            <span className="attendance-month-mark attendance-month-mark--tri">△</span> 지각
+          </button>
+          <button
+            type="button"
+            className="attendance-ctx-menu-item"
+            role="menuitem"
+            onClick={() => {
+              setStudentStatusDirect(ctxMenu.student, '조퇴')
+              setCtxMenu(null)
+            }}
+          >
+            <span className="attendance-month-mark attendance-month-mark--tri">△</span> 조퇴
+          </button>
+          <button
+            type="button"
+            className="attendance-ctx-menu-item"
+            role="menuitem"
+            onClick={() => {
+              setStudentStatusDirect(ctxMenu.student, '보강')
+              setCtxMenu(null)
+            }}
+          >
+            <span className="attendance-month-mark attendance-month-mark--tri">△</span> 보강
+          </button>
+        </div>
+      ) : null}
       <div className="attendance-page-inner">
         <header className="attendance-header">
           {view === 'check' ? (
@@ -503,9 +653,24 @@ export default function AttendanceCheckPage({ onClose }) {
               </div>
               <ul className="attendance-student-list">
                 {classStudents.map((student) => (
-                  <li key={student} className="attendance-student-row">
+                  <li
+                    key={student}
+                    className="attendance-student-row"
+                    onDoubleClick={(e) => {
+                      if (e.target.closest('.attendance-student-name')) return
+                      e.preventDefault()
+                      setStudentStatus(student, '출석')
+                    }}
+                  >
                     <div className="attendance-student-name">{student}</div>
-                    <div className="attendance-status-btns">
+                    <div
+                      className="attendance-status-btns"
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        setCtxMenu({ x: e.clientX, y: e.clientY, student })
+                      }}
+                      title="행 더블클릭: 출석(O) 토글 · 우클릭: 출석/결석/△ 구분"
+                    >
                       {STATUS_OPTIONS.map((st) => (
                         <button
                           key={st}
@@ -534,7 +699,7 @@ export default function AttendanceCheckPage({ onClose }) {
             <section className="attendance-month-section" aria-label="이번 달 출결 표">
               <h2 className="attendance-month-heading">{monthTitleFromYmd(selectedDate)} 출결 한눈에 보기</h2>
               <p className="attendance-month-legend">
-                <span>왼쪽은 학생 이름, 오른쪽 1~31일 열이 해당 월 날짜입니다.</span>
+                <span>날짜 헤더나 칸을 클릭하면 그 날짜로 이동해 위에서 출석을 수정할 수 있습니다.</span>
                 <span>
                   <strong className="attendance-month-mark attendance-month-mark--o">O</strong> 출석
                 </span>
@@ -560,10 +725,23 @@ export default function AttendanceCheckPage({ onClose }) {
                             !col.dateYmd
                               ? 'attendance-month-th-day attendance-month-th-day--na'
                               : col.dateYmd === selectedDate
-                                ? 'attendance-month-th-day attendance-month-th-day--today'
-                                : 'attendance-month-th-day'
+                                ? 'attendance-month-th-day attendance-month-th-day--today attendance-month-th-day--pick'
+                                : 'attendance-month-th-day attendance-month-th-day--pick'
                           }
-                          title={col.dateYmd ? `${col.dateYmd} (${col.weekday})` : '해당 월 없음'}
+                          title={col.dateYmd ? `${col.dateYmd} (${col.weekday}) — 클릭하여 이 날짜 출석 편집` : '해당 월 없음'}
+                          onClick={col.dateYmd ? () => goToAttendanceDate(col.dateYmd) : undefined}
+                          onKeyDown={
+                            col.dateYmd
+                              ? (e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    goToAttendanceDate(col.dateYmd)
+                                  }
+                                }
+                              : undefined
+                          }
+                          tabIndex={col.dateYmd ? 0 : undefined}
+                          role={col.dateYmd ? 'button' : undefined}
                         >
                           {col.dateYmd ? (
                             <>
@@ -590,9 +768,27 @@ export default function AttendanceCheckPage({ onClose }) {
                               cell.isPlaceholder
                                 ? 'attendance-month-td attendance-month-td--na'
                                 : cell.isToday
-                                  ? 'attendance-month-td attendance-month-td--today'
-                                  : 'attendance-month-td'
+                                  ? 'attendance-month-td attendance-month-td--today attendance-month-td--pick'
+                                  : 'attendance-month-td attendance-month-td--pick'
                             }
+                            title={
+                              cell.dateYmd
+                                ? `${row.student} · ${cell.dateYmd} — 클릭하여 이 날짜로 이동`
+                                : undefined
+                            }
+                            onClick={cell.dateYmd ? () => goToAttendanceDate(cell.dateYmd) : undefined}
+                            onKeyDown={
+                              cell.dateYmd
+                                ? (e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault()
+                                      goToAttendanceDate(cell.dateYmd)
+                                    }
+                                  }
+                                : undefined
+                            }
+                            tabIndex={cell.dateYmd ? 0 : undefined}
+                            role={cell.dateYmd ? 'button' : undefined}
                           >
                             {cell.isPlaceholder ? (
                               <span className="attendance-month-mark attendance-month-mark--na" aria-hidden>

@@ -1,3 +1,6 @@
+import { addCanvasAcrossPdfPages } from '../../../utils/addCanvasAcrossPdfPages'
+import { capturePdfPageWithAdaptiveEnglish } from '../../../utils/pdfAdaptiveEnglishBody'
+
 let jsPDF
 let html2canvas
 
@@ -45,6 +48,7 @@ export async function exportSum40ToPdf(options = {}) {
   })
 
   const pageWidth = 210
+  const pageHeight = 297
 
   for (let i = 0; i < pages.length; i += 1) {
     const page = pages[i]
@@ -52,7 +56,7 @@ export async function exportSum40ToPdf(options = {}) {
     try {
       await new Promise((resolve) => setTimeout(resolve, 500))
 
-      const canvas = await html2canvas(page, {
+      const baseOpts = {
         scale: 2,
         useCORS: true,
         allowTaint: true,
@@ -60,17 +64,21 @@ export async function exportSum40ToPdf(options = {}) {
         logging: false,
         width: page.offsetWidth,
         height: page.offsetHeight,
-      })
-
-      const imgData = canvas.toDataURL('image/png')
-      const imgWidth = pageWidth
-      const imgHeight = (canvas.height * pageWidth) / canvas.width
-
-      if (i > 0) {
-        pdf.addPage()
       }
 
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight, undefined, 'FAST')
+      const { canvas, restore } = await capturePdfPageWithAdaptiveEnglish(page, html2canvas, baseOpts, {
+        pageWidthMm: pageWidth,
+        pageHeightMm: pageHeight,
+      })
+
+      try {
+        if (i > 0) {
+          pdf.addPage()
+        }
+        addCanvasAcrossPdfPages(pdf, canvas, { pageWidthMm: pageWidth, pageHeightMm: pageHeight })
+      } finally {
+        restore()
+      }
     } catch (error) {
       console.error(`SUM40 페이지 ${i + 1} 변환 중 오류:`, error)
     }
