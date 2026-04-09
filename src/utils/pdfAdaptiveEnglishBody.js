@@ -1,21 +1,21 @@
 /**
- * 서술형 PDF(html2canvas) 캡처 전, 한 A4(297mm)를 넘기면 영어 본문만 조정합니다.
- * 1) 글자 1pt씩 축소(최소 8pt까지) → 2) 줄간격 0.08씩 축소(최소 1.06까지).
+ * 서술형 PDF(html2canvas) 캡처 전, 한 A4(297mm)를 넘기면 영어 본문만 살짝 조정합니다.
+ * - 글자: 1pt씩 최대 몇 번만(가독성 우선), 하한 10pt
+ * - 줄간격: 소폭만 축소, 하한 1.28
+ * 그래도 넘치면 **여러 PDF 페이지**로 나뉘어도 되며, 글씨를 과도하게 줄이지 않습니다.
  * 캡처 후 restore()로 스타일을 되돌립니다.
  */
 
 const PT_TO_PX = 96 / 72
-/** 본문 최소 글자 크기(pt) — 이보다 작으면 가독성이 크게 떨어짐 */
-const MIN_PASSAGE_FONT_PT = 8
+/** 이 밑으로는 너무 작아 보이므로 더 줄이지 않음 */
+const MIN_PASSAGE_FONT_PT = 10
 const MIN_PASSAGE_FONT_PX = MIN_PASSAGE_FONT_PT * PT_TO_PX
-/** 줄간격(배수) 하한 */
-const MIN_LINE_HEIGHT_RATIO = 1.06
-const MAX_FONT_SHRINK_STEPS = 24
-const MAX_LINE_SHRINK_STEPS = 30
-/** 8pt까지 줄여도 한 장 초과 시에만, 최소 6.5pt까지 추가 1pt씩(최대 4회) */
-const EMERGENCY_MIN_FONT_PT = 6.5
-const EMERGENCY_MIN_FONT_PX = EMERGENCY_MIN_FONT_PT * PT_TO_PX
-const MAX_EMERGENCY_FONT_STEPS = 4
+/** 기본(약 11~12pt)에서 최대 몇 pt만 줄일지 — 한 장 억지 맞춤 방지 */
+const MAX_FONT_PT_DROPS = 3
+/** 줄간격(배수) 하한 — 1.06까지 쓰면 인쇄물이 답답해 보임 */
+const MIN_LINE_HEIGHT_RATIO = 1.28
+const MAX_LINE_SHRINK_STEPS = 10
+const LINE_STEP = 0.06
 
 function isAnswerPdfPage(pageEl) {
   if (!pageEl?.classList) return false
@@ -84,7 +84,7 @@ export async function capturePdfPageWithAdaptiveEnglish(pageEl, html2canvas, bas
   let pages = canvasPdfPageCount(canvas, pageWidthMm, pageHeightMm)
 
   let fontSteps = 0
-  while (pages > 1 && fontSteps < MAX_FONT_SHRINK_STEPS) {
+  while (pages > 1 && fontSteps < MAX_FONT_PT_DROPS) {
     const cs = window.getComputedStyle(passageEl)
     const fsPx = parseFloat(cs.fontSize)
     if (Number.isNaN(fsPx)) break
@@ -108,22 +108,10 @@ export async function capturePdfPageWithAdaptiveEnglish(pageEl, html2canvas, bas
       ratio = parseFloat(lhRaw)
     }
     if (Number.isNaN(ratio)) ratio = 1.8
-    const nextRatio = Math.max(MIN_LINE_HEIGHT_RATIO, Math.round((ratio - 0.08) * 100) / 100)
+    const nextRatio = Math.max(MIN_LINE_HEIGHT_RATIO, Math.round((ratio - LINE_STEP) * 100) / 100)
     if (nextRatio >= ratio - 0.001) break
     passageEl.style.lineHeight = String(nextRatio)
     lhSteps += 1
-    canvas = await captureOnce()
-    pages = canvasPdfPageCount(canvas, pageWidthMm, pageHeightMm)
-  }
-
-  let emergSteps = 0
-  while (pages > 1 && emergSteps < MAX_EMERGENCY_FONT_STEPS) {
-    const cs = window.getComputedStyle(passageEl)
-    const fsPx = parseFloat(cs.fontSize)
-    if (Number.isNaN(fsPx) || fsPx <= EMERGENCY_MIN_FONT_PX + 0.2) break
-    const nextPx = Math.max(EMERGENCY_MIN_FONT_PX, fsPx - PT_TO_PX)
-    passageEl.style.fontSize = `${nextPx}px`
-    emergSteps += 1
     canvas = await captureOnce()
     pages = canvasPdfPageCount(canvas, pageWidthMm, pageHeightMm)
   }
